@@ -55,3 +55,7 @@ Don't build while the game is running: replacing a loaded mod DLL can crash the 
 
 Thanks for using these mods! They're free, and every feature works without donating. If you'd like to, you can
 [buy me a coffee](https://buymeacoffee.com/donateifyoucan).
+
+## License
+
+[MIT](LICENSE). Stardew Valley and its art belong to ConcernedApe; this license covers only the code and files in this repo.
