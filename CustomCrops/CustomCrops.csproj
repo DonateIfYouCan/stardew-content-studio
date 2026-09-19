@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>CustomCrops</AssemblyName>
+    <RootNamespace>CustomCrops</RootNamespace>
+    <Version>0.1.0</Version>
+    <TargetFramework>net6.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <CheckEolTargetFramework>false</CheckEolTargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Pathoschild.Stardew.ModBuildConfig" Version="4.4.0" />
+    <Reference Include="Newtonsoft.Json" HintPath="$(GamePath)/smapi-internal/Newtonsoft.Json.dll" Private="False" />
+    <!-- Custom Content Core: a separate mod (and repo) next to this one; its DLL is loaded by SMAPI, not bundled here. -->
+    <ProjectReference Include="../CustomContentCore/CustomContentCore.csproj" Private="False" />
+  </ItemGroup>
+
+  <!--
+    Deploying overwrites the mod DLL in the game's Mods folder. If the game is running, overwriting the file in place
+    corrupts the loaded code on Linux/macOS (segfault in libcoreclr). Deleting it first is safe there: the running game
+    keeps its copy. On Windows the file is locked while the game runs, so the delete (and deploy) just fail harmlessly.
+  -->
+  <Target Name="UnlinkDeployedMod" BeforeTargets="AfterBuild" Condition="'$(EnableModDeploy)' != 'false'">
+    <Delete Files="$(GameModsPath)/$(ModFolderName)/$(TargetName).dll;$(GameModsPath)/$(ModFolderName)/$(TargetName).pdb" ContinueOnError="true" />
+  </Target>
+
+</Project>

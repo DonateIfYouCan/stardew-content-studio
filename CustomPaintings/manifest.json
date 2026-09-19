@@ -1,0 +1,13 @@
+{
+  "Name": "Custom Paintings",
+  "Author": "DonateIfYouCan",
+  "Version": "0.1.0",
+  "Description": "Add, replace, or remove paintings using your own PNG/JPEG images, with configurable prices and sources.",
+  "UniqueID": "DonateIfYouCan.CustomPaintings",
+  "EntryDll": "CustomPaintings.dll",
+  "MinimumApiVersion": "4.0.0",
+  "Dependencies": [
+    { "UniqueID": "DonateIfYouCan.CustomContentCore", "MinimumVersion": "0.1.0" }
+  ],
+  "UpdateKeys": []
+}

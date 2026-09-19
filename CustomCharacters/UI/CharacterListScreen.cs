@@ -1,0 +1,216 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using CustomContentCore;
+using CustomContentCore.UI;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
+using StardewValley;
+using StardewValley.GameData.Characters;
+using StardewValley.TokenizableStrings;
+
+namespace CustomCharacters.UI
+{
+    /// <summary>The Characters section's main page: pick a villager to edit their portraits, or edit the farmer.</summary>
+    internal sealed class CharacterListScreen : Screen
+    {
+        private sealed record Row(string Npc, string DisplayName);
+
+        private readonly CharacterStore Store;
+        private readonly ScrollList<Row> List;
+        private readonly TextField SearchField;
+        private readonly Button EditButton;
+        private readonly Button SpriteButton;
+        private readonly Button ResetButton;
+        private readonly Button FarmerButton;
+        private readonly Button CloseButton;
+        private List<Row> AllRows = new();
+        private string? Message;
+        private Color MessageColor = Color.DarkGreen;
+
+        public CharacterListScreen(CharacterStore store)
+        {
+            this.Store = store;
+            this.List = this.Add(new ScrollList<Row>(88, this.DrawRow)
+            {
+                OnSelect = (_, _) => this.SyncButtons(),
+                OnDoubleClick = _ => this.EditSelected(),
+                EmptyText = "No villagers found"
+            });
+            this.SearchField = this.Add(new TextField("", _ => this.ApplyFilter(), limit: 40));
+            this.EditButton = this.Add(new Button("Edit portraits", this.EditSelected, "Replace this villager's portraits with your own images."));
+            this.SpriteButton = this.Add(new Button("Edit sprite", this.EditSprite, "Give this villager an HD body (their sprite in the world)."));
+            this.ResetButton = this.Add(new Button("Restore original", this.ResetSelected, "Go back to the game's own portraits and sprite."));
+            this.FarmerButton = this.Add(new Button("Farmer (HD)", this.EditFarmer, "Give the farmer (you and other players) HD body, hair, clothes, hats and accessories."));
+            this.CloseButton = this.Add(new Button("Close", () => this.Root.Pop()));
+            this.Refresh();
+        }
+
+        /// <summary>Open the portrait editor for a villager by name.</summary>
+        /// <param name="search">The villager's name.</param>
+        /// <param name="sprite">Whether to open the sprite editor instead of the portrait editor.</param>
+        public bool OpenByName(string search, bool sprite = false)
+        {
+            int index = this.List.Items.FindIndex(r => r.Npc.Equals(search, StringComparison.OrdinalIgnoreCase) || r.DisplayName.Equals(search, StringComparison.OrdinalIgnoreCase));
+            if (index < 0)
+                return false;
+            this.List.SelectedIndex = index;
+            if (sprite)
+                this.EditSprite();
+            else
+                this.EditSelected();
+            return true;
+        }
+
+        public override void OnResume()
+        {
+            this.Refresh();
+        }
+
+        protected override void OnLayout(Rectangle area)
+        {
+            int pad = 32, sideW = 300;
+            int x = area.X + pad, y = area.Y + 84;
+            int w = area.Width - pad * 2;
+            this.SearchField.Bounds = new Rectangle(x + 110, y, 360, 48);
+            y += 64;
+            this.List.Bounds = new Rectangle(x, y, w - sideW - 16, area.Bottom - 96 - y);
+            this.EditButton.Bounds = new Rectangle(x + w - sideW, y, sideW, 56);
+            this.SpriteButton.Bounds = new Rectangle(x + w - sideW, y + 64, sideW, 56);
+            this.ResetButton.Bounds = new Rectangle(x + w - sideW, y + 128, sideW, 56);
+            this.FarmerButton.Bounds = new Rectangle(x + w - sideW, this.List.Bounds.Bottom - 56, sideW, 56);
+            this.CloseButton.Bounds = new Rectangle(area.Right - pad - 180, area.Bottom - 84, 180, 60);
+        }
+
+        public override void Draw(SpriteBatch b, int mouseX, int mouseY)
+        {
+            Gfx.Panel(b, this.Area);
+            Gfx.Text(b, "Villagers", new Vector2(this.Area.X + 36, this.Area.Y + 24), null, Gfx.TitleFont);
+            Gfx.Text(b, "Search", new Vector2(this.Area.X + 32, this.SearchField.Bounds.Y + 10));
+            base.Draw(b, mouseX, mouseY);
+            if (this.Message != null)
+                Gfx.Message(b, this.Message, this.CloseButton.Bounds.X - this.Area.X - 60, new Vector2(this.Area.X + 36, this.Area.Bottom - 70), this.MessageColor);
+        }
+
+        private void DrawRow(SpriteBatch b, Row row, Rectangle bounds, bool selected, bool hover)
+        {
+            Rectangle thumb = new(bounds.X + 8, bounds.Y + 4, bounds.Height - 8, bounds.Height - 8);
+            if (this.Store.TryGetHdPortrait(row.Npc, 0, out Texture2D? custom, out _))
+                b.Draw(custom, thumb, Color.White);
+            else
+            {
+                try
+                {
+                    Texture2D sheet = Game1.content.Load<Texture2D>($"Portraits/{row.Npc}");
+                    b.Draw(sheet, thumb, new Rectangle(0, 0, 64, 64), Color.White);
+                }
+                catch
+                {
+                    // no portrait
+                }
+            }
+            Gfx.Text(b, row.DisplayName, new Vector2(thumb.Right + 16, bounds.Y + (bounds.Height - Gfx.LineHeight) / 2));
+            if (this.Store.HasCustom(row.Npc) || this.Store.HasCustomSprite(row.Npc))
+            {
+                string badge = string.Join(" + ", new[] { this.Store.HasCustom(row.Npc) ? "portraits" : null, this.Store.HasCustomSprite(row.Npc) ? "sprite" : null }.Where(p => p != null));
+                Vector2 size = Gfx.Font.MeasureString(badge);
+                Gfx.Text(b, badge, new Vector2(bounds.Right - size.X - 12, bounds.Y + (bounds.Height - Gfx.LineHeight) / 2), new Color(160, 80, 20));
+            }
+        }
+
+        private void Refresh()
+        {
+            string? selected = this.List.Selected?.Npc;
+            this.AllRows = GetVillagers().ToList();
+            this.ApplyFilter();
+            int index = this.List.Items.FindIndex(r => r.Npc == selected);
+            this.List.SelectedIndex = index;
+            if (index >= 0)
+                this.List.EnsureVisible(index);
+            this.SyncButtons();
+        }
+
+        /// <summary>Get villagers who have portraits.</summary>
+        private static IEnumerable<Row> GetVillagers()
+        {
+            List<Row> rows = new();
+            foreach ((string name, CharacterData data) in DataLoader.Characters(Game1.content))
+            {
+                if (!Game1.content.DoesAssetExist<Texture2D>($"Portraits/{name}"))
+                    continue;
+                string displayName = TokenParser.ParseText(data.DisplayName ?? name);
+                rows.Add(new Row(name, string.IsNullOrWhiteSpace(displayName) ? name : displayName));
+            }
+            return rows.OrderBy(r => r.DisplayName, StringComparer.OrdinalIgnoreCase);
+        }
+
+        private void ApplyFilter()
+        {
+            string search = this.SearchField.Text.Trim();
+            this.List.Items = search.Length == 0
+                ? this.AllRows
+                : this.AllRows.Where(r => r.DisplayName.Contains(search, StringComparison.OrdinalIgnoreCase) || r.Npc.Contains(search, StringComparison.OrdinalIgnoreCase)).ToList();
+            this.List.SelectedIndex = -1;
+            this.List.Scroll = 0;
+            this.SyncButtons();
+        }
+
+        private void SyncButtons()
+        {
+            Row? row = this.List.Selected;
+            this.EditButton.Visible = row != null;
+            this.SpriteButton.Visible = row != null;
+            this.ResetButton.Visible = row != null && (this.Store.HasCustom(row.Npc) || this.Store.HasCustomSprite(row.Npc));
+        }
+
+        private void EditSelected()
+        {
+            if (this.List.Selected is not { } row)
+                return;
+            PortraitSet set = this.Store.File.Portraits.FirstOrDefault(p => string.Equals(p.Npc, row.Npc, StringComparison.OrdinalIgnoreCase))
+                ?? new PortraitSet { Npc = row.Npc };
+            this.Root.Push(new PortraitEditorScreen(this.Store, set, row.DisplayName, () => this.ShowMessage($"Saved {row.DisplayName}'s portraits.")));
+        }
+
+        private void EditSprite()
+        {
+            if (this.List.Selected is not { } row)
+                return;
+            this.Root.Push(new SpriteEditorScreen(this.Store, row.Npc, row.DisplayName, () => this.ShowMessage($"Saved {row.DisplayName}'s sprite.")));
+        }
+
+        /// <summary>Open the farmer editor.</summary>
+        public void EditFarmer()
+        {
+            this.Root.Push(new FarmerEditorScreen(this.Store, () => this.ShowMessage("Saved the farmer's HD sheets.")));
+        }
+
+        private void ResetSelected()
+        {
+            if (this.List.Selected is not { } row)
+                return;
+            this.Root.Push(new ConfirmScreen($"Restore {row.DisplayName}'s original portraits and sprite?\n\nYour images stay in the mod's images folder.", "Restore", () =>
+            {
+                CharactersFile file = this.Store.ReadFile();
+                file.Portraits.RemoveAll(p => string.Equals(p.Npc, row.Npc, StringComparison.OrdinalIgnoreCase));
+                file.Sprites.RemoveAll(p => string.Equals(p.Npc, row.Npc, StringComparison.OrdinalIgnoreCase));
+                try
+                {
+                    this.Store.Save(file);
+                    this.ShowMessage($"{row.DisplayName} looks like the original again.");
+                }
+                catch (Exception ex)
+                {
+                    this.ShowMessage($"Couldn't save: {ex.Message}", error: true);
+                }
+            }));
+        }
+
+        private void ShowMessage(string message, bool error = false)
+        {
+            this.Message = message;
+            this.MessageColor = error ? Color.DarkRed : Color.DarkGreen;
+            this.Refresh();
+        }
+    }
+}

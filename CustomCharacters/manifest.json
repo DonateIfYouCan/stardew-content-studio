@@ -1,0 +1,13 @@
+{
+  "Name": "Custom Characters",
+  "Author": "DonateIfYouCan",
+  "Version": "0.1.0",
+  "Description": "Replace villager portraits with your own images (per emotion), shown in HD in dialogue.",
+  "UniqueID": "DonateIfYouCan.CustomCharacters",
+  "EntryDll": "CustomCharacters.dll",
+  "MinimumApiVersion": "4.0.0",
+  "Dependencies": [
+    { "UniqueID": "DonateIfYouCan.CustomContentCore", "MinimumVersion": "0.1.0" }
+  ],
+  "UpdateKeys": []
+}

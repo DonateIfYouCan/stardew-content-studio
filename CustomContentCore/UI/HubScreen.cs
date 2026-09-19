@@ -1,0 +1,211 @@
+using System.IO;
+using System;
+using System.Collections.Generic;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
+using StardewValley;
+
+namespace CustomContentCore.UI
+{
+    /// <summary>The editor's start page when several mods add sections: pick what to edit.</summary>
+    internal sealed class HubScreen : Screen
+    {
+        private readonly List<(CustomContent.EditorSection Section, Button Button)> Entries = new();
+        private readonly Button CloseButton;
+        private readonly Button ExportButton;
+        private readonly Button ImportButton;
+        private readonly Checkbox ShareBox;
+        private readonly Checkbox AcceptBox;
+        private readonly Button DonateButton;
+        private readonly Button GitHubButton;
+
+        /// <summary>Where to support the author.</summary>
+        public const string DonateUrl = "https://buymeacoffee.com/donateifyoucan";
+
+        /// <summary>The mods' GitHub repo (source, docs and issues).</summary>
+        public const string GitHubUrl = "https://github.com/DonateIfYouCan/stardew-content-studio";
+        private string? Message;
+        private Color MessageColor = Color.DarkGreen;
+
+        public HubScreen()
+        {
+            foreach (CustomContent.EditorSection section in CustomContent.GetEditors())
+            {
+                CustomContent.EditorSection s = section;
+                this.Entries.Add((s, this.Add(new Button(s.Title, () => this.Root.Push(s.CreateScreen()), s.Description))));
+            }
+            this.CloseButton = this.Add(new Button("Close", () => this.Root.Pop()));
+            this.ExportButton = this.Add(new Button("Export pack", this.ExportPack, "Save all your custom content (data and images) into one file, e.g. to use on another PC."));
+            this.ImportButton = this.Add(new Button("Import pack", this.ImportPack, "Load a pack made with 'Export pack'. Your current content is backed up first."));
+            this.ExportButton.Visible = this.ImportButton.Visible = ContentPacks.Any;
+            this.ShareBox = this.Add(new Checkbox("Share my content when I host", CoreMod.Config.ShareContentAsHost, v => { CoreMod.Config.ShareContentAsHost = v; CoreMod.SaveConfig(); },
+                "Multiplayer: when you host, players who accept it get your custom content (paintings, crops, ...), so everyone sees the same."));
+            this.DonateButton = this.Add(new Button("Buy me a coffee", () => this.CopyLink(DonateUrl), $"Optional. Copies {DonateUrl} to paste in your browser. Nothing is unlocked by donating."));
+            this.GitHubButton = this.Add(new Button("GitHub", () => this.CopyLink(GitHubUrl), $"Copies {GitHubUrl} to paste in your browser."));
+            this.AcceptBox = this.Add(new Checkbox("Accept content from hosts", CoreMod.Config.AcceptContentFromHost, this.OnAcceptToggled,
+                "Multiplayer: when you join a game whose host shares content, download it. It's only used while you're in their game; your own content isn't changed.\nOnly turn this on if you play with people you trust."));
+        }
+
+        /// <summary>Ask for confirmation before accepting other players' content.</summary>
+        private void OnAcceptToggled(bool accept)
+        {
+            if (!accept)
+            {
+                this.SetAccept(false);
+                return;
+            }
+            this.AcceptBox.Checked = false; // until confirmed
+            this.Root.Push(new ConfirmScreen(
+                "Only turn this on if you play multiplayer with people you trust.\n\n"
+                + "When you join a game, the host's pictures and custom content are downloaded to your PC. They're checked and "
+                + "cleaned first, but a host can still show you any pictures they like.",
+                "Turn on",
+                () => this.SetAccept(true)));
+        }
+
+        private void SetAccept(bool accept)
+        {
+            this.AcceptBox.Checked = accept;
+            CoreMod.Config.AcceptContentFromHost = accept;
+            CoreMod.SaveConfig();
+            CoreMod.Sync?.OnAcceptChanged();
+        }
+
+        /// <summary>Copy a link to the clipboard (opening a browser from the game isn't reliable on every OS).</summary>
+        private void CopyLink(string url)
+        {
+            if (DesktopClipboard.SetText(url))
+            {
+                this.ShowMessage($"Copied {url} - paste it in your browser.");
+                Game1.playSound("coin");
+            }
+            else
+                this.ShowMessage($"Couldn't copy the link. It's {url}", error: true);
+        }
+
+        private void ExportPack()
+        {
+            try
+            {
+                string path = ContentPacks.Export();
+                this.ShowMessage($"Exported to {path}");
+                Game1.playSound("coin");
+            }
+            catch (Exception ex)
+            {
+                this.ShowMessage($"Couldn't export: {ex.Message}", error: true);
+            }
+        }
+
+        private void ImportPack()
+        {
+            this.Root.Push(new FileBrowserScreen(ImageExport.ExportFolder, path =>
+            {
+                string description;
+                try
+                {
+                    description = ContentPacks.Describe(path);
+                }
+                catch (Exception ex)
+                {
+                    this.ShowMessage($"Can't use that file: {ex.Message}", error: true);
+                    return;
+                }
+                this.Root.Push(new ConfirmScreen($"Import this pack?\n\n{description}\n\nThis replaces your current content for these mods. Your current content is saved as a backup pack first.", "Import", () =>
+                {
+                    try
+                    {
+                        ContentPacks.ImportResult result = ContentPacks.Import(path);
+                        string skipped = result.Skipped.Count > 0 ? $" Skipped (not installed): {string.Join(", ", result.Skipped)}." : "";
+                        this.ShowMessage($"Imported {string.Join(", ", result.Imported)}.{skipped} Backup: {Path.GetFileName(result.BackupPath)}");
+                        Game1.playSound("newArtifact");
+                    }
+                    catch (Exception ex)
+                    {
+                        this.ShowMessage($"Couldn't import: {ex.Message}", error: true);
+                    }
+                }));
+            }, extensions: new[] { ".zip" }, title: "Choose a content pack (.zip)"));
+        }
+
+        private void ShowMessage(string message, bool error = false)
+        {
+            this.Message = message;
+            this.MessageColor = error ? Color.DarkRed : Color.DarkGreen;
+            if (error)
+                Game1.playSound("cancel");
+        }
+
+        protected override void OnLayout(Rectangle area)
+        {
+            int w = Math.Min(560, area.Width - 64);
+            int x = area.Center.X - w / 2;
+            int y = area.Y + 120;
+            foreach ((_, Button button) in this.Entries)
+            {
+                button.Bounds = new Rectangle(x, y, w, 72);
+                y += 132;
+            }
+            this.CloseButton.Bounds = new Rectangle(area.Right - 32 - 180, area.Bottom - 84, 180, 60);
+            this.ShareBox.Bounds = new Rectangle(area.X + 32, area.Bottom - 84 - 118, 520, 44);
+            this.AcceptBox.Bounds = new Rectangle(area.X + 32, area.Bottom - 84 - 64, 520, 44);
+            this.ExportButton.Bounds = new Rectangle(area.X + 32, area.Bottom - 84, 220, 60);
+            this.ImportButton.Bounds = new Rectangle(area.X + 32 + 232, area.Bottom - 84, 220, 60);
+            this.GitHubButton.Bounds = new Rectangle(area.Right - 32 - 180, area.Bottom - 84 - 118, 180, 52);
+            this.DonateButton.Bounds = new Rectangle(this.GitHubButton.Bounds.X - 12 - 260, area.Bottom - 84 - 118, 260, 52);
+        }
+
+        public override void Draw(SpriteBatch b, int mouseX, int mouseY)
+        {
+            Gfx.Panel(b, this.Area);
+            Gfx.Text(b, "What do you want to edit?", new Vector2(this.Area.X + 36, this.Area.Y + 24), null, Gfx.TitleFont);
+            base.Draw(b, mouseX, mouseY);
+            Vector2 heading = new(this.ShareBox.Bounds.X, this.ShareBox.Bounds.Y - 40);
+            Gfx.Text(b, "Multiplayer", heading, Color.DimGray);
+            Gfx.Text(b, "- only accept content in games with people you trust", heading + new Vector2(Gfx.Font.MeasureString("Multiplayer ").X, 0), Color.DarkRed);
+            if (CoreMod.Sync?.UsingHostContent == true)
+                Gfx.Text(b, "You're using the host's content in this game, so editing is off until you leave.", new Vector2(this.Area.X + 36, this.Area.Y + 70), Color.DarkRed);
+            Gfx.Text(b, "Support (optional)", new Vector2(this.DonateButton.Bounds.X, this.DonateButton.Bounds.Y - 40), Color.DimGray);
+            Gfx.Text(b, "Thanks for using these mods!", new Vector2(this.DonateButton.Bounds.X, this.DonateButton.Bounds.Bottom + 8), Color.DimGray);
+            if (this.Message != null)
+                Gfx.Message(b, this.Message, this.CloseButton.Bounds.X - this.ImportButton.Bounds.Right - 48, new Vector2(this.ImportButton.Bounds.Right + 24, this.CloseButton.Bounds.Y + 16), this.MessageColor);
+            foreach ((CustomContent.EditorSection section, Button button) in this.Entries)
+                Gfx.TextCentered(b, Gfx.Fit(section.Description, this.Area.Width - 80), new Rectangle(this.Area.X, button.Bounds.Bottom + 8, this.Area.Width, 32), Color.DimGray);
+        }
+    }
+
+    /// <summary>Asks the player to confirm something, shown over the previous screen.</summary>
+    public sealed class ConfirmScreen : Screen
+    {
+        private readonly string Message;
+        private readonly Button YesButton;
+        private readonly Button NoButton;
+        private Rectangle Box;
+
+        public override bool IsOverlay => true;
+
+        public ConfirmScreen(string message, string yesLabel, Action onYes)
+        {
+            this.Message = message;
+            this.YesButton = this.Add(new Button(yesLabel, () => { this.Root.Pop(); onYes(); }));
+            this.NoButton = this.Add(new Button("Cancel", () => this.Root.Pop()));
+        }
+
+        protected override void OnLayout(Rectangle area)
+        {
+            int w = Math.Min(760, area.Width);
+            string wrapped = Game1.parseText(this.Message, Game1.smallFont, w - 80);
+            int h = (int)Game1.smallFont.MeasureString(wrapped).Y + 180;
+            this.Box = new Rectangle(area.Center.X - w / 2, area.Center.Y - h / 2, w, h);
+            this.YesButton.Bounds = new Rectangle(this.Box.Right - 40 - 200, this.Box.Bottom - 96, 200, 60);
+            this.NoButton.Bounds = new Rectangle(this.YesButton.Bounds.X - 16 - 180, this.Box.Bottom - 96, 180, 60);
+        }
+
+        public override void Draw(SpriteBatch b, int mouseX, int mouseY)
+        {
+            Gfx.Panel(b, this.Box);
+            b.DrawString(Game1.smallFont, Game1.parseText(this.Message, Game1.smallFont, this.Box.Width - 80), new Vector2(this.Box.X + 40, this.Box.Y + 40), Game1.textColor);
+            base.Draw(b, mouseX, mouseY);
+        }
+    }
+}
