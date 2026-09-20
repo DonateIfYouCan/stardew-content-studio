@@ -175,6 +175,9 @@ namespace CustomContentCore
         /// <summary>The largest resolution multiplier used for auto resolution.</summary>
         public const int MaxAutoScale = 8;
 
+        /// <summary>The biggest image side the game can turn into a texture on any graphics card that runs it.</summary>
+        public const int MaxTextureSide = 8192;
+
         /// <summary>Get the resolution multiplier for a pixels-per-tile setting: 1, 2, 4, or for 0 (auto) whatever matches the screen.</summary>
         public static int GetScale(int resolution)
         {

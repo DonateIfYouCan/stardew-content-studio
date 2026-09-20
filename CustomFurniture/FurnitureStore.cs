@@ -335,7 +335,7 @@ namespace CustomFurniture
             if (fullSource.StartsWith(imageFolder, StringComparison.OrdinalIgnoreCase))
                 return Path.GetRelativePath(this.ImageFolder, fullSource).Replace('\\', '/');
 
-            string name = new string(Path.GetFileNameWithoutExtension(fullSource).Select(ch => char.IsLetterOrDigit(ch) || ch is '_' or '-' ? ch : '_').ToArray());
+            string name = CustomContent.ToFileName(Path.GetFileNameWithoutExtension(fullSource));
             string ext = Path.GetExtension(fullSource).ToLowerInvariant();
             string target = Path.Combine(this.ImageFolder, name + ext);
             byte[] bytes = System.IO.File.ReadAllBytes(fullSource);
@@ -410,7 +410,7 @@ namespace CustomFurniture
             {
                 CustomFurnitureItem item = furniture.Data;
                 FurnitureTemplate t = furniture.Template;
-                string name = item.Name.Replace('/', '-').Trim();
+                string name = CustomContent.ToDisplayName(item.Name, "Furniture");
                 string texture = this.GetTextureAsset(item.Id).Replace('/', '\\'); // data fields are separated by '/'
                 data[this.GetItemId(item.Id)] = $"{this.GetItemId(item.Id)}/{t.Type}/{t.TilesWide} {t.TilesHigh}/{t.BoxWide} {t.BoxHigh}/1/{Math.Max(0, item.Price)}/{t.Placement}/{name}/0/{texture}/{(!item.InCatalogue).ToString().ToLowerInvariant()}/custom_furniture";
             }

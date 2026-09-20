@@ -14,18 +14,19 @@ Tested on one setup only: **Linux, Stardew Valley 1.6.15, SMAPI 4.5.2**, 1920×1
 | Export / import packs | Export, then import after deleting the content: files come back and a backup is made first. A crafted malicious zip (`..` paths aimed at a mod's DLL, manifest and config) was refused without changing those files. |
 | Export folder | If the folder can't be written, exports go to the Core mod folder with a warning (tested with a read-only folder) |
 | Paintings | Create, crop (drag corners), frames, sizes, price, shops (price matches, including Pierre), fishing (5% chance measured over 2,000 rolls per spot; "only once" and location limits work), hang on a wall, full-screen viewer with text, delete |
-| Animated paintings | 3-frame animation placed in a room; frames advance in real time. Not tested: many animated paintings at once (each one updates its texture every few frames). |
-| Duplicate button | Copying a painting makes an independent copy with a new name and ID (tested for paintings; crops, furniture and wallpaper use the same code, untested). |
+| Animated paintings | A 2-frame and a 3-frame animation placed in a room; screenshots 100 ms apart show the frames advancing in real time. Not tested: many animated paintings at once (each one updates its texture every few frames). |
+| Duplicate button | Copying makes an independent copy with a new name and ID; tested for paintings, furniture and wallpaper (crops use the same code, untested). |
 | Photo frames / slideshows | Two images with captions, switching every 10 in-game minutes, standing on a table, viewer paging |
 | Replaced / removed game paintings | Listed, marked "replaced", shown in the world |
 | Villager portraits | Default image plus one emotion override, correct image per emotion in real dialogue, export original |
 | Villager sprites | Export, choose an HD sheet, walking preview, outfit fallbacks, HD in the world, change while playing |
 | HD farmer | All 10 sheet types load. The body is recolored per farmer: skin, eye, shoe, sleeve and dye colors match the normal game. Checked in the world, inventory, character creator, tool swings, eating and drinking, and after changing skin, hair, hat and shirt. A wrong-size sheet is refused. |
-| Farmer editor 'Try on' | Hats shown on the preview farmer in all four directions; the real farmer is unchanged after closing. Accessories use the same code, untested. |
+| Farmer editor | Sheets split over two pages (Farmer, Clothes & hats); stepping and typing an item number shows that hairstyle, beard, shirt or hat next to your HD version; counts match the game's own layout (56 hairstyles, 304 shirts, 132 hats, 32 accessories, 20 pants). 'Try on' shows a hat on the preview farmer in all four directions and the real farmer is unchanged afterwards; accessories use the same code and were only checked in the preview. |
 | Crops | Create, harvest image, growth-days validation, Pierre sells the seeds at the set price, Get seeds, delete |
-| Wallpaper & floors | Made a wallpaper and a floor from images, hung/laid them indoors (needs to be within reach, like the game), and checked they appear in the catalogue. Not yet tested: many sets at once, HD drawing at high zoom, multiplayer sharing of them. |
+| Wallpaper & floors | Made a wallpaper and a floor from images, hung/laid them in the farmhouse, left and came back (they stay), duplicated one, and checked they appear in the catalogue. Not yet tested: many sets at once, HD drawing at high zoom, multiplayer sharing of them. |
 | Furniture | Create from a base, search, export template, HD sheet, price, Robin's shop, place, lamp on at night, change the art while playing, delete |
 | Multiplayer | Two and three game copies on one PC over direct IP (LAN). Host shares and player accepts (both off by default, trust confirmation), HD farmers visible on both screens, editing locked while using host content, attack tests (see Core README, *Multiplayer security*) |
+| Names | A 73-character name is saved and used in full; lists shorten what they show. A crop named `[77] Melon` reaches Pierre's shop as "77 Melon Seeds", so names can't smuggle the game's tokens into its data. |
 | Security helpers | Managed PNG decoder checked against Pillow on 15 PNG variants (pixel-identical) and 2,700 corrupted files (no crashes) |
 
 ## Not tested

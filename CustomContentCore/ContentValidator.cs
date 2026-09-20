@@ -10,7 +10,7 @@ namespace CustomContentCore
     internal static class ContentValidator
     {
         /// <summary>The largest image dimension accepted.</summary>
-        public const int MaxImageSide = 8192;
+        public const int MaxImageSide = ImageProcessor.MaxTextureSide;
 
         /// <summary>The most pixels accepted in one image (limits memory use when decoding). A 4x farmer pants sheet is 7680x5504 (42 MP).</summary>
         public const long MaxImagePixels = (long)MaxImageSide * MaxImageSide;

@@ -499,7 +499,7 @@ namespace CustomPaintings.UI
 
             CustomPainting copy = Newtonsoft.Json.JsonConvert.DeserializeObject<CustomPainting>(Newtonsoft.Json.JsonConvert.SerializeObject(painting))!;
             copy.Name = $"{painting.Name ?? "Painting"} copy";
-            string baseId = new string(copy.Name.Select(ch => char.IsLetterOrDigit(ch) ? ch : '_').ToArray()).Trim('_');
+            string baseId = CustomContent.ToId(copy.Name, "Painting");
             string id = baseId;
             for (int i = 2; file.Paintings.Exists(p => p.Id == id); i++)
                 id = $"{baseId}_{i}";

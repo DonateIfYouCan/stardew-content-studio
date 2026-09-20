@@ -266,7 +266,7 @@ namespace CustomPaintings
 
             string importFolder = Path.Combine(this.ImageFolder, ImportFolderName);
             Directory.CreateDirectory(importFolder);
-            string name = SanitizeId(Path.GetFileNameWithoutExtension(fullSource));
+            string name = CustomContent.ToFileName(Path.GetFileNameWithoutExtension(fullSource));
             string ext = Path.GetExtension(fullSource).ToLowerInvariant();
             string target = Path.Combine(importFolder, name + ext);
             byte[] sourceBytes = System.IO.File.ReadAllBytes(fullSource);
@@ -542,7 +542,8 @@ namespace CustomPaintings
 
         public static string SanitizeId(string id)
         {
-            return new string(id.Trim().Select(ch => char.IsLetterOrDigit(ch) || ch is '_' or '-' or '.' ? ch : '_').ToArray());
+            string safe = new string(id.Trim().Select(ch => char.IsLetterOrDigit(ch) || ch is '_' or '-' or '.' ? ch : '_').ToArray());
+            return safe.Length > CustomContent.MaxIdLength ? safe[..CustomContent.MaxIdLength] : safe;
         }
 
         public static string NormalizeName(string name)
@@ -735,9 +736,10 @@ namespace CustomPaintings
             foreach (ResolvedEntry p in this.Added)
             {
                 string offLimits = (!p.InCatalogue).ToString().ToLowerInvariant();
+                string name = CustomContent.ToDisplayName(p.Name, "Painting");
                 data[p.FurnitureId] = p.Table
-                    ? $"{p.FurnitureId}/decor/1 {p.Height}/1 1/1/{p.Price}/-1/{p.Name}/0/{ToDataPath(p.TextureAsset!)}/{offLimits}/custom_painting custom_photo_frame"
-                    : $"{p.FurnitureId}/painting/{p.Width} {p.Height}/{p.Width} {p.Height}/1/{p.Price}/-1/{p.Name}/0/{ToDataPath(p.TextureAsset!)}/{offLimits}/custom_painting";
+                    ? $"{p.FurnitureId}/decor/1 {p.Height}/1 1/1/{p.Price}/-1/{name}/0/{ToDataPath(p.TextureAsset!)}/{offLimits}/custom_painting custom_photo_frame"
+                    : $"{p.FurnitureId}/painting/{p.Width} {p.Height}/{p.Width} {p.Height}/1/{p.Price}/-1/{name}/0/{ToDataPath(p.TextureAsset!)}/{offLimits}/custom_painting";
             }
 
             foreach (ResolvedEntry r in this.Replaced)
@@ -754,7 +756,7 @@ namespace CustomPaintings
                     fields[9] = ToDataPath(r.TextureAsset);
                 }
                 if (r.Name != null)
-                    fields[7] = r.Name;
+                    fields[7] = CustomContent.ToDisplayName(r.Name, "Painting");
                 if (r.Price != null)
                     fields[5] = Math.Max(0, r.Price.Value).ToString();
                 data[r.FurnitureId] = string.Join('/', fields).TrimEnd('/');
@@ -873,6 +875,7 @@ namespace CustomPaintings
         }
 
         /// <summary>Format an asset name for a slash-delimited data field (which can't contain '/').</summary>
+
         private static string ToDataPath(string assetName)
         {
             return assetName.Replace('/', '\\');

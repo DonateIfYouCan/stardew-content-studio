@@ -1,8 +1,8 @@
 {
   "Name": "Content Studio: Furniture",
   "Author": "DonateIfYouCan",
-  "Version": "0.1.0",
-  "Description": "Make your own furniture (lamps that switch on, fireplaces, beds, animated decor, tables...) from your images, in HD.",
+  "Version": "0.2.1",
+  "Description": "Make your own furniture (lamps that switch on, fireplaces, beds, animated decor...) and wallpaper and floors from your images, in HD.",
   "UniqueID": "DonateIfYouCan.CustomFurniture",
   "EntryDll": "CustomFurniture.dll",
   "MinimumApiVersion": "4.0.0",

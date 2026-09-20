@@ -90,7 +90,7 @@ namespace CustomCrops.UI
                 b.Draw(icon, new Rectangle(bounds.X + 8, bounds.Y + 8, size, size), new Rectangle(icon.Width / 2, 0, icon.Width / 2, icon.Height), Color.White);
             }
             int textX = bounds.X + bounds.Height + 12;
-            Gfx.Text(b, crop.Name, new Vector2(textX, bounds.Y + 8));
+            Gfx.Text(b, Gfx.Fit(crop.Name, bounds.Right - textX - 12), new Vector2(textX, bounds.Y + 8));
             string seasons = string.Join(", ", crop.Seasons.Select(s => char.ToUpper(s[0]) + s[1..]));
             string details = $"{seasons} · {CropStore.Days(crop.DaysInPhase.Sum())}" + (crop.RegrowDays > 0 ? $", regrows every {CropStore.Days(crop.RegrowDays)}" : "") + $" · sells for {crop.SellPrice}g · seeds {crop.SeedPrice}g";
             Gfx.Text(b, Gfx.Fit(details, bounds.Right - textX - 12), new Vector2(textX, bounds.Y + 42), Color.DimGray);
@@ -166,7 +166,7 @@ namespace CustomCrops.UI
             CropsFile file = this.Store.ReadFile();
             CustomCrop copy = Newtonsoft.Json.JsonConvert.DeserializeObject<CustomCrop>(Newtonsoft.Json.JsonConvert.SerializeObject(crop))!;
             copy.Name = $"{crop.Name} copy";
-            string baseId = new string(copy.Name.Select(ch => char.IsLetterOrDigit(ch) ? ch : '_').ToArray()).Trim('_');
+            string baseId = CustomContent.ToId(copy.Name, "Crop");
             string id = baseId;
             for (int i = 2; file.Crops.Exists(c => c.Id == id); i++)
                 id = $"{baseId}_{i}";

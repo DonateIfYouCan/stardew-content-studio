@@ -28,7 +28,7 @@ namespace CustomFurniture.UI
         public WallpaperListScreen(FurnitureStore store)
         {
             this.Store = store;
-            this.List = this.Add(new ScrollList<CustomWallpaper>(88, this.DrawRow)
+            this.List = this.Add(new ScrollList<CustomWallpaper>(112, this.DrawRow)
             {
                 OnSelect = (_, _) => this.SyncButtons(),
                 OnDoubleClick = _ => this.EditSelected(),
@@ -48,7 +48,7 @@ namespace CustomFurniture.UI
 
         protected override void OnLayout(Rectangle area)
         {
-            int pad = 32, sideW = 300;
+            int pad = 32, sideW = 340; // wide enough for 'New wallpaper or floor'
             int x = area.X + pad, y = area.Y + 84, w = area.Width - pad * 2;
             this.List.Bounds = new Rectangle(x, y, w - sideW - 16, area.Bottom - 96 - y);
             int bx = x + w - sideW, by = y;
@@ -78,16 +78,19 @@ namespace CustomFurniture.UI
                     thumb = loaded.Hd.ToTexture();
                     this.Thumbnails[item.Id] = thumb;
                 }
+                // one whole tile, as big as fits the row, so you can see the pattern that will repeat
                 int tileW = item.IsFloor ? WallpaperSets.FloorSize : WallpaperSets.WallpaperWidth;
                 int tileH = item.IsFloor ? WallpaperSets.FloorSize : WallpaperSets.WallpaperHeight;
-                int scale = Math.Max(1, (row.Height - 8) / tileH);
-                for (int i = 0; i < (item.IsFloor ? 2 : 3); i++)
-                    b.Draw(thumb, new Rectangle(row.X + 8 + i * tileW * scale, row.Y + 4, tileW * scale, tileH * scale), Color.White);
-                Gfx.Text(b, item.Name, new Vector2(row.X + 124, row.Y + 10));
-                Gfx.Text(b, item.IsFloor ? "Floor" : "Wallpaper", new Vector2(row.X + 124, row.Y + 46), Color.DimGray);
+                int box = row.Height - 8;
+                int scale = Math.Max(1, Math.Min(box / tileW, box / tileH));
+                Rectangle dest = new(row.X + 8 + (box - tileW * scale) / 2, row.Y + 4 + (box - tileH * scale) / 2, tileW * scale, tileH * scale);
+                b.Draw(thumb, dest, new Rectangle(0, 0, tileW, tileH), Color.White);
+                int textX = row.X + 8 + box + 16;
+                Gfx.Text(b, Gfx.Fit(item.Name, row.Right - textX - 12), new Vector2(textX, row.Y + 10));
+                Gfx.Text(b, item.IsFloor ? "Floor" : "Wallpaper", new Vector2(textX, row.Y + 46), Color.DimGray);
             }
             else
-                Gfx.Text(b, $"{item.Name} (can't load: check the SMAPI console)", new Vector2(row.X + 124, row.Y + 26), Color.DarkRed);
+                Gfx.Text(b, Gfx.Fit($"{item.Name} (can't load: check the SMAPI console)", row.Width - row.Height - 40), new Vector2(row.X + row.Height + 16, row.Y + 26), Color.DarkRed);
         }
 
         private void ClearThumbnails()
@@ -151,7 +154,7 @@ namespace CustomFurniture.UI
             FurnitureFile file = this.Store.ReadFile();
             CustomWallpaper copy = Newtonsoft.Json.JsonConvert.DeserializeObject<CustomWallpaper>(Newtonsoft.Json.JsonConvert.SerializeObject(item))!;
             copy.Name = $"{item.Name} copy";
-            string baseId = new string(copy.Name.Select(ch => char.IsLetterOrDigit(ch) ? ch : '_').ToArray()).Trim('_');
+            string baseId = CustomContent.ToId(copy.Name, "Wallpaper");
             string id = baseId;
             for (int i = 2; file.Wallpapers.Exists(w => w.Id == id); i++)
                 id = $"{baseId}_{i}";

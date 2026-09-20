@@ -33,6 +33,12 @@ wasn't tested.
 ![Painting editor](docs/screenshots/paintings-editor.png)
 *Painting editor.*
 
+![Wallpaper and a floor made from images, in a farmhouse](docs/screenshots/world-wallpaper-floor.png)
+*Wallpaper and floor tiles made from your own images.*
+
+![The farmer editor comparing the game's hairstyle with an HD one](docs/screenshots/characters-farmer-compare.png)
+*The farmer editor: step through the sheet and compare each item with the game's own.*
+
 All images in the screenshots were made for the demo.
 
 ## Installing

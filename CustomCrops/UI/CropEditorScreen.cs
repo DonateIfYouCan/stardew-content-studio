@@ -106,7 +106,7 @@ namespace CustomCrops.UI
             this.ExportTemplateButton = this.Add(new Button("Export template", this.ExportTemplate, "Save the selected game crop's growth sheet as a PNG to paint over."));
 
             // fields
-            this.NameField = this.Add(new TextField(c.Name, v => c.Name = v.Trim(), limit: 40));
+            this.NameField = this.Add(new TextField(c.Name, v => c.Name = v.Trim(), limit: 80));
             this.DescriptionField = this.Add(new TextField(c.Description, v => c.Description = v, limit: 200));
             this.SeasonBoxes = SeasonNames.Select(season => this.Add(new Checkbox(char.ToUpper(season[0]) + season[1..], c.Seasons.Contains(season, StringComparer.OrdinalIgnoreCase), on =>
             {
@@ -484,7 +484,7 @@ namespace CustomCrops.UI
             CropsFile file = this.Store.ReadFile();
             if (this.IsNew)
             {
-                string baseId = new string(c.Name.Select(ch => char.IsLetterOrDigit(ch) ? ch : '_').ToArray()).Trim('_');
+                string baseId = CustomContent.ToId(c.Name, "Crop");
                 if (baseId.Length == 0)
                     baseId = "Crop";
                 string id = baseId;

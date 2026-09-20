@@ -155,7 +155,7 @@ namespace CustomPaintings.UI
 
             // form
             string name = this.Painting?.Name ?? this.Replacement?.Name ?? "";
-            this.NameField = this.Add(new TextField(name, v => { if (this.Painting != null) this.Painting.Name = v; else this.Replacement!.Name = string.IsNullOrWhiteSpace(v) ? null : v; }, limit: 60));
+            this.NameField = this.Add(new TextField(name, v => { if (this.Painting != null) this.Painting.Name = v; else this.Replacement!.Name = string.IsNullOrWhiteSpace(v) ? null : v; }, limit: 80));
             this.DescriptionField = this.Add(new TextField(this.Settings.Description ?? "", v => this.Settings.Description = string.IsNullOrWhiteSpace(v) ? null : v, limit: 500));
             this.CaptionField = this.Add(new TextField("", v => { if (this.CurrentSlide is { } slide) slide.Caption = string.IsNullOrWhiteSpace(v) ? null : v; }, limit: 500));
 

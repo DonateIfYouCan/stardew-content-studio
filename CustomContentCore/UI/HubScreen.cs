@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using StardewModdingAPI;
 using StardewValley;
 
 namespace CustomContentCore.UI
@@ -91,7 +92,8 @@ namespace CustomContentCore.UI
             try
             {
                 string path = ContentPacks.Export();
-                this.ShowMessage($"Exported to {path}");
+                CoreMod.StaticMonitor.Log($"Exported a content pack to {path}.", LogLevel.Info);
+                this.ShowMessage($"Exported '{Path.GetFileName(path)}' to your {Path.GetFileName(Path.GetDirectoryName(path))} folder.");
                 Game1.playSound("coin");
             }
             catch (Exception ex)
@@ -120,7 +122,8 @@ namespace CustomContentCore.UI
                     {
                         ContentPacks.ImportResult result = ContentPacks.Import(path);
                         string skipped = result.Skipped.Count > 0 ? $" Skipped (not installed): {string.Join(", ", result.Skipped)}." : "";
-                        this.ShowMessage($"Imported {string.Join(", ", result.Imported)}.{skipped} Backup: {Path.GetFileName(result.BackupPath)}");
+                        CoreMod.StaticMonitor.Log($"Imported the content pack '{path}'; the previous content is backed up in '{result.BackupPath}'.", LogLevel.Info);
+                        this.ShowMessage($"Imported content for {result.Imported.Count} mod{(result.Imported.Count == 1 ? "" : "s")}.{skipped} Your old content is in the Backups folder.");
                         Game1.playSound("newArtifact");
                     }
                     catch (Exception ex)

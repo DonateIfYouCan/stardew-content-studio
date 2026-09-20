@@ -18,6 +18,12 @@ fireplaces with fire, beds you can sleep in, animated decor, tables, rugs and mo
 ![Your furniture](../docs/screenshots/furniture-list.png)
 *Your furniture.*
 
+![Wallpaper and floor editor with a tiled preview](../docs/screenshots/wallpaper-editor.png)
+*Wallpaper and floors: crop your image and see it tiled.*
+
+![Wallpaper and a floor in a farmhouse](../docs/screenshots/world-wallpaper-floor.png)
+*The same wallpaper and floor in the farmhouse.*
+
 All images in the screenshots are made for the demo.
 
 ## Installing

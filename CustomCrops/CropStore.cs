@@ -264,7 +264,7 @@ namespace CustomCrops
             if (fullSource.StartsWith(imageFolder, StringComparison.OrdinalIgnoreCase))
                 return Path.GetRelativePath(this.ImageFolder, fullSource).Replace('\\', '/');
 
-            string name = new string(Path.GetFileNameWithoutExtension(fullSource).Select(ch => char.IsLetterOrDigit(ch) || ch is '_' or '-' ? ch : '_').ToArray());
+            string name = CustomContent.ToFileName(Path.GetFileNameWithoutExtension(fullSource));
             string ext = Path.GetExtension(fullSource).ToLowerInvariant();
             string target = Path.Combine(this.ImageFolder, name + ext);
             byte[] bytes = System.IO.File.ReadAllBytes(fullSource);
@@ -346,7 +346,7 @@ namespace CustomCrops
                 objects[this.GetSeedId(crop.Id)] = new ObjectData
                 {
                     Name = $"{crop.Name} Seeds",
-                    DisplayName = $"{crop.Name} Seeds",
+                    DisplayName = $"{CustomContent.ToDisplayName(crop.Name, "Crop")} Seeds",
                     Description = $"Plant these in {seasons}. Takes {Days(days)} to mature" + (crop.RegrowDays > 0 ? $", and keeps producing every {(crop.RegrowDays == 1 ? "day" : Days(crop.RegrowDays))}." : ".") + (crop.Trellis ? " Grows on a trellis." : ""),
                     Type = "Seeds",
                     Category = StardewValley.Object.SeedsCategory,
@@ -359,7 +359,7 @@ namespace CustomCrops
                 objects[this.GetHarvestId(crop.Id)] = new ObjectData
                 {
                     Name = crop.Name,
-                    DisplayName = crop.Name,
+                    DisplayName = CustomContent.ToDisplayName(crop.Name, "Crop"),
                     Description = string.IsNullOrWhiteSpace(crop.Description) ? $"A homegrown {crop.Name.ToLowerInvariant()}." : crop.Description,
                     Type = "Basic",
                     Category = crop.Category.ToLowerInvariant() switch

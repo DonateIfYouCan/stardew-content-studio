@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Text;
 using CustomContentCore.UI;
 using Microsoft.Xna.Framework.Graphics;
 using StardewModdingAPI;
@@ -126,6 +127,56 @@ namespace CustomContentCore
         }
 
         /// <summary>Get the registered editor sections.</summary>
+        /// <summary>The longest ID made from a name; IDs end up in item IDs and save files, so they stay short.</summary>
+        public const int MaxIdLength = 40;
+
+        /// <summary>The longest file name for an imported image, so the whole path stays within Windows' limit.</summary>
+        public const int MaxFileNameLength = 60;
+
+        /// <summary>
+        /// Clean a player-typed name for the game's data: no slashes (the game uses them to separate fields), no line breaks,
+        /// and no square brackets, which the game reads as tokens (<c>[LocalizedText ...]</c>, <c>[77]</c>) and would replace with
+        /// something else or fail on. Other characters are left alone, so names like "100% Wool Rug" still work.
+        /// </summary>
+        /// <param name="name">The name the player typed.</param>
+        /// <param name="fallback">What to use when nothing is left.</param>
+        public static string ToDisplayName(string? name, string fallback)
+        {
+            char[] unsafeChars = { '[', ']' };
+            StringBuilder result = new();
+            foreach (char ch in name ?? "")
+            {
+                if (ch is '/' or '\n' or '\r' or '\t')
+                    result.Append(' ');
+                else if (!unsafeChars.Contains(ch) && !char.IsControl(ch))
+                    result.Append(ch);
+            }
+            string safe = result.ToString().Trim();
+            while (safe.Contains("  "))
+                safe = safe.Replace("  ", " ");
+            return safe.Length > 0 ? safe : fallback;
+        }
+
+        /// <summary>Turn a name into an ID: letters and digits only, capped in length.</summary>
+        /// <param name="name">The player's name for the item.</param>
+        /// <param name="fallback">The ID to use when the name has no usable characters.</param>
+        public static string ToId(string? name, string fallback)
+        {
+            string id = new string((name ?? "").Select(ch => char.IsLetterOrDigit(ch) ? ch : '_').ToArray()).Trim('_');
+            if (id.Length > MaxIdLength)
+                id = id[..MaxIdLength].Trim('_');
+            return id.Length > 0 ? id : fallback;
+        }
+
+        /// <summary>Turn a file name into a safe one: letters, digits, '_' and '-' only, capped in length.</summary>
+        public static string ToFileName(string? name)
+        {
+            string safe = new string((name ?? "").Select(ch => char.IsLetterOrDigit(ch) || ch is '_' or '-' ? ch : '_').ToArray()).Trim('_');
+            if (safe.Length > MaxFileNameLength)
+                safe = safe[..MaxFileNameLength].Trim('_');
+            return safe.Length > 0 ? safe : "image";
+        }
+
         public static IReadOnlyList<EditorSection> GetEditors()
         {
             return Sections.OrderBy(s => s.Title).ToList();

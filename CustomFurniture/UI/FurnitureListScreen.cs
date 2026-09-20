@@ -92,12 +92,12 @@ namespace CustomFurniture.UI
                 }
                 FurnitureTemplate t = loaded.Template;
                 Gfx.Fitted(b, thumb, new Rectangle(0, 0, t.Source.Width * loaded.Scale, t.Source.Height * loaded.Scale), new Rectangle(row.X + 8, row.Y + 4, 100, row.Height - 8), pixelated: loaded.Scale == 1);
-                Gfx.Text(b, item.Name, new Vector2(row.X + 124, row.Y + 10));
+                Gfx.Text(b, Gfx.Fit(item.Name, row.Right - row.X - 140), new Vector2(row.X + 124, row.Y + 10));
                 string details = $"{t.Kind} ({t.Name}) · {t.TilesWide}x{t.TilesHigh} · {item.Price}g" + (loaded.AnimationFrames > 1 ? $" · animated ({loaded.AnimationFrames} frames)" : "");
                 Gfx.Text(b, Gfx.Fit(details, row.Right - row.X - 140), new Vector2(row.X + 124, row.Y + 46), Color.DimGray);
             }
             else
-                Gfx.Text(b, $"{item.Name} (can't load: check the SMAPI console)", new Vector2(row.X + 124, row.Y + 26), Color.DarkRed);
+                Gfx.Text(b, Gfx.Fit($"{item.Name} (can't load: check the SMAPI console)", row.Right - row.X - 140), new Vector2(row.X + 124, row.Y + 26), Color.DarkRed);
         }
 
         private void ClearThumbnails()
@@ -157,7 +157,7 @@ namespace CustomFurniture.UI
             FurnitureFile file = this.Store.ReadFile();
             CustomFurnitureItem copy = Newtonsoft.Json.JsonConvert.DeserializeObject<CustomFurnitureItem>(Newtonsoft.Json.JsonConvert.SerializeObject(item))!;
             copy.Name = $"{item.Name} copy";
-            string baseId = new string(copy.Name.Select(ch => char.IsLetterOrDigit(ch) ? ch : '_').ToArray()).Trim('_');
+            string baseId = CustomContent.ToId(copy.Name, "Furniture");
             string id = baseId;
             for (int i = 2; file.Furniture.Exists(f => f.Id == id); i++)
                 id = $"{baseId}_{i}";

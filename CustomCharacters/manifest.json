@@ -1,8 +1,8 @@
 {
   "Name": "Content Studio: Characters",
   "Author": "DonateIfYouCan",
-  "Version": "0.1.0",
-  "Description": "Replace villager portraits with your own images (per emotion), shown in HD in dialogue.",
+  "Version": "0.2.1",
+  "Description": "Villager portraits (per emotion) and sprites, and the farmer's body, hair, clothes and hats, in HD.",
   "UniqueID": "DonateIfYouCan.CustomCharacters",
   "EntryDll": "CustomCharacters.dll",
   "MinimumApiVersion": "4.0.0",

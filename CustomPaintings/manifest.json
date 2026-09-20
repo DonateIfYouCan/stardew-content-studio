@@ -1,8 +1,8 @@
 {
   "Name": "Content Studio: Paintings",
   "Author": "DonateIfYouCan",
-  "Version": "0.1.0",
-  "Description": "Add, replace, or remove paintings using your own PNG/JPEG images, with configurable prices and sources.",
+  "Version": "0.2.1",
+  "Description": "Add, replace or remove paintings using your own PNG/JPEG images, with photo frames, slideshows, prices and sources.",
   "UniqueID": "DonateIfYouCan.CustomPaintings",
   "EntryDll": "CustomPaintings.dll",
   "MinimumApiVersion": "4.0.0",

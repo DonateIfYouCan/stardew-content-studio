@@ -181,6 +181,13 @@ namespace CustomCharacters
                 error = $"The image is {factor}x the original size; the maximum is {ImageProcessor.MaxAutoScale}x ({sheetWidth * ImageProcessor.MaxAutoScale}x{sheetHeight * ImageProcessor.MaxAutoScale}).";
                 return false;
             }
+            if (imageWidth > ImageProcessor.MaxTextureSide || imageHeight > ImageProcessor.MaxTextureSide)
+            {
+                // graphics cards have a maximum texture size; 8192 is safe on anything that runs the game
+                int fits = Math.Max(1, Math.Min(ImageProcessor.MaxTextureSide / Math.Max(1, sheetWidth), ImageProcessor.MaxTextureSide / Math.Max(1, sheetHeight)));
+                error = $"The image is {imageWidth}x{imageHeight}. Keep each side under {ImageProcessor.MaxTextureSide} pixels (so up to {fits}x this sheet), or some graphics cards can't load it.";
+                return false;
+            }
             error = null;
             return true;
         }
@@ -495,7 +502,7 @@ namespace CustomCharacters
             if (fullSource.StartsWith(imageFolder, StringComparison.OrdinalIgnoreCase))
                 return Path.GetRelativePath(this.ImageFolder, fullSource).Replace('\\', '/');
 
-            string name = new string(Path.GetFileNameWithoutExtension(fullSource).Select(ch => char.IsLetterOrDigit(ch) || ch is '_' or '-' ? ch : '_').ToArray());
+            string name = CustomContent.ToFileName(Path.GetFileNameWithoutExtension(fullSource));
             string ext = Path.GetExtension(fullSource).ToLowerInvariant();
             string target = Path.Combine(this.ImageFolder, name + ext);
             byte[] bytes = System.IO.File.ReadAllBytes(fullSource);

@@ -23,8 +23,11 @@ A [SMAPI](https://smapi.io) mod for Stardew Valley 1.6 that replaces villager po
 ![Sprite sheet with walking preview](../docs/screenshots/characters-sprite-editor.png)
 *Sprite sheet with walking preview.*
 
-![Farmer HD sheets](../docs/screenshots/characters-farmer-editor.png)
-*Farmer HD sheets.*
+![Farmer HD sheets](../docs/screenshots/characters-farmer-compare.png)
+*Farmer sheets: pick an item by number and compare it with the game's own.*
+
+![Trying a hat on the preview farmer](../docs/screenshots/characters-tryon.png)
+*Clothes & hats, with a hat tried on the preview farmer.*
 
 All images in the screenshots are made for the demo.
 
@@ -44,7 +47,7 @@ All images in the screenshots are made for the demo.
 - **HD sprites (bodies)**: export a villager's original sprite sheet, paint over it at any whole-number size (e.g. 4x), and import it.
   Animated walking previews compare yours with the original. Your main sheet is used for every outfit (winter, beach, ...) unless
   an outfit has its own sheet; shorter outfit sheets (like beach) use the top of the main sheet.
-- **HD farmer** (*Farmer (HD)* button): HD sheets for the farmer's body (male/female, with or without hair), hairstyles,
+- **HD farmer** (*Farmer* and *Clothes & hats* in the Characters menu): HD sheets for the farmer's body (male/female, with or without hair), hairstyles,
   shirts, pants, hats and accessories. Export the game's sheet, paint over it at any whole-number size, and choose it; a
   preview shows your farmer in all four directions. For the hats and accessories sheets, a *Try on* option puts one on the
   preview farmer (your real farmer isn't changed). Any sheet you don't replace stays as it is. Applies to every farmer you see

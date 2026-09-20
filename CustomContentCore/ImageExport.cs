@@ -104,6 +104,8 @@ namespace CustomContentCore
             string folder = ExportFolder;
             Directory.CreateDirectory(folder);
             string safeName = new string(name.Select(ch => char.IsLetterOrDigit(ch) || ch is '_' or '-' or ' ' ? ch : '_').ToArray()).Trim();
+            if (safeName.Length > CustomContent.MaxFileNameLength)
+                safeName = safeName[..CustomContent.MaxFileNameLength].Trim();
             if (upscale > 1)
                 safeName += $" (x{upscale})";
             string path = Path.Combine(folder, safeName + ".png");

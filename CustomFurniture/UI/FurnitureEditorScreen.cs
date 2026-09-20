@@ -57,7 +57,7 @@ namespace CustomFurniture.UI
             this.ChooseButton = this.Add(new Button("Choose your sheet", this.BrowseSheet, "Your sprite: the same layout as the template, at any whole-number multiple of its size."));
             this.FramesField = this.Add(new TextField(f.AnimationFrames.ToString(), v => { f.AnimationFrames = int.TryParse(v, out int n) ? Math.Clamp(n, 1, 64) : 1; this.ValidateSheet(); }, numbersOnly: true, limit: 2));
             this.SpeedField = this.Add(new TextField(f.FrameMilliseconds.ToString(), v => f.FrameMilliseconds = int.TryParse(v, out int n) ? Math.Clamp(n, 16, 5000) : 150, numbersOnly: true, limit: 4));
-            this.NameField = this.Add(new TextField(f.Name, v => f.Name = v.Trim(), limit: 40));
+            this.NameField = this.Add(new TextField(f.Name, v => f.Name = v.Trim(), limit: 80));
             this.PriceField = this.Add(new TextField(f.Price.ToString(), v => f.Price = int.TryParse(v, out int p) ? Math.Max(0, p) : 0, numbersOnly: true, limit: 7));
             this.CatalogueBox = this.Add(new Checkbox("Furniture Catalogue", f.InCatalogue, v => f.InCatalogue = v));
             this.RobinBox = this.Add(new Checkbox("Robin", f.SoldAtRobin, v => f.SoldAtRobin = v));
@@ -286,7 +286,7 @@ namespace CustomFurniture.UI
             FurnitureFile file = this.Store.ReadFile();
             if (this.IsNew)
             {
-                string baseId = new string(f.Name.Select(ch => char.IsLetterOrDigit(ch) ? ch : '_').ToArray()).Trim('_');
+                string baseId = CustomContent.ToId(f.Name, "Furniture");
                 if (baseId.Length == 0)
                     baseId = "Furniture";
                 string id = baseId;

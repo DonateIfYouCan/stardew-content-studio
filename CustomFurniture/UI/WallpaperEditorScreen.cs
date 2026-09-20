@@ -49,7 +49,7 @@ namespace CustomFurniture.UI
             this.Item = JsonConvert.DeserializeObject<CustomWallpaper>(JsonConvert.SerializeObject(item))!; // edit a copy so Cancel discards changes
 
             this.Cropper = this.Add(new CropWidget { OnChanged = crop => { this.Item.Crop = new[] { crop.X, crop.Y, crop.Width, crop.Height }; this.PreviewDirty = true; } });
-            this.NameField = this.Add(new TextField(this.Item.Name, v => this.Item.Name = v, limit: 40));
+            this.NameField = this.Add(new TextField(this.Item.Name, v => this.Item.Name = v, limit: 80));
             this.TypeCycler = this.Add(new Cycler(
                 new() { ("wall", "Wallpaper"), ("floor", "Floor") },
                 this.Item.IsFloor ? "floor" : "wall",
@@ -213,7 +213,7 @@ namespace CustomFurniture.UI
             FurnitureFile file = this.Store.ReadFile();
             if (this.IsNew)
             {
-                string baseId = new string(this.Item.Name.Select(ch => char.IsLetterOrDigit(ch) ? ch : '_').ToArray()).Trim('_');
+                string baseId = CustomContent.ToId(this.Item.Name, "Wallpaper");
                 if (baseId.Length == 0)
                     baseId = "Wallpaper";
                 string id = baseId;
