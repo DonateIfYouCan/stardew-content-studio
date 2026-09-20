@@ -62,7 +62,10 @@ The **pencil** draws crisp pixels and the **brush** fades out at its edge, which
 the eraser and replace-drag) use the **size** and **tip shape** chosen beside the canvas: square, round or diamond, from one
 pixel up to sixteen.
 
-Every key here can be changed with the **Keys** button, and the choice is kept in the Core's `config.json`. As they come -
+Saving in the paint screen is the only save: the image is written and the item you were editing is updated straight away.
+
+Every key here can be changed with the **Keys** button, and the choice is kept in the Core's `config.json`. The key that
+opens the editor, the export size and the folders are under **Settings** on the start page. As they come -
 tools: `P` pencil, `B` brush, `E` eraser, `I` pick colour, `F` fill, `L` line, `R` rectangle, `O` oval, `A` replace all,
 `D` replace drag, `S` select, `H` move view. Other: `C` copy, `V` paste, `Delete` clears the selection, `Z` undo, `Y` redo,
 `+`/`-` zoom, `0` fills the width, `Shift` keeps lines and boxes straight, and holding `space` drags the image.

@@ -404,9 +404,10 @@ namespace CustomCharacters.UI
                     string saved = CustomContent.SaveImage(this.Store.ImageFolder, $"Farmer {layer.Id} painted", pixels);
                     this.HdSheets.Remove(saved);
                     this.Files[layer.Id] = saved;
-                    this.Message = $"Painted {layer.Label}. Save to see it on your farmer.";
-                    this.MessageColor = Color.DarkGreen;
                     this.SyncButtons();
+                    this.Save(); // saving in the paint screen is meant to be the only save
+                    this.Message = $"Painted {layer.Label} and saved it.";
+                    this.MessageColor = Color.DarkGreen;
                 }
                 catch (Exception ex)
                 {

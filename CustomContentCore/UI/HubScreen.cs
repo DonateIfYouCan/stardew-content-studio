@@ -12,6 +12,7 @@ namespace CustomContentCore.UI
     internal sealed class HubScreen : Screen
     {
         private readonly List<(CustomContent.EditorSection Section, Button Button)> Entries = new();
+        private readonly Button SettingsButton;
         private readonly Button CloseButton;
         private readonly Button ExportButton;
         private readonly Button ImportButton;
@@ -38,6 +39,7 @@ namespace CustomContentCore.UI
                 CustomContent.EditorSection s = section;
                 this.Entries.Add((s, this.Add(new Button(s.Title, () => this.Root.Push(s.CreateScreen()), s.Description))));
             }
+            this.SettingsButton = this.Add(new Button("Settings", () => this.Root.Push(new SettingsScreen()), "The key that opens the editor, and where images are saved and looked for."));
             this.CloseButton = this.Add(new Button("Close", () => this.Root.Pop()));
             this.ExportButton = this.Add(new Button("Export pack", this.ExportPack, "Save all your custom content (data and images) into one file, e.g. to use on another PC."));
             this.ImportButton = this.Add(new Button("Import pack", this.ImportPack, "Load a pack made with 'Export pack'. Your current content is backed up first."));
@@ -160,6 +162,7 @@ namespace CustomContentCore.UI
                 y += step;
             }
             this.CloseButton.Bounds = new Rectangle(area.Right - 32 - 180, area.Bottom - 84, 180, 60);
+            this.SettingsButton.Bounds = new Rectangle(this.CloseButton.Bounds.X - 12 - 180, area.Bottom - 84, 180, 60);
             this.ExportButton.Bounds = new Rectangle(area.X + 32, area.Bottom - 84, 220, 60);
             this.ImportButton.Bounds = new Rectangle(area.X + 32 + 232, area.Bottom - 84, 220, 60);
             this.GitHubButton.Bounds = new Rectangle(area.Right - 32 - 300, area.Bottom - 84 - 118, 300, 52);
@@ -183,7 +186,7 @@ namespace CustomContentCore.UI
             Gfx.Text(b, "Support (optional)", new Vector2(this.DonateButton.Bounds.X, this.DonateButton.Bounds.Y - 40), Color.DimGray);
             Gfx.Text(b, Gfx.Fit("Thanks for using these mods!", this.Area.Right - 32 - this.DonateButton.Bounds.X), new Vector2(this.DonateButton.Bounds.X, this.DonateButton.Bounds.Bottom + 8), Color.DimGray);
             if (this.Message != null)
-                Gfx.Message(b, this.Message, this.CloseButton.Bounds.X - this.ImportButton.Bounds.Right - 48, new Vector2(this.ImportButton.Bounds.Right + 24, this.CloseButton.Bounds.Y + 16), this.MessageColor);
+                Gfx.Message(b, this.Message, this.SettingsButton.Bounds.X - this.ImportButton.Bounds.Right - 48, new Vector2(this.ImportButton.Bounds.Right + 24, this.CloseButton.Bounds.Y + 16), this.MessageColor);
             if (this.ShowDescriptions)
             {
                 foreach ((CustomContent.EditorSection section, Button button) in this.Entries)

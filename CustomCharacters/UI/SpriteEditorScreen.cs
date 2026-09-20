@@ -277,9 +277,10 @@ namespace CustomCharacters.UI
                         this.Set.File = saved;
                     else
                         this.Set.Outfits[outfit] = saved;
-                    this.Message = "Painted. Check the walking preview, then save.";
-                    this.MessageColor = Color.DarkGreen;
                     this.SyncButtons();
+                    this.Save(); // saving in the paint screen is meant to be the only save
+                    this.Message = "Painted and saved.";
+                    this.MessageColor = Color.DarkGreen;
                 }
                 catch (Exception ex)
                 {
