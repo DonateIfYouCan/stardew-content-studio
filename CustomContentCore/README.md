@@ -36,8 +36,11 @@ All images in the screenshots are made for the demo.
 
 ## Paint
 
-Editors that work with pixel art have a **Paint** button that opens the image in the game: pencil, eraser, colour picker
-and fill, with zoom, a grid showing where each sprite in a sheet begins, and undo. It edits a copy and saves as a new PNG
+Editors that work with pixel art have a **Paint** button that opens the image in the game. The tools are down the left:
+pencil, eraser, eyedropper, fill, line, rectangle, ellipse, replace a colour everywhere, replace it only where you drag,
+and a rectangular selection you can move, copy, paste, clear, flip or turn. Shapes can be outlined or filled, Shift keeps
+lines straight and boxes square, and mirror drawing repeats your strokes inside the sprite you're drawing in. There's
+zoom (to the cursor), a grid for sprite and pixel boundaries, and undo/redo. It edits a copy and saves as a new PNG
 in the mod's images folder, so the art you started from is never overwritten.
 
 Starting from the game's own art (a farmer sheet, a villager sprite, a piece of furniture) copies it first and asks what
