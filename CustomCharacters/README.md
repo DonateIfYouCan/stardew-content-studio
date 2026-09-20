@@ -46,7 +46,8 @@ All images in the screenshots are made for the demo.
   an outfit has its own sheet; shorter outfit sheets (like beach) use the top of the main sheet.
 - **HD farmer** (*Farmer (HD)* button): HD sheets for the farmer's body (male/female, with or without hair), hairstyles,
   shirts, pants, hats and accessories. Export the game's sheet, paint over it at any whole-number size, and choose it; a
-  preview shows your farmer in all four directions. Any sheet you don't replace stays as it is. Applies to every farmer you see
+  preview shows your farmer in all four directions. For the hats and accessories sheets, a *Try on* option puts one on the
+  preview farmer (your real farmer isn't changed). Any sheet you don't replace stays as it is. Applies to every farmer you see
   (you and other players), in the world and in menus.
   - The game's colors still apply: hair color and clothing dyes tint the HD sheets.
   - Body sheets are recolored per farmer (skin, eyes, shoes and sleeves), like the game does. Keep those parts in the original

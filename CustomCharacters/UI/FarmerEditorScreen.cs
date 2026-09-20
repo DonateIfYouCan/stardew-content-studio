@@ -34,6 +34,7 @@ namespace CustomCharacters.UI
         private Color MessageColor = Color.DarkRed;
 
         private readonly Cycler LayerCycler;
+        private readonly Cycler TryOnCycler;
         private readonly Button ExportButton;
         private readonly Button ChooseButton;
         private readonly Button RemoveButton;
@@ -43,6 +44,9 @@ namespace CustomCharacters.UI
         private Rectangle SheetArea;
         private Rectangle ZoomArea;
         private Rectangle FarmerArea;
+
+        /// <summary>The hat or accessory shown on the preview farmer, or -1 for whatever they're wearing.</summary>
+        private int TryOn = -1;
 
 
         /*********
@@ -54,13 +58,16 @@ namespace CustomCharacters.UI
             this.OnSaved = onSaved;
             this.Files = new Dictionary<string, string>(store.File.Farmer, StringComparer.OrdinalIgnoreCase);
 
-            this.LayerCycler = this.Add(new Cycler(FarmerHd.Layers.Select(l => (l.Id, l.Label)).ToList(), this.Layer.Id, v => { this.Layer = FarmerHd.GetLayer(v)!; this.Message = null; this.SyncButtons(); },
+            this.LayerCycler = this.Add(new Cycler(FarmerHd.Layers.Select(l => (l.Id, l.Label)).ToList(), this.Layer.Id, v => { this.Layer = FarmerHd.GetLayer(v)!; this.Message = null; this.TryOn = -1; this.SyncTryOn(); this.SyncButtons(); },
                 "The farmer is drawn in layers. Each can have an HD sheet; the others stay as they are."));
+            this.TryOnCycler = this.Add(new Cycler(new() { ("-1", "What you're wearing") }, "-1", v => this.TryOn = int.Parse(v),
+                "Try one of the sheet's hats or accessories on the preview farmer. Nothing is changed on your real farmer."));
             this.ExportButton = this.Add(new Button("Export original sheet", this.ExportOriginal, "Save the game's sheet (enlarged, with sharp pixels) to paint over in another program."));
             this.ChooseButton = this.Add(new Button("Choose HD sheet", this.Browse, "Pick your HD version. It must be the original size times a whole number."));
             this.RemoveButton = this.Add(new Button("Remove", this.RemoveSheet));
             this.SaveButton = this.Add(new Button("Save", this.Save));
             this.CancelButton = this.Add(new Button("Cancel", () => this.Root.Pop()));
+            this.SyncTryOn();
             this.SyncButtons();
         }
 
@@ -79,7 +86,8 @@ namespace CustomCharacters.UI
             int pad = 32;
             int top = area.Y + 84;
             int bottom = area.Bottom - 96;
-            this.LayerCycler.Bounds = new Rectangle(area.X + pad + 110, top, 460, 48);
+            this.LayerCycler.Bounds = new Rectangle(area.X + pad + 110, top, 380, 48);
+            this.TryOnCycler.Bounds = new Rectangle(area.Right - pad - 340, top, 340, 48);
             top += 64;
             int sheetW = (int)(area.Width * 0.3);
             int farmerW = 220;
@@ -99,10 +107,13 @@ namespace CustomCharacters.UI
             Gfx.Panel(b, area);
             Gfx.Text(b, "Farmer (HD)", new Vector2(area.X + 36, area.Y + 24), null, Gfx.TitleFont);
             Gfx.Text(b, "Sheet", new Vector2(area.X + 32, this.LayerCycler.Bounds.Y + 10));
+            if (this.TryOnCycler.Visible)
+                Gfx.Text(b, "Try on", new Vector2(this.TryOnCycler.Bounds.X - 110, this.TryOnCycler.Bounds.Y + 10));
 
             Texture2D? original = this.GetOriginal(this.Layer);
             (Texture2D? hd, int factor, string status) = this.GetSheet(this.Layer);
-            Gfx.Text(b, Gfx.Fit(status, area.Right - 60 - this.LayerCycler.Bounds.Right - 24), new Vector2(this.LayerCycler.Bounds.Right + 24, this.LayerCycler.Bounds.Y + 10), Color.DimGray);
+            int statusW = (this.TryOnCycler.Visible ? this.TryOnCycler.Bounds.X - 120 : area.Right - 60) - this.LayerCycler.Bounds.Right - 24;
+            Gfx.Text(b, Gfx.Fit(status, statusW), new Vector2(this.LayerCycler.Bounds.Right + 24, this.LayerCycler.Bounds.Y + 10), Color.DimGray);
 
             // sheet overview
             Gfx.Text(b, hd != null ? $"Your sheet ({factor}x)" : "Original sheet", new Vector2(this.SheetArea.X, this.SheetArea.Y - 36), Color.DimGray);
@@ -157,8 +168,14 @@ namespace CustomCharacters.UI
         {
             Farmer player = Game1.player;
             int facing = player.FacingDirection;
+            StardewValley.Objects.Hat? hat = player.hat.Value;
+            int accessory = player.accessory.Value;
             try
             {
+                if (this.TryOn >= 0 && this.Layer.Id == "hats")
+                    player.hat.Value = ItemRegistry.Create<StardewValley.Objects.Hat>($"(H){this.TryOn}", allowNull: true);
+                else if (this.TryOn >= 0 && this.Layer.Id == "accessories")
+                    player.accessory.Value = this.TryOn;
                 FarmerRenderer.isDrawingForUI = true;
                 (int Direction, int Frame, bool Flip)[] poses = { (2, 0, false), (1, 6, false), (0, 12, false), (3, 6, true) };
                 for (int i = 0; i < poses.Length; i++)
@@ -173,6 +190,8 @@ namespace CustomCharacters.UI
             finally
             {
                 player.FacingDirection = facing;
+                player.hat.Value = hat;
+                player.accessory.Value = accessory;
                 FarmerRenderer.isDrawingForUI = false;
             }
         }
@@ -208,6 +227,24 @@ namespace CustomCharacters.UI
             return FarmerHd.TryGetFactor(layer, hd.Width, hd.Height, out int factor, out string? error)
                 ? (hd, factor, $"Uses your {factor}x sheet.")
                 : (null, 1, error);
+        }
+
+        /// <summary>Offer the sheet's hats or accessories to try on (only those two are picked by number).</summary>
+        private void SyncTryOn()
+        {
+            bool isHat = this.Layer.Id == "hats", isAccessory = this.Layer.Id == "accessories";
+            this.TryOnCycler.Visible = isHat || isAccessory;
+            if (!this.TryOnCycler.Visible)
+                return;
+
+            List<(string Value, string Label)> options = new() { ("-1", "What you're wearing") };
+            int count = 0;
+            if (this.GetOriginal(this.Layer) is { } sheet)
+                count = isHat ? sheet.Width / 20 * (sheet.Height / 80) : sheet.Height / 32;
+            for (int i = 0; i < Math.Min(count, 60); i++)
+                options.Add((i.ToString(), isHat ? $"Hat #{i}" : $"Accessory #{i}"));
+            this.TryOnCycler.Options = options;
+            this.TryOnCycler.Index = 0;
         }
 
         private void SyncButtons()

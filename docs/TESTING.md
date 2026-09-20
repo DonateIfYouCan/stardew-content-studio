@@ -21,6 +21,7 @@ Tested on one setup only: **Linux, Stardew Valley 1.6.15, SMAPI 4.5.2**, 1920×1
 | Villager portraits | Default image plus one emotion override, correct image per emotion in real dialogue, export original |
 | Villager sprites | Export, choose an HD sheet, walking preview, outfit fallbacks, HD in the world, change while playing |
 | HD farmer | All 10 sheet types load. The body is recolored per farmer: skin, eye, shoe, sleeve and dye colors match the normal game. Checked in the world, inventory, character creator, tool swings, eating and drinking, and after changing skin, hair, hat and shirt. A wrong-size sheet is refused. |
+| Farmer editor 'Try on' | Hats shown on the preview farmer in all four directions; the real farmer is unchanged after closing. Accessories use the same code, untested. |
 | Crops | Create, harvest image, growth-days validation, Pierre sells the seeds at the set price, Get seeds, delete |
 | Wallpaper & floors | Made a wallpaper and a floor from images, hung/laid them indoors (needs to be within reach, like the game), and checked they appear in the catalogue. Not yet tested: many sets at once, HD drawing at high zoom, multiplayer sharing of them. |
 | Furniture | Create from a base, search, export template, HD sheet, price, Robin's shop, place, lamp on at night, change the art while playing, delete |
