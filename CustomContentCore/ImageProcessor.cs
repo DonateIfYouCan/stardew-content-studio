@@ -370,6 +370,39 @@ namespace CustomContentCore
             return new Color((int)Math.Round(r / norm), (int)Math.Round(g / norm), (int)Math.Round(b / norm), (int)Math.Round(avgA));
         }
 
+        /// <summary>Read a texture (or part of it) back as straight-alpha pixels. Must be called on the main thread.</summary>
+        /// <param name="texture">The texture, as the game loads them (premultiplied alpha).</param>
+        /// <param name="source">The area to read, or null for all of it.</param>
+        public static Pixels FromTexture(Texture2D texture, Rectangle? source = null)
+        {
+            Rectangle area = Rectangle.Intersect(source ?? texture.Bounds, texture.Bounds);
+            Color[] data = new Color[area.Width * area.Height];
+            texture.GetData(0, area, data, 0, data.Length);
+            for (int i = 0; i < data.Length; i++)
+            {
+                Color c = data[i];
+                if (c.A is > 0 and < 255)
+                    data[i] = new Color(Math.Min(255, c.R * 255 / c.A), Math.Min(255, c.G * 255 / c.A), Math.Min(255, c.B * 255 / c.A), c.A);
+            }
+            return new Pixels(data, area.Width, area.Height);
+        }
+
+        /// <summary>Enlarge an image a whole number of times, keeping the pixels sharp.</summary>
+        public static Pixels Enlarge(Pixels image, int factor)
+        {
+            factor = Math.Clamp(factor, 1, 16);
+            if (factor == 1)
+                return image;
+            int w = image.Width * factor, h = image.Height * factor;
+            Color[] result = new Color[w * h];
+            for (int y = 0; y < h; y++)
+            {
+                for (int x = 0; x < w; x++)
+                    result[y * w + x] = image.Data[y / factor * image.Width + x / factor];
+            }
+            return new Pixels(result, w, h);
+        }
+
         /// <summary>Convert straight-alpha pixels to premultiplied alpha.</summary>
         public static Color[] Premultiply(Color[] pixels)
         {

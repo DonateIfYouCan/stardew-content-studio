@@ -7,7 +7,7 @@ in-game editor (press `K`), in HD where you want it.
 
 | Mod | What it does |
 |---|---|
-| [Content Studio: Core](CustomContentCore) | The in-game editor, file browser, image tools, HD drawing, export/import of content packs, optional multiplayer sharing. **Required by the others.** |
+| [Content Studio: Core](CustomContentCore) | The in-game editor, file browser, image tools, a pixel editor to draw on your art in the game, HD drawing, export/import of content packs, optional multiplayer sharing. **Required by the others.** |
 | [Content Studio: Paintings](CustomPaintings) | Add, replace or hide paintings; photo frames and slideshows; full-screen viewer; sell them in shops or catch them fishing. |
 | [Content Studio: Characters](CustomCharacters) | Villager portraits (per emotion) and sprites, and the farmer's body, hair and clothes, in HD. |
 | [Content Studio: Crops](CustomCrops) | Your own crops: seeds, growth stages and harvest. |

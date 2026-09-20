@@ -168,6 +168,22 @@ namespace CustomContentCore
             return id.Length > 0 ? id : fallback;
         }
 
+        /// <summary>Write an image into a mod's images folder as a PNG, without overwriting anything.</summary>
+        /// <param name="folder">The mod's images folder.</param>
+        /// <param name="baseName">What to call it, e.g. the sheet or item name.</param>
+        /// <param name="pixels">The image.</param>
+        /// <returns>The file name to store in the mod's data.</returns>
+        public static string SaveImage(string folder, string baseName, Pixels pixels)
+        {
+            System.IO.Directory.CreateDirectory(folder);
+            string name = ToFileName(baseName);
+            string path = System.IO.Path.Combine(folder, name + ".png");
+            for (int i = 2; System.IO.File.Exists(path); i++)
+                path = System.IO.Path.Combine(folder, $"{name}_{i}.png");
+            System.IO.File.WriteAllBytes(path, SafePng.Encode(pixels));
+            return System.IO.Path.GetFileName(path);
+        }
+
         /// <summary>Turn a file name into a safe one: letters, digits, '_' and '-' only, capped in length.</summary>
         public static string ToFileName(string? name)
         {

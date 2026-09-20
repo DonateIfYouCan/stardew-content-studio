@@ -43,6 +43,7 @@ namespace CustomCharacters.UI
         private readonly Checkbox TryOnBox;
         private readonly Button ExportButton;
         private readonly Button ChooseButton;
+        private readonly Button PaintButton;
         private readonly Button RemoveButton;
         private readonly Button SaveButton;
         private readonly Button CancelButton;
@@ -81,6 +82,7 @@ namespace CustomCharacters.UI
             this.TryOnBox = this.Add(new Checkbox("Try it on", false, _ => { }, "Show this one on the preview farmer. Your real farmer isn't changed."));
             this.ExportButton = this.Add(new Button("Export original sheet", this.ExportOriginal, "Save the game's sheet (enlarged, with sharp pixels) to paint over in another program."));
             this.ChooseButton = this.Add(new Button("Choose HD sheet", this.Browse, "Pick your HD version. It must be the original size times a whole number."));
+            this.PaintButton = this.Add(new Button("Paint", this.Paint, "Draw on the sheet here in the game. Without an HD sheet yet, it starts from the game's art enlarged 4x."));
             this.RemoveButton = this.Add(new Button("Remove", this.RemoveSheet));
             this.SaveButton = this.Add(new Button("Save", this.Save));
             this.CancelButton = this.Add(new Button("Cancel", () => this.Root.Pop()));
@@ -123,8 +125,9 @@ namespace CustomCharacters.UI
             this.ExportButton.Bounds = new Rectangle(area.X + pad, this.SheetArea.Bottom + 12, Math.Min(300, sheetW), 48);
             this.FarmerArea = new Rectangle(area.Right - pad - farmerW, top + 36, farmerW, bottom - top - 36 - 64);
             this.ZoomArea = new Rectangle(zx, top + 36, zw, bottom - top - 36 - 64);
-            this.ChooseButton.Bounds = new Rectangle(this.ZoomArea.X, this.ZoomArea.Bottom + 12, 300, 48);
-            this.RemoveButton.Bounds = new Rectangle(this.ChooseButton.Bounds.Right + 10, this.ZoomArea.Bottom + 12, 180, 48);
+            this.ChooseButton.Bounds = new Rectangle(this.ZoomArea.X, this.ZoomArea.Bottom + 12, 250, 48);
+            this.PaintButton.Bounds = new Rectangle(this.ChooseButton.Bounds.Right + 10, this.ZoomArea.Bottom + 12, 120, 48);
+            this.RemoveButton.Bounds = new Rectangle(this.PaintButton.Bounds.Right + 10, this.ZoomArea.Bottom + 12, 150, 48);
             this.SaveButton.Bounds = new Rectangle(area.Right - pad - 200, area.Bottom - 84, 200, 60);
             this.CancelButton.Bounds = new Rectangle(this.SaveButton.Bounds.X - 16 - 180, area.Bottom - 84, 180, 60);
         }
@@ -359,6 +362,43 @@ namespace CustomCharacters.UI
                 this.MessageColor = Color.DarkGreen;
                 this.SyncButtons();
             }, this.Store.BrowserPlaces));
+        }
+
+        /// <summary>Open the paint screen on this sheet: your HD version if you have one, else the game's sheet enlarged so there's room to draw.</summary>
+        private void Paint()
+        {
+            FarmerLayer layer = this.Layer;
+            (Texture2D? hd, int factor, _) = this.GetSheet(layer);
+            Pixels? image = null;
+            if (hd != null && this.Files.TryGetValue(layer.Id, out string? file))
+                image = this.Store.DecodeForEditor(file);
+            else if (this.GetOriginal(layer) is { } original)
+            {
+                factor = ImageExport.DefaultScale;
+                image = ImageProcessor.Enlarge(ImageProcessor.FromTexture(original), factor);
+            }
+            if (image == null)
+            {
+                this.ShowError("There's nothing to paint on yet.");
+                return;
+            }
+
+            this.Root.Push(new PaintScreen(image, $"Paint {layer.Label}", pixels =>
+            {
+                try
+                {
+                    string saved = CustomContent.SaveImage(this.Store.ImageFolder, $"Farmer {layer.Id} painted", pixels);
+                    this.HdSheets.Remove(saved);
+                    this.Files[layer.Id] = saved;
+                    this.Message = $"Painted {layer.Label}. Save to see it on your farmer.";
+                    this.MessageColor = Color.DarkGreen;
+                    this.SyncButtons();
+                }
+                catch (Exception ex)
+                {
+                    this.ShowError($"Couldn't save the image: {ex.Message}");
+                }
+            }, layer.CellWidth * factor, layer.CellHeight * factor));
         }
 
         private void RemoveSheet()

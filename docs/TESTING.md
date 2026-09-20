@@ -26,6 +26,7 @@ Tested on one setup only: **Linux, Stardew Valley 1.6.15, SMAPI 4.5.2**, 1920×1
 | Wallpaper & floors | Made a wallpaper and a floor from images, hung/laid them in the farmhouse, left and came back (they stay), duplicated one, and checked they appear in the catalogue. Not yet tested: many sets at once, HD drawing at high zoom, multiplayer sharing of them. |
 | Furniture | Create from a base, search, export template, HD sheet, price, Robin's shop, place, lamp on at night, change the art while playing, delete |
 | Multiplayer | Two and three game copies on one PC over direct IP (LAN). Host shares and player accepts (both off by default, trust confirmation), HD farmers visible on both screens, editing locked while using host content, attack tests (see Core README, *Multiplayer security*) |
+| Paint (in-game pixel editor) | Opened on the farmer's hairstyles sheet (starts from the game's art at 4x when you have no HD sheet yet), zoomed with the wheel, drew two strokes with a colour picked from the palette, undid one, saved; the editor accepted the result as a 4x sheet. Not yet tested: fill on a very large sheet, the 40-stroke undo limit, painting a wallpaper tile. |
 | Names | A 73-character name is saved and used in full; lists shorten what they show. A crop named `[77] Melon` reaches Pierre's shop as "77 Melon Seeds", so names can't smuggle the game's tokens into its data. |
 | Security helpers | Managed PNG decoder checked against Pillow on 15 PNG variants (pixel-identical) and 2,700 corrupted files (no crashes) |
 

@@ -34,6 +34,15 @@ It provides:
 
 All images in the screenshots are made for the demo.
 
+## Paint
+
+Editors that work with pixel art have a **Paint** button that opens the image in the game: pencil, eraser, colour picker
+and fill, with zoom, a grid showing where each sprite in a sheet begins, and undo. It edits a copy and saves as a new PNG
+in the mod's images folder, so the art you started from is never overwritten. With no HD sheet chosen yet, it starts from
+the game's own sheet enlarged 4x, so you can draw over it without leaving the game.
+
+Keys: `B` pencil, `E` eraser, `I` pick colour, `F` fill, `Z` undo, `Y` redo, arrow keys to move around, mouse wheel to zoom.
+
 ## Support
 
 Thanks for using these mods! They're free, and every feature works without donating. If you'd like to, you can

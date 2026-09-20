@@ -27,6 +27,7 @@ namespace CustomFurniture.UI
         private readonly Cycler DetailCycler;
         private readonly Button ChooseButton;
         private readonly Button FitButton;
+        private readonly Button PaintButton;
         private readonly Button SaveButton;
         private readonly Button CancelButton;
 
@@ -62,6 +63,7 @@ namespace CustomFurniture.UI
                 "How detailed it's drawn in the world."));
             this.ChooseButton = this.Add(new Button("Choose image", this.Browse, "Pick an image from your computer; it's copied into the mod's images folder."));
             this.FitButton = this.Add(new Button("Fit image", () => { this.Cropper.Fit(); this.PreviewDirty = true; }));
+            this.PaintButton = this.Add(new Button("Paint", this.Paint, "Draw on the image here in the game."));
             this.SaveButton = this.Add(new Button("Save", this.Save));
             this.CancelButton = this.Add(new Button("Cancel", () => this.Root.Pop()));
             this.LoadImage();
@@ -85,7 +87,8 @@ namespace CustomFurniture.UI
             int leftW = (int)(area.Width * 0.38);
             this.Cropper.Bounds = new Rectangle(area.X + pad, top + 36, leftW, bottom - top - 36 - 60);
             this.ChooseButton.Bounds = new Rectangle(area.X + pad, this.Cropper.Bounds.Bottom + 10, 240, 48);
-            this.FitButton.Bounds = new Rectangle(this.ChooseButton.Bounds.Right + 10, this.Cropper.Bounds.Bottom + 10, 180, 48);
+            this.FitButton.Bounds = new Rectangle(this.ChooseButton.Bounds.Right + 10, this.Cropper.Bounds.Bottom + 10, 150, 48);
+            this.PaintButton.Bounds = new Rectangle(this.FitButton.Bounds.Right + 10, this.Cropper.Bounds.Bottom + 10, 120, 48);
 
             int rightX = this.Cropper.Bounds.Right + 32, rightW = area.Right - pad - this.Cropper.Bounds.Right - 32;
             int labelW = 110, y = top;
@@ -188,6 +191,26 @@ namespace CustomFurniture.UI
                     this.ShowError($"Couldn't use that image: {ex.Message}");
                 }
             }, this.Store.BrowserPlaces));
+        }
+
+        /// <summary>Open the paint screen on the chosen image, or on a blank tile if there's nothing chosen yet.</summary>
+        private void Paint()
+        {
+            Pixels image = this.Source ?? new Pixels(new Color[64 * (this.Item.IsFloor ? 64 : 192)], 64, this.Item.IsFloor ? 64 : 192);
+            this.Root.Push(new PaintScreen(image, this.Item.IsFloor ? "Paint the floor tile" : "Paint the wallpaper", pixels =>
+            {
+                try
+                {
+                    this.Item.Image = CustomContent.SaveImage(this.Store.ImageFolder, $"{this.Item.Name} painted", pixels);
+                    this.Item.Crop = null;
+                    this.LoadImage();
+                    this.Message = null;
+                }
+                catch (Exception ex)
+                {
+                    this.ShowError($"Couldn't save the image: {ex.Message}");
+                }
+            }));
         }
 
         private void ShowError(string message)
