@@ -27,7 +27,7 @@ namespace CustomCharacters
             Store = new CharacterStore(helper, this.Monitor, this.ModManifest);
 
             // plug into Custom Content Core
-            CustomContent.RegisterEditor(this.ModManifest, "Characters", "Villager portraits and sprites, and your farmer, in HD", () => new CharacterListScreen(Store));
+            CustomContent.RegisterEditor(this.ModManifest, "Characters", "Villagers, your farmer, and clothes & hats, in HD", () => new CharacterHubScreen(Store));
             ContentPacks.Register(this.ModManifest, helper.DirectoryPath, new[] { CharacterStore.DataFileName, CharacterStore.ImageFolderName }, Store.Reload, Store.GetSharedFiles);
 
             helper.Events.GameLoop.GameLaunched += (_, _) => Store.Reload();
@@ -40,13 +40,16 @@ namespace CustomCharacters
             };
             FarmerHd.Apply(new HarmonyLib.Harmony(this.ModManifest.UniqueID), this.Monitor);
 
-            helper.ConsoleCommands.Add("cchar_editor", "Opens the villager editor.\nUsage: cchar_editor [villager name] [sprite] | cchar_editor farmer", (_, args) =>
+            helper.ConsoleCommands.Add("cchar_editor", "Opens the villager editor.\nUsage: cchar_editor [villager name] [sprite] | cchar_editor farmer | cchar_editor clothes", (_, args) =>
             {
                 if (args.Length == 1 && args[0].Equals("farmer", StringComparison.OrdinalIgnoreCase))
                 {
-                    CharacterListScreen screen = new(Store);
-                    if (CustomContent.OpenEditor(screen))
-                        screen.EditFarmer();
+                    CustomContent.OpenEditor(new FarmerEditorScreen(Store, FarmerHd.FarmerGroup, () => { }));
+                    return;
+                }
+                if (args.Length == 1 && args[0].Equals("clothes", StringComparison.OrdinalIgnoreCase))
+                {
+                    CustomContent.OpenEditor(new FarmerEditorScreen(Store, FarmerHd.ClothesGroup, () => { }));
                     return;
                 }
                 bool sprite = args.Length > 1 && args[^1].Equals("sprite", StringComparison.OrdinalIgnoreCase);

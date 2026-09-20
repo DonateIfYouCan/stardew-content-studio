@@ -11,7 +11,7 @@ using StardewValley;
 
 namespace CustomCharacters.UI
 {
-    /// <summary>Edits the farmer's HD sheets (body, hair, clothes, hats, accessories): export the originals, choose HD versions, and preview your farmer.</summary>
+    /// <summary>Edits the farmer's HD sheets (body, hair, clothes, hats, accessories): export the originals, choose HD versions, browse the sheet's items and preview your farmer.</summary>
     internal sealed class FarmerEditorScreen : Screen
     {
         /*********
@@ -19,6 +19,9 @@ namespace CustomCharacters.UI
         *********/
         private readonly CharacterStore Store;
         private readonly Action OnSaved;
+
+        /// <summary>Which sheets this page shows: the ones you pick when making your character, or the ones you wear.</summary>
+        private readonly string Group;
 
         /// <summary>The HD sheet per layer ID being edited (a copy, so Cancel discards changes).</summary>
         private readonly Dictionary<string, string> Files;
@@ -29,12 +32,15 @@ namespace CustomCharacters.UI
         /// <summary>Decoded HD sheets by file.</summary>
         private readonly Dictionary<string, Texture2D?> HdSheets = new(StringComparer.OrdinalIgnoreCase);
 
-        private FarmerLayer Layer = FarmerHd.Layers[0];
+        private FarmerLayer Layer;
         private string? Message;
         private Color MessageColor = Color.DarkRed;
 
         private readonly Cycler LayerCycler;
-        private readonly Cycler TryOnCycler;
+        private readonly Button PrevItemButton;
+        private readonly Button NextItemButton;
+        private readonly TextField ItemField;
+        private readonly Checkbox TryOnBox;
         private readonly Button ExportButton;
         private readonly Button ChooseButton;
         private readonly Button RemoveButton;
@@ -45,29 +51,39 @@ namespace CustomCharacters.UI
         private Rectangle ZoomArea;
         private Rectangle FarmerArea;
 
-        /// <summary>The hat or accessory shown on the preview farmer, or -1 for whatever they're wearing.</summary>
-        private int TryOn = -1;
+        /// <summary>Which item of the sheet is shown in the close-up (a hairstyle, hat, beard, ...).</summary>
+        private int ItemIndex;
+
+        /// <summary>How many items the current sheet holds (set while drawing).</summary>
+        private int ItemCount = 1;
 
 
         /*********
         ** Public methods
         *********/
-        public FarmerEditorScreen(CharacterStore store, Action onSaved)
+        /// <param name="store">The mod's content.</param>
+        /// <param name="group">Which sheets to show: <see cref="FarmerHd.FarmerGroup"/> or <see cref="FarmerHd.ClothesGroup"/>.</param>
+        /// <param name="onSaved">Called after saving.</param>
+        public FarmerEditorScreen(CharacterStore store, string group, Action onSaved)
         {
             this.Store = store;
+            this.Group = group;
             this.OnSaved = onSaved;
             this.Files = new Dictionary<string, string>(store.File.Farmer, StringComparer.OrdinalIgnoreCase);
 
-            this.LayerCycler = this.Add(new Cycler(FarmerHd.Layers.Select(l => (l.Id, l.Label)).ToList(), this.Layer.Id, v => { this.Layer = FarmerHd.GetLayer(v)!; this.Message = null; this.TryOn = -1; this.SyncTryOn(); this.SyncButtons(); },
+            FarmerLayer[] layers = FarmerHd.GetLayers(group);
+            this.Layer = layers[0];
+            this.LayerCycler = this.Add(new Cycler(layers.Select(l => (l.Id, l.Label)).ToList(), this.Layer.Id, v => { this.Layer = FarmerHd.GetLayer(v)!; this.Message = null; this.SetItem(0); this.SyncButtons(); },
                 "The farmer is drawn in layers. Each can have an HD sheet; the others stay as they are."));
-            this.TryOnCycler = this.Add(new Cycler(new() { ("-1", "What you're wearing") }, "-1", v => this.TryOn = int.Parse(v),
-                "Try one of the sheet's hats or accessories on the preview farmer. Nothing is changed on your real farmer."));
+            this.PrevItemButton = this.Add(new Button("-", () => this.SetItem(this.ItemIndex - 1), "Show the previous one."));
+            this.ItemField = this.Add(new TextField("0", this.OnItemTyped, numbersOnly: true, limit: 5));
+            this.NextItemButton = this.Add(new Button("+", () => this.SetItem(this.ItemIndex + 1), "Show the next one."));
+            this.TryOnBox = this.Add(new Checkbox("Try it on", false, _ => { }, "Show this one on the preview farmer. Your real farmer isn't changed."));
             this.ExportButton = this.Add(new Button("Export original sheet", this.ExportOriginal, "Save the game's sheet (enlarged, with sharp pixels) to paint over in another program."));
             this.ChooseButton = this.Add(new Button("Choose HD sheet", this.Browse, "Pick your HD version. It must be the original size times a whole number."));
             this.RemoveButton = this.Add(new Button("Remove", this.RemoveSheet));
             this.SaveButton = this.Add(new Button("Save", this.Save));
             this.CancelButton = this.Add(new Button("Cancel", () => this.Root.Pop()));
-            this.SyncTryOn();
             this.SyncButtons();
         }
 
@@ -81,20 +97,32 @@ namespace CustomCharacters.UI
         /*********
         ** Layout & drawing
         *********/
+        private string Title => this.Group == FarmerHd.ClothesGroup ? "Clothes & hats (HD)" : "Farmer (HD)";
+
         protected override void OnLayout(Rectangle area)
         {
             int pad = 32;
             int top = area.Y + 84;
             int bottom = area.Bottom - 96;
             this.LayerCycler.Bounds = new Rectangle(area.X + pad + 110, top, 380, 48);
-            this.TryOnCycler.Bounds = new Rectangle(area.Right - pad - 340, top, 340, 48);
-            top += 64;
+
             int sheetW = (int)(area.Width * 0.3);
             int farmerW = 220;
+            int zx = area.X + pad + sheetW + 24;
+            int zw = area.Right - pad - farmerW - 24 - zx;
+
+            // the row that picks which item of the sheet to look at
+            top += 60;
+            this.PrevItemButton.Bounds = new Rectangle(zx + 76, top, 48, 44);
+            this.ItemField.Bounds = new Rectangle(zx + 130, top, 86, 44);
+            this.NextItemButton.Bounds = new Rectangle(zx + 222, top, 48, 44);
+            this.TryOnBox.Bounds = new Rectangle(zx + 286, top, Math.Max(110, zw - 286), 44);
+            top += 56;
+
             this.SheetArea = new Rectangle(area.X + pad, top + 36, sheetW, bottom - top - 36 - 64);
             this.ExportButton.Bounds = new Rectangle(area.X + pad, this.SheetArea.Bottom + 12, Math.Min(300, sheetW), 48);
             this.FarmerArea = new Rectangle(area.Right - pad - farmerW, top + 36, farmerW, bottom - top - 36 - 64);
-            this.ZoomArea = new Rectangle(this.SheetArea.Right + 24, top + 36, this.FarmerArea.X - 24 - this.SheetArea.Right - 24, bottom - top - 36 - 64);
+            this.ZoomArea = new Rectangle(zx, top + 36, zw, bottom - top - 36 - 64);
             this.ChooseButton.Bounds = new Rectangle(this.ZoomArea.X, this.ZoomArea.Bottom + 12, 300, 48);
             this.RemoveButton.Bounds = new Rectangle(this.ChooseButton.Bounds.Right + 10, this.ZoomArea.Bottom + 12, 180, 48);
             this.SaveButton.Bounds = new Rectangle(area.Right - pad - 200, area.Bottom - 84, 200, 60);
@@ -105,15 +133,13 @@ namespace CustomCharacters.UI
         {
             Rectangle area = this.Area;
             Gfx.Panel(b, area);
-            Gfx.Text(b, "Farmer (HD)", new Vector2(area.X + 36, area.Y + 24), null, Gfx.TitleFont);
+            Gfx.Text(b, this.Title, new Vector2(area.X + 36, area.Y + 24), null, Gfx.TitleFont);
             Gfx.Text(b, "Sheet", new Vector2(area.X + 32, this.LayerCycler.Bounds.Y + 10));
-            if (this.TryOnCycler.Visible)
-                Gfx.Text(b, "Try on", new Vector2(this.TryOnCycler.Bounds.X - 110, this.TryOnCycler.Bounds.Y + 10));
 
             Texture2D? original = this.GetOriginal(this.Layer);
             (Texture2D? hd, int factor, string status) = this.GetSheet(this.Layer);
-            int statusW = (this.TryOnCycler.Visible ? this.TryOnCycler.Bounds.X - 120 : area.Right - 60) - this.LayerCycler.Bounds.Right - 24;
-            Gfx.Text(b, Gfx.Fit(status, statusW), new Vector2(this.LayerCycler.Bounds.Right + 24, this.LayerCycler.Bounds.Y + 10), Color.DimGray);
+            Gfx.Text(b, Gfx.Fit(status, area.Right - 60 - this.LayerCycler.Bounds.Right - 24), new Vector2(this.LayerCycler.Bounds.Right + 24, this.LayerCycler.Bounds.Y + 10), Color.DimGray);
+            Gfx.Text(b, this.Layer.ItemWord, new Vector2(this.ZoomArea.X, this.PrevItemButton.Bounds.Y + 10));
 
             // sheet overview
             Gfx.Text(b, hd != null ? $"Your sheet ({factor}x)" : "Original sheet", new Vector2(this.SheetArea.X, this.SheetArea.Y - 36), Color.DimGray);
@@ -121,19 +147,25 @@ namespace CustomCharacters.UI
             if ((hd ?? original) is { } sheet)
                 Gfx.Fitted(b, sheet, null, new Rectangle(this.SheetArea.X + 12, this.SheetArea.Y + 12, this.SheetArea.Width - 24, this.SheetArea.Height - 24), pixelated: hd == null);
 
-            // close-up: the top-left of the sheet, original vs yours
+            // close-up of one item, original vs yours
             Gfx.Text(b, "Close-up", new Vector2(this.ZoomArea.X, this.ZoomArea.Y - 36), Color.DimGray);
             Gfx.Inset(b, this.ZoomArea, new Color(120, 170, 90));
             if (original != null)
             {
-                Rectangle source = new(0, 0, Math.Min(original.Width, this.Layer.CellWidth), Math.Min(original.Height, this.Layer.CellHeight));
+                (Rectangle source, int count) = this.Layer.GetItem(this.ItemIndex, original.Width, original.Height);
+                this.ItemCount = count;
                 int cellW = hd != null ? (this.ZoomArea.Width - 48) / 2 : this.ZoomArea.Width - 32;
-                int scale = Math.Max(1, Math.Min(cellW / source.Width, (this.ZoomArea.Height - 80) / source.Height));
+                int scale = Math.Max(1, Math.Min(cellW / Math.Max(1, source.Width), (this.ZoomArea.Height - 80) / Math.Max(1, source.Height)));
                 Rectangle dest = new(this.ZoomArea.X + 16, this.ZoomArea.Y + 16, source.Width * scale, source.Height * scale);
                 b.Draw(original, dest, source, Color.White);
                 if (hd != null)
-                    b.Draw(hd, new Rectangle(dest.Right + 16, dest.Y, dest.Width, dest.Height), new Rectangle(0, 0, source.Width * factor, source.Height * factor), Color.White);
-                string caption = hd != null ? "Left: original. Right: yours." : "Choose an HD sheet to compare it with the original.";
+                {
+                    (Rectangle hdSource, _) = this.Layer.GetItem(this.ItemIndex, hd.Width, hd.Height, factor);
+                    b.Draw(hd, new Rectangle(dest.Right + 16, dest.Y, dest.Width, dest.Height), hdSource, Color.White);
+                }
+                string caption = hd != null
+                    ? $"{this.ItemIndex} of {count} in the sheet. Left: original, right: yours."
+                    : $"{this.ItemIndex} of {count} in the sheet. Choose an HD sheet to compare.";
                 Gfx.Text(b, Gfx.Fit(caption, this.ZoomArea.Width - 32), new Vector2(this.ZoomArea.X + 16, this.ZoomArea.Bottom - 44), Color.White);
             }
 
@@ -144,7 +176,7 @@ namespace CustomCharacters.UI
             {
                 // all four directions (the game only lines up the farmer's layers at its normal size, 64x128)
                 this.DrawFarmer(b, new Vector2(this.FarmerArea.Center.X - 72, this.FarmerArea.Y + 16));
-                Gfx.Text(b, Gfx.Fit("As saved", this.FarmerArea.Width - 24), new Vector2(this.FarmerArea.X + 12, this.FarmerArea.Bottom - 44), Color.DimGray);
+                Gfx.Text(b, Gfx.Fit(this.IsTryingOn ? "Trying it on" : "As saved", this.FarmerArea.Width - 24), new Vector2(this.FarmerArea.X + 12, this.FarmerArea.Bottom - 44), Color.DimGray);
             }
             else
                 Gfx.Text(b, Game1.parseText("Load a save to see your farmer.", Gfx.Font, this.FarmerArea.Width - 24), new Vector2(this.FarmerArea.X + 12, this.FarmerArea.Y + 16), Color.DimGray);
@@ -163,6 +195,9 @@ namespace CustomCharacters.UI
         /*********
         ** Private methods
         *********/
+        /// <summary>Whether the previewed farmer wears the item being looked at (only hats and accessories can be put on by number).</summary>
+        private bool IsTryingOn => this.TryOnBox.Checked && this.TryOnBox.Visible;
+
         /// <summary>Draw the player facing down, right, up and left, in a 2x2 grid.</summary>
         private void DrawFarmer(SpriteBatch b, Vector2 topLeft)
         {
@@ -172,10 +207,10 @@ namespace CustomCharacters.UI
             int accessory = player.accessory.Value;
             try
             {
-                if (this.TryOn >= 0 && this.Layer.Id == "hats")
-                    player.hat.Value = ItemRegistry.Create<StardewValley.Objects.Hat>($"(H){this.TryOn}", allowNull: true);
-                else if (this.TryOn >= 0 && this.Layer.Id == "accessories")
-                    player.accessory.Value = this.TryOn;
+                if (this.IsTryingOn && this.Layer.Id == "hats")
+                    player.hat.Value = ItemRegistry.Create<StardewValley.Objects.Hat>($"(H){this.ItemIndex}", allowNull: true);
+                else if (this.IsTryingOn && this.Layer.Id == "accessories")
+                    player.accessory.Value = this.ItemIndex;
                 FarmerRenderer.isDrawingForUI = true;
                 (int Direction, int Frame, bool Flip)[] poses = { (2, 0, false), (1, 6, false), (0, 12, false), (3, 6, true) };
                 for (int i = 0; i < poses.Length; i++)
@@ -194,6 +229,23 @@ namespace CustomCharacters.UI
                 player.accessory.Value = accessory;
                 FarmerRenderer.isDrawingForUI = false;
             }
+        }
+
+        /// <summary>Show another item of the sheet.</summary>
+        private void SetItem(int index)
+        {
+            this.ItemIndex = Math.Clamp(index, 0, Math.Max(0, this.ItemCount - 1));
+            if (this.ItemField.Text != this.ItemIndex.ToString())
+                this.ItemField.Text = this.ItemIndex.ToString();
+        }
+
+        /// <summary>Handle a number typed in the item box.</summary>
+        private void OnItemTyped(string text)
+        {
+            if (int.TryParse(text, out int index))
+                this.ItemIndex = Math.Clamp(index, 0, Math.Max(0, this.ItemCount - 1));
+            else if (text.Length == 0)
+                this.ItemIndex = 0;
         }
 
         private Texture2D? GetOriginal(FarmerLayer layer)
@@ -229,30 +281,15 @@ namespace CustomCharacters.UI
                 : (null, 1, error);
         }
 
-        /// <summary>Offer the sheet's hats or accessories to try on (only those two are picked by number).</summary>
-        private void SyncTryOn()
-        {
-            bool isHat = this.Layer.Id == "hats", isAccessory = this.Layer.Id == "accessories";
-            this.TryOnCycler.Visible = isHat || isAccessory;
-            if (!this.TryOnCycler.Visible)
-                return;
-
-            List<(string Value, string Label)> options = new() { ("-1", "What you're wearing") };
-            int count = 0;
-            if (this.GetOriginal(this.Layer) is { } sheet)
-                count = isHat ? sheet.Width / 20 * (sheet.Height / 80) : sheet.Height / 32;
-            for (int i = 0; i < Math.Min(count, 60); i++)
-                options.Add((i.ToString(), isHat ? $"Hat #{i}" : $"Accessory #{i}"));
-            this.TryOnCycler.Options = options;
-            this.TryOnCycler.Index = 0;
-        }
-
         private void SyncButtons()
         {
             bool hasOriginal = this.GetOriginal(this.Layer) != null;
             this.ExportButton.Enabled = hasOriginal;
             this.ChooseButton.Enabled = hasOriginal;
             this.RemoveButton.Visible = this.Files.ContainsKey(this.Layer.Id);
+            this.TryOnBox.Visible = this.Layer.Id is "hats" or "accessories"; // only these are picked by number, so only these can be put on
+            if (!this.TryOnBox.Visible)
+                this.TryOnBox.Checked = false;
         }
 
         private void ExportOriginal()

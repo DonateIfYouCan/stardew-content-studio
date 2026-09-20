@@ -24,6 +24,9 @@ wasn't tested.
 ![The editor start page](docs/screenshots/core-start-page.png)
 *The editor's start page.*
 
+![The Characters menu](docs/screenshots/characters-menu.png)
+*Characters: villagers, your farmer, or the clothes and hats anyone can wear.*
+
 ![Left: the game. Right: HD sprite sheets](docs/screenshots/characters-hd-comparison.png)
 *Left: the game. Right: HD sprite sheets (the game's own sprites upscaled with Scale2x, just to demonstrate).*
 
@@ -50,6 +53,13 @@ dotnet build StardewContentStudio.sln
 ```
 
 Don't build while the game is running: replacing a loaded mod DLL can crash the game.
+
+## Feedback and bugs
+
+Bug reports, feedback and feature requests are welcome in
+[GitHub issues](https://github.com/DonateIfYouCan/stardew-content-studio/issues). For a bug, the SMAPI log
+(upload it to [smapi.io/log](https://smapi.io/log)) usually says what went wrong. The editor's start page has a GitHub
+button that copies the link for you.
 
 ## Support
 

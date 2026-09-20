@@ -22,7 +22,6 @@ namespace CustomCharacters.UI
         private readonly Button EditButton;
         private readonly Button SpriteButton;
         private readonly Button ResetButton;
-        private readonly Button FarmerButton;
         private readonly Button CloseButton;
         private List<Row> AllRows = new();
         private string? Message;
@@ -41,7 +40,6 @@ namespace CustomCharacters.UI
             this.EditButton = this.Add(new Button("Edit portraits", this.EditSelected, "Replace this villager's portraits with your own images."));
             this.SpriteButton = this.Add(new Button("Edit sprite", this.EditSprite, "Give this villager an HD body (their sprite in the world)."));
             this.ResetButton = this.Add(new Button("Restore original", this.ResetSelected, "Go back to the game's own portraits and sprite."));
-            this.FarmerButton = this.Add(new Button("Farmer (HD)", this.EditFarmer, "Give the farmer (you and other players) HD body, hair, clothes, hats and accessories."));
             this.CloseButton = this.Add(new Button("Close", () => this.Root.Pop()));
             this.Refresh();
         }
@@ -78,7 +76,6 @@ namespace CustomCharacters.UI
             this.EditButton.Bounds = new Rectangle(x + w - sideW, y, sideW, 56);
             this.SpriteButton.Bounds = new Rectangle(x + w - sideW, y + 64, sideW, 56);
             this.ResetButton.Bounds = new Rectangle(x + w - sideW, y + 128, sideW, 56);
-            this.FarmerButton.Bounds = new Rectangle(x + w - sideW, this.List.Bounds.Bottom - 56, sideW, 56);
             this.CloseButton.Bounds = new Rectangle(area.Right - pad - 180, area.Bottom - 84, 180, 60);
         }
 
@@ -177,12 +174,6 @@ namespace CustomCharacters.UI
             if (this.List.Selected is not { } row)
                 return;
             this.Root.Push(new SpriteEditorScreen(this.Store, row.Npc, row.DisplayName, () => this.ShowMessage($"Saved {row.DisplayName}'s sprite.")));
-        }
-
-        /// <summary>Open the farmer editor.</summary>
-        public void EditFarmer()
-        {
-            this.Root.Push(new FarmerEditorScreen(this.Store, () => this.ShowMessage("Saved the farmer's HD sheets.")));
         }
 
         private void ResetSelected()

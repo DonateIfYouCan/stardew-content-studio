@@ -18,9 +18,32 @@ namespace CustomCharacters
     /// <param name="IsBody">Whether it's a body sheet, which the game recolors per farmer (skin, eyes, shoes, sleeves).</param>
     /// <param name="CellWidth">The width of one item in the sheet (for close-up previews).</param>
     /// <param name="CellHeight">The height of one item, including its facing directions.</param>
-    internal sealed record FarmerLayer(string Id, string Label, bool IsBody, int CellWidth = 16, int CellHeight = 32)
+    /// <param name="Group">Which editor page it belongs to: <see cref="FarmerHd.FarmerGroup"/> (chosen when you make your character) or <see cref="FarmerHd.ClothesGroup"/> (worn items you can swap in game).</param>
+    /// <param name="StrideX">How far apart items are across the sheet (0 = the cell width).</param>
+    /// <param name="StrideY">How far apart rows of items are (0 = the cell height).</param>
+    /// <param name="GridWidth">How wide the part of the sheet holding items is (0 = the whole sheet); the shirts sheet keeps its dye masks in the right half.</param>
+    internal sealed record FarmerLayer(string Id, string Label, bool IsBody, int CellWidth = 16, int CellHeight = 32, string Group = FarmerHd.FarmerGroup, int StrideX = 0, int StrideY = 0, int GridWidth = 0)
     {
         public string AssetName => $"Characters/Farmer/{this.Id}";
+
+        /// <summary>The step between items, as the game indexes them.</summary>
+        public int StepX => this.StrideX > 0 ? this.StrideX : this.CellWidth;
+        public int StepY => this.StrideY > 0 ? this.StrideY : this.CellHeight;
+
+        /// <summary>What one item is called in the editor.</summary>
+        public string ItemWord => this.IsBody ? "Frame" : "Item";
+
+        /// <summary>Where an item sits in a sheet of the given size, and how many there are.</summary>
+        public (Rectangle Source, int Count) GetItem(int index, int width, int height, int factor = 1)
+        {
+            int perRow = Math.Max(1, (this.GridWidth > 0 ? this.GridWidth : width / factor) / this.StepX);
+            int rows = Math.Max(1, height / factor / this.StepY);
+            int count = perRow * rows;
+            index = Math.Clamp(index, 0, count - 1);
+            int x = index % perRow * this.StepX * factor;
+            int y = index / perRow * this.StepY * factor;
+            return (new Rectangle(x, y, Math.Min(this.CellWidth * factor, width - x), Math.Min(this.CellHeight * factor, height - y)), count);
+        }
     }
 
     /// <summary>
@@ -42,11 +65,17 @@ namespace CustomCharacters
             new("farmer_girl_base_bald", "Body (female, bald)", true),
             new("hairstyles", "Hairstyles", false, CellWidth: 16, CellHeight: 96),      // one style, three rows of directions
             new("hairstyles2", "Hairstyles (more)", false, CellWidth: 16, CellHeight: 96),
-            new("shirts", "Shirts", false, CellWidth: 8, CellHeight: 32),               // 8x8 per direction
-            new("pants", "Pants", false, CellWidth: 16, CellHeight: 32),                // one frame of the first pants
-            new("hats", "Hats", false, CellWidth: 20, CellHeight: 80),                  // 20x20 per direction
-            new("accessories", "Accessories (beards, glasses...)", false, CellWidth: 16, CellHeight: 16)
+            new("shirts", "Shirts", false, CellWidth: 8, CellHeight: 32, Group: ClothesGroup, GridWidth: 128), // 8x8 per direction; the right half holds the dye masks
+            new("pants", "Pants", false, CellWidth: 16, CellHeight: 32, Group: ClothesGroup, StrideX: 192, StrideY: 688), // one frame; each pants takes a 192x688 block
+            new("hats", "Hats", false, CellWidth: 20, CellHeight: 80, Group: ClothesGroup),                  // 20x20 per direction
+            new("accessories", "Accessories (beards, glasses...)", false, CellWidth: 16, CellHeight: 32)     // 16x16 facing you, with the side view below it
         };
+
+        /// <summary>The layers you pick when making your character (body, hair, beards and such).</summary>
+        public const string FarmerGroup = "farmer";
+
+        /// <summary>The layers for things you wear and can swap in game.</summary>
+        public const string ClothesGroup = "clothes";
 
         /// <summary>The pixel indexes (in the body sheet's first row) whose colors the game swaps: sleeves, skin, shoes, eyes.</summary>
         private static readonly int[] KeyIndexes = { 256, 257, 258, 260, 261, 262, 268, 269, 270, 271, 276, 277 };
@@ -106,6 +135,9 @@ namespace CustomCharacters
         {
             Instance = this;
         }
+
+        /// <summary>The layers on one editor page.</summary>
+        public static FarmerLayer[] GetLayers(string group) => Layers.Where(l => l.Group == group).ToArray();
 
         public static FarmerLayer? GetLayer(string id) => Layers.FirstOrDefault(l => l.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
 

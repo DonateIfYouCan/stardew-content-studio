@@ -24,6 +24,9 @@ namespace CustomContentCore.UI
 
         /// <summary>The mods' GitHub repo (source, docs and issues).</summary>
         public const string GitHubUrl = "https://github.com/DonateIfYouCan/stardew-content-studio";
+        /// <summary>Whether there's room to show each section's description under its button.</summary>
+        private bool ShowDescriptions = true;
+
         private string? Message;
         private Color MessageColor = Color.DarkGreen;
 
@@ -41,7 +44,7 @@ namespace CustomContentCore.UI
             this.ShareBox = this.Add(new Checkbox("Share my content when I host", CoreMod.Config.ShareContentAsHost, v => { CoreMod.Config.ShareContentAsHost = v; CoreMod.SaveConfig(); },
                 "Multiplayer: when you host, players who accept it get your custom content (paintings, crops, ...), so everyone sees the same."));
             this.DonateButton = this.Add(new Button("Buy me a coffee", () => this.CopyLink(DonateUrl), $"Optional. Copies {DonateUrl} to paste in your browser. Nothing is unlocked by donating."));
-            this.GitHubButton = this.Add(new Button("GitHub", () => this.CopyLink(GitHubUrl), $"Copies {GitHubUrl} to paste in your browser."));
+            this.GitHubButton = this.Add(new Button("GitHub: bugs & ideas", () => this.CopyLink(GitHubUrl), $"Source, docs, bug reports, feedback and feature requests. Copies {GitHubUrl} to paste in your browser."));
             this.AcceptBox = this.Add(new Checkbox("Accept content from hosts", CoreMod.Config.AcceptContentFromHost, this.OnAcceptToggled,
                 "Multiplayer: when you join a game whose host shares content, download it. It's only used while you're in their game; your own content isn't changed.\nOnly turn this on if you play with people you trust."));
         }
@@ -138,21 +141,30 @@ namespace CustomContentCore.UI
 
         protected override void OnLayout(Rectangle area)
         {
+            // fit the sections in the space above the multiplayer/support rows, however many mods are installed
             int w = Math.Min(560, area.Width - 64);
             int x = area.Center.X - w / 2;
-            int y = area.Y + 120;
+            int top = area.Y + (this.Entries.Count > 4 ? 84 : 120);
+            int bottom = area.Bottom - 84 - 118 - 44; // above the multiplayer heading, leaving room for the last description
+            int count = Math.Max(1, this.Entries.Count);
+            int step = Math.Min(132, Math.Max(64, (bottom - top) / count));
+            this.ShowDescriptions = step >= 104;
+            int buttonH = this.ShowDescriptions ? Math.Min(72, step - 56) : Math.Min(64, step - 8);
+            int y = top;
             foreach ((_, Button button) in this.Entries)
             {
-                button.Bounds = new Rectangle(x, y, w, 72);
-                y += 132;
+                button.Bounds = new Rectangle(x, y, w, buttonH);
+                y += step;
             }
             this.CloseButton.Bounds = new Rectangle(area.Right - 32 - 180, area.Bottom - 84, 180, 60);
-            this.ShareBox.Bounds = new Rectangle(area.X + 32, area.Bottom - 84 - 118, 520, 44);
-            this.AcceptBox.Bounds = new Rectangle(area.X + 32, area.Bottom - 84 - 64, 520, 44);
             this.ExportButton.Bounds = new Rectangle(area.X + 32, area.Bottom - 84, 220, 60);
             this.ImportButton.Bounds = new Rectangle(area.X + 32 + 232, area.Bottom - 84, 220, 60);
-            this.GitHubButton.Bounds = new Rectangle(area.Right - 32 - 180, area.Bottom - 84 - 118, 180, 52);
+            this.GitHubButton.Bounds = new Rectangle(area.Right - 32 - 300, area.Bottom - 84 - 118, 300, 52);
             this.DonateButton.Bounds = new Rectangle(this.GitHubButton.Bounds.X - 12 - 260, area.Bottom - 84 - 118, 260, 52);
+            // the checkboxes share those rows, so keep them clear of the support buttons
+            int boxW = Math.Max(240, Math.Min(520, this.DonateButton.Bounds.X - 24 - (area.X + 32)));
+            this.ShareBox.Bounds = new Rectangle(area.X + 32, area.Bottom - 84 - 118, boxW, 44);
+            this.AcceptBox.Bounds = new Rectangle(area.X + 32, area.Bottom - 84 - 64, boxW, 44);
         }
 
         public override void Draw(SpriteBatch b, int mouseX, int mouseY)
@@ -166,11 +178,14 @@ namespace CustomContentCore.UI
             if (CoreMod.Sync?.UsingHostContent == true)
                 Gfx.Text(b, "You're using the host's content in this game, so editing is off until you leave.", new Vector2(this.Area.X + 36, this.Area.Y + 70), Color.DarkRed);
             Gfx.Text(b, "Support (optional)", new Vector2(this.DonateButton.Bounds.X, this.DonateButton.Bounds.Y - 40), Color.DimGray);
-            Gfx.Text(b, "Thanks for using these mods!", new Vector2(this.DonateButton.Bounds.X, this.DonateButton.Bounds.Bottom + 8), Color.DimGray);
+            Gfx.Text(b, Gfx.Fit("Thanks for using these mods!", this.Area.Right - 32 - this.DonateButton.Bounds.X), new Vector2(this.DonateButton.Bounds.X, this.DonateButton.Bounds.Bottom + 8), Color.DimGray);
             if (this.Message != null)
                 Gfx.Message(b, this.Message, this.CloseButton.Bounds.X - this.ImportButton.Bounds.Right - 48, new Vector2(this.ImportButton.Bounds.Right + 24, this.CloseButton.Bounds.Y + 16), this.MessageColor);
-            foreach ((CustomContent.EditorSection section, Button button) in this.Entries)
-                Gfx.TextCentered(b, Gfx.Fit(section.Description, this.Area.Width - 80), new Rectangle(this.Area.X, button.Bounds.Bottom + 8, this.Area.Width, 32), Color.DimGray);
+            if (this.ShowDescriptions)
+            {
+                foreach ((CustomContent.EditorSection section, Button button) in this.Entries)
+                    Gfx.TextCentered(b, Gfx.Fit(section.Description, this.Area.Width - 80), new Rectangle(this.Area.X, button.Bounds.Bottom + 8, this.Area.Width, 32), Color.DimGray);
+            }
         }
     }
 
