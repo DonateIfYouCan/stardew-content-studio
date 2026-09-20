@@ -187,8 +187,14 @@ namespace CustomContentCore
         private long SenderId;
         private readonly Dictionary<string, (int Count, byte[]?[] Parts)> Incoming = new(StringComparer.OrdinalIgnoreCase);
 
+        /// <summary>When we last sent the host a change, so the copy that comes back isn't announced as a download.</summary>
+        private DateTime PushedAt;
+
         /// <summary>What each file we took from the host looked like when it arrived, so we can tell what we changed since.</summary>
         private Dictionary<string, string> Downloaded = new(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>Who added each item in this game, so a player can keep changing what they brought even when the rest is closed.</summary>
+        private readonly Dictionary<string, long> AddedBy = new(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>Changes a player is sending us, by player ID: the files they promised and the parts that have arrived.</summary>
         private readonly Dictionary<long, IncomingChange> IncomingChanges = new();
@@ -549,8 +555,10 @@ namespace CustomContentCore
             this.ReceivedBytes = 0;
             this.Pending = needed.Count;
             this.SendToSender(new RequestMessage { Token = this.Token, Files = needed }, RequestType);
-            this.Monitor.Log($"{offer.HostName} offered {valid.Count} content files; downloading {needed.Count}.", LogLevel.Info);
-            if (needed.Count > 0)
+            // a change of ours comes back as the host's copy; that's not news worth a message on screen
+            bool ourOwnEcho = DateTime.UtcNow - this.PushedAt < TimeSpan.FromSeconds(20);
+            this.Monitor.Log($"{offer.HostName} offered {valid.Count} content files; downloading {needed.Count}.", ourOwnEcho ? LogLevel.Trace : LogLevel.Info);
+            if (needed.Count > 0 && !ourOwnEcho)
                 Game1.addHUDMessage(new HUDMessage($"Downloading {offer.HostName}'s custom content ({needed.Count} files)...") { noIcon = true });
             else
                 this.UseHostContent();
@@ -663,7 +671,8 @@ namespace CustomContentCore
             this.NoteItemBaseline();
             this.UsingHostContent = true;
             string who = this.NameOf(this.SenderId, this.CurrentOffer.HostName);
-            Game1.addHUDMessage(new HUDMessage($"Using {who}'s custom content.") { noIcon = true });
+            if (DateTime.UtcNow - this.PushedAt >= TimeSpan.FromSeconds(20))
+                Game1.addHUDMessage(new HUDMessage($"Using {who}'s custom content.") { noIcon = true });
             this.Monitor.Log($"Using {who}'s custom content ({this.CurrentOffer.Files.Count} files).", LogLevel.Info);
         }
 
@@ -695,6 +704,7 @@ namespace CustomContentCore
             this.Downloaded.Clear();
             this.IncomingChanges.Clear();
             this.ItemBaseline.Clear();
+            this.AddedBy.Clear();
             this.HostAllowsChanges = false;
             this.Greeted.Clear();
             this.ToGreet.Clear();
@@ -777,6 +787,17 @@ namespace CustomContentCore
             if (offer.Items.Count == 0 && offer.Files.Count == 0 && offer.Removed.Count == 0)
                 return;
 
+            // what we send is what we now have, so the host's copy of it isn't a change of ours any more - and if the host
+            // ends up with the same bytes, its next offer matches and nothing comes back down the wire
+            foreach (OfferedFile file in offer.Files)
+            {
+                string key = $"{file.Mod}/{file.Path}";
+                this.Downloaded[key] = file.Hash;
+                this.Index[key] = file.Hash;
+            }
+            this.SaveIndex();
+
+            this.PushedAt = DateTime.UtcNow;
             this.SendToSender(offer, ChangeOfferType);
             this.Monitor.Log($"Sending the host {offer.Items.Count} changed item(s), {offer.Files.Count} file(s) and {offer.Removed.Count} removal(s).", LogLevel.Info);
         }
@@ -813,28 +834,33 @@ namespace CustomContentCore
                 return;
 
             string name = this.NameOf(playerId, null);
-            if (!CoreMod.Config.LetOthersChangeMyContent)
-            {
-                Game1.addHUDMessage(new HUDMessage($"{name} changed something, but 'Let players change my content' is off.") { noIcon = true });
-                this.Monitor.Log($"{name} sent a change, but 'Let players change my content' is off; ignored.", LogLevel.Info);
-                this.SendTo(playerId, new ChangeRefusedMessage { Reason = "the host doesn't let players change their content", Files = offer.Files.Select(f => $"{f.Mod}/{f.Path}").ToList() }, ChangeRefusedType);
-                return;
-            }
-
             IncomingChange pending = new();
             List<string> refused = new();
+            bool mineIsTheirs = CoreMod.Config.LetOthersChangeMyContent;
 
-            // items: they may change one they're holding, or add one we don't have
+            // items: anyone sharing may add something new or change what they added themselves; changing what was already
+            // here needs 'Let players change my content'. Either way, nobody writes over someone who's holding it.
             foreach (ChangedItem item in offer.Items.Take(MaxFiles))
             {
                 string id = CleanId(item.Id);
                 if (id.Length == 0 || item.Json.Length > ContentValidator.MaxJsonBytes || ContentPacks.GetEditing(item.Mod) is not { } editing)
                     continue;
-                if (editing.GetItemJson(id) != null && CoreMod.Locks?.MayChange(playerId, $"{item.Mod}|item:{id}") == false)
+
+                string key = $"{item.Mod}|{id}";
+                bool isNew = editing.GetItemJson(id) == null;
+                bool theirs = this.AddedBy.TryGetValue(key, out long adder) && adder == playerId;
+                if (!isNew && !mineIsTheirs && !theirs)
                 {
                     refused.Add($"{item.Mod}/{id}");
                     continue;
                 }
+                if (!isNew && CoreMod.Locks?.MayChange(playerId, $"{item.Mod}|item:{id}") == false)
+                {
+                    refused.Add($"{item.Mod}/{id}");
+                    continue;
+                }
+                if (isNew)
+                    this.AddedBy[key] = playerId; // theirs to change again later, even if the host doesn't open up the rest
                 pending.Items.Add(new ChangedItem { Mod = item.Mod, Id = id, Json = item.Json });
             }
             foreach (string key in offer.Removed.Take(MaxFiles))
@@ -845,7 +871,8 @@ namespace CustomContentCore
                 string modId = key.Substring(0, slash), id = CleanId(key.Substring(slash + 1));
                 if (id.Length == 0 || ContentPacks.GetEditing(modId) == null)
                     continue;
-                if (CoreMod.Locks?.MayChange(playerId, $"{modId}|item:{id}") == false)
+                bool theirs = this.AddedBy.TryGetValue($"{modId}|{id}", out long adder) && adder == playerId;
+                if ((!mineIsTheirs && !theirs) || CoreMod.Locks?.MayChange(playerId, $"{modId}|item:{id}") == false)
                 {
                     refused.Add(key);
                     continue;
@@ -860,8 +887,9 @@ namespace CustomContentCore
                 bool isJson = ContentPacks.IsDataFile(file.Path);
                 if (!this.IsSafeForOwnContent(file.Mod, file.Path) || file.Size <= 0 || file.Size > (isJson ? ContentValidator.MaxJsonBytes : MaxFileBytes) || !IsValidHash(file.Hash))
                     continue;
-                if (File.Exists(Path.Combine(ContentPacks.GetRegistrations().First(r => r.Mod.UniqueID == file.Mod).Folder, file.Path.Replace('/', Path.DirectorySeparatorChar)))
-                    && CoreMod.Locks?.MayChange(playerId, $"{file.Mod}|file:{file.Path}") == false)
+                // a file we don't have yet is something they're adding; writing over one we have needs the host's say-so
+                bool haveIt = File.Exists(Path.Combine(ContentPacks.GetRegistrations().First(r => r.Mod.UniqueID == file.Mod).Folder, file.Path.Replace('/', Path.DirectorySeparatorChar)));
+                if (haveIt && (!mineIsTheirs || CoreMod.Locks?.MayChange(playerId, $"{file.Mod}|file:{file.Path}") == false))
                 {
                     refused.Add($"{file.Mod}/{file.Path}");
                     continue;
@@ -874,8 +902,9 @@ namespace CustomContentCore
 
             if (refused.Count > 0)
             {
-                this.Monitor.Log($"Refused {refused.Count} change(s) from {name}: someone else is changing them.", LogLevel.Info);
-                this.SendTo(playerId, new ChangeRefusedMessage { Reason = "someone else is changing that", Files = refused }, ChangeRefusedType);
+                string why = mineIsTheirs ? "someone else is changing that" : "the host only lets players change what they added themselves";
+                this.Monitor.Log($"Refused {refused.Count} change(s) from {name}: {why}.", LogLevel.Info);
+                this.SendTo(playerId, new ChangeRefusedMessage { Reason = why, Files = refused }, ChangeRefusedType);
             }
             if (pending.Files.Count == 0 && pending.Items.Count == 0 && pending.Removed.Count == 0)
                 return;

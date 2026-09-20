@@ -28,9 +28,8 @@ namespace CustomContentCore.UI
                 "The players in your game use your content instead of their own, so everyone sees the same things. Their own content is saved first and comes back when they leave."));
             this.AcceptBox = this.Add(new Checkbox("Accept shared content", CoreMod.Config.AcceptContentFromHost, this.OnAcceptToggled,
                 "In a host's game, use their content instead of your own. Your own is saved first and comes back when you leave.\nOnly turn this on if you play with people you trust."));
-            this.ChangeBox = this.Add(new Checkbox("Let players change my content", CoreMod.Config.LetOthersChangeMyContent,
-                v => { CoreMod.Config.LetOthersChangeMyContent = v; CoreMod.SaveConfig(); },
-                "When you host: the players in your game can edit the content everyone is using, and what they save is sent to you and kept as yours. One player at a time per thing.\nThe previous version of anything they change is kept."));
+            this.ChangeBox = this.Add(new Checkbox("Let players change my content", CoreMod.Config.LetOthersChangeMyContent, this.OnChangeToggled,
+                "When you host: the players in your game can also change what was already yours, not only what they added themselves. One player at a time per thing, and the version they replace is kept.\nNeeds 'Accept shared content', since it's the same trust either way."));
             this.Busy = this.Add(new ScrollList<(string Key, string Holder, string Label)>(44, this.DrawBusyRow)
             {
                 EmptyText = "Nobody is changing anything right now."
@@ -115,9 +114,31 @@ namespace CustomContentCore.UI
         {
             this.AcceptBox.Checked = accept;
             CoreMod.Config.AcceptContentFromHost = accept;
+
+            // letting players change your content is the wider of the two, so it can't stay on without the narrower one
+            if (!accept && CoreMod.Config.LetOthersChangeMyContent)
+            {
+                CoreMod.Config.LetOthersChangeMyContent = false;
+                this.ChangeBox.Checked = false;
+            }
+
             CoreMod.SaveConfig();
             CoreMod.Sync?.OnAcceptChanged();
             Game1.playSound("smallSelect");
+        }
+
+        /// <summary>Turning this on means trusting the others with what's already yours, so it follows 'Accept shared content'.</summary>
+        private void OnChangeToggled(bool allow)
+        {
+            if (allow && !CoreMod.Config.AcceptContentFromHost)
+            {
+                this.ChangeBox.Checked = false;
+                Game1.addHUDMessage(new HUDMessage("Turn on 'Accept shared content' first: this is the same trust, the other way round.") { noIcon = true });
+                return;
+            }
+
+            CoreMod.Config.LetOthersChangeMyContent = allow;
+            CoreMod.SaveConfig();
         }
     }
 }
