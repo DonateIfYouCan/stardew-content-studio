@@ -97,6 +97,8 @@ namespace CustomContentCore.UI
         private bool ShowGrid = true;
         private bool ShowGuides = true;
         private string Background = "checks";
+        private string TintName = "none";
+        private Color CustomTint = Color.White;
         private bool FillShapes;
         private string Mirror = "off";
 
@@ -105,9 +107,11 @@ namespace CustomContentCore.UI
             "Drag on the image to use the tool you picked on the left. Right-click always takes the colour under the cursor, whichever tool that is.\n\n"
             + "Moving around: the mouse wheel zooms towards the cursor and the arrow keys move. To drag the image, either pick the 'Move view' tool or hold space while you drag. "
             + "'Width' fills the width with the image and 'Fit' shows all of it.\n\n"
-            + "Keys: B pencil, E eraser, I pick a colour, F fill, L line, R rectangle, S select, C copy, V paste, Delete clears the selection, Z undo, Y redo.\n\n"
+            + "Keys - tools: B pencil, E eraser, I pick a colour, F fill, L line, R rectangle, O oval, A replace all, D replace drag, S select, H move view.\n"
+            + "Keys - other: C copy, V paste, Delete clears the selection, Z undo, Y redo, + and - zoom, 0 fills the width.\n\n"
             + "Shapes: hold Shift to keep a line straight or a box square, and tick 'Fill shape' for solid rectangles and ovals.\n\n"
             + "Selection: drag a box with the Select tool, then drag inside it to move those pixels. The buttons on the right copy, clear, flip or turn it; with nothing selected, flip and turn work on the whole image.\n\n"
+            + "'Colour' shows the art in a colour without changing it, which helps with sheets like hair that the game colours itself.\n\n"
             + "The colours under the image are the ones this image uses. 'Choose colour' picks any other colour, and those stay in the row while you paint.";
 
         /// <summary>How many of the image's colours the palette offers.</summary>
@@ -182,6 +186,7 @@ namespace CustomContentCore.UI
         private readonly Checkbox FillBox;
         private readonly Checkbox GuideBox;
         private readonly Cycler BackgroundCycler;
+        private readonly Cycler TintCycler;
         private readonly Cycler MirrorCycler;
         private readonly Cycler PaletteCycler;
         private readonly Button ColourButton;
@@ -231,17 +236,17 @@ namespace CustomContentCore.UI
 
             foreach ((Tool tool, string label, string tip) in new[]
             {
-                (Tool.Pencil, "Pencil", "Draw single pixels (B)."),
-                (Tool.Eraser, "Eraser", "Make pixels see-through (E)."),
-                (Tool.Picker, "Pick colour", "Take the colour under the cursor (I). Right-click does this with any tool."),
-                (Tool.Fill, "Fill", "Flood one connected area of the same colour (F)."),
-                (Tool.Line, "Line", "Drag for a straight line (L). Hold Shift to snap to a corner or straight across."),
-                (Tool.Rectangle, "Rectangle", "Drag for a box (R). Hold Shift to keep it square."),
-                (Tool.Ellipse, "Ellipse", "Drag for an oval. Hold Shift to keep it round."),
-                (Tool.ReplaceAll, "Replace all", "Click a colour to change it everywhere in the image."),
-                (Tool.ReplaceBrush, "Replace drag", "Drag to change only the colour you started on."),
-                (Tool.Select, "Select", "Drag a box (S), then drag inside it to move what's in it."),
-                (Tool.Pan, "Move view", "Drag to move around the image. Holding space does this with any tool.")
+                (Tool.Pencil, "Pencil", "Draw single pixels. Key: B."),
+                (Tool.Eraser, "Eraser", "Make pixels see-through. Key: E."),
+                (Tool.Picker, "Pick colour", "Take the colour under the cursor. Key: I. Right-click does this with any tool."),
+                (Tool.Fill, "Fill", "Flood one connected area of the same colour. Key: F."),
+                (Tool.Line, "Line", "Drag for a straight line. Key: L. Hold Shift to snap to a corner or straight across."),
+                (Tool.Rectangle, "Rectangle", "Drag for a box. Key: R. Hold Shift to keep it square."),
+                (Tool.Ellipse, "Ellipse", "Drag for an oval. Key: O. Hold Shift to keep it round."),
+                (Tool.ReplaceAll, "Replace all", "Click a colour to change it everywhere in the image. Key: A."),
+                (Tool.ReplaceBrush, "Replace drag", "Drag to change only the colour you started on. Key: D."),
+                (Tool.Select, "Select", "Drag a box, then drag inside it to move what's in it. Key: S."),
+                (Tool.Pan, "Move view", "Drag to move around the image. Key: H. Holding space does this with any tool.")
             })
             {
                 Tool chosen = tool;
@@ -261,6 +266,11 @@ namespace CustomContentCore.UI
             this.WidthButton = this.Add(new Button("Width", this.FitWidth, "Fill the width with the image, which is how it opens."));
             this.GridBox = this.Add(new Checkbox("Grid", true, v => this.ShowGrid = v, "Lines showing where each sprite in the sheet begins, and (zoomed right in) where each pixel is."));
             this.GuideBox = this.Add(new Checkbox("Guides", true, v => this.ShowGuides = v, "Show what the game expects in this sheet: where each sprite begins and ends, and the parts inside it."));
+            this.TintCycler = this.Add(new Cycler(
+                new() { ("none", "none"), ("blonde", "blonde"), ("ginger", "ginger"), ("brown", "brown"), ("black", "black"), ("red", "red"), ("blue", "blue"), ("green", "green"), ("pink", "pink"), ("custom", "picked colour") },
+                "none",
+                v => { this.TintName = v; if (v == "custom") this.PickTint(); },
+                "Sheets like hair are grey so the game can colour them. This shows the art in a colour without changing it, the way your character's hair colour would."));
             this.BackgroundCycler = this.Add(new Cycler(
                 new() { ("checks", "checks"), ("dark", "dark"), ("light", "light"), ("pink", "pink") },
                 "checks",
@@ -321,7 +331,8 @@ namespace CustomContentCore.UI
             this.UndoButton.Bounds = new Rectangle(area.X + pad, top, 110, 48);
             this.RedoButton.Bounds = new Rectangle(this.UndoButton.Bounds.Right + 8, top, 110, 48);
             this.GuideBox.Bounds = new Rectangle(this.RedoButton.Bounds.Right + 24, top + 2, 130, 44);
-            this.BackgroundCycler.Bounds = new Rectangle(this.GuideBox.Bounds.Right + 110, top, 230, 48);
+            this.BackgroundCycler.Bounds = new Rectangle(this.GuideBox.Bounds.Right + 106, top, 200, 48);
+            this.TintCycler.Bounds = new Rectangle(this.BackgroundCycler.Bounds.Right + 100, top, 210, 48);
             this.ZoomInButton.Bounds = new Rectangle(area.Right - pad - 48, top, 48, 48);
             this.ZoomOutButton.Bounds = new Rectangle(this.ZoomInButton.Bounds.X - 8 - 48, top, 48, 48);
             this.FitButton.Bounds = new Rectangle(this.ZoomOutButton.Bounds.X - 8 - 90, top, 90, 48);
@@ -378,6 +389,7 @@ namespace CustomContentCore.UI
             if (this.SpriteField.Visible)
                 Gfx.Text(b, "Sprite", new Vector2(this.SpriteField.Bounds.X - 84, this.SpriteField.Bounds.Y + 10));
             Gfx.Text(b, "Behind", new Vector2(this.BackgroundCycler.Bounds.X - 92, this.BackgroundCycler.Bounds.Y + 12));
+            Gfx.Text(b, "Colour", new Vector2(this.TintCycler.Bounds.X - 72, this.TintCycler.Bounds.Y + 12));
             Gfx.Text(b, "Mirror", new Vector2(this.MirrorCycler.Bounds.X + 4, this.MirrorCycler.Bounds.Y - 28));
             this.DrawPalette(b, mouseX, mouseY);
             base.Draw(b, mouseX, mouseY);
@@ -429,7 +441,7 @@ namespace CustomContentCore.UI
                 }
             }
 
-            b.Draw(this.Texture, dest, source, Color.White);
+            b.Draw(this.Texture, dest, source, this.Tint);
 
             // sprite grid
             if (this.ShowGrid && this.CellWidth > 0 && this.CellHeight > 0 && this.Zoom >= 2)
@@ -658,7 +670,14 @@ namespace CustomContentCore.UI
                 case Keys.F: this.SetTool(Tool.Fill); return true;
                 case Keys.L: this.SetTool(Tool.Line); return true;
                 case Keys.R: this.SetTool(Tool.Rectangle); return true;
+                case Keys.O: this.SetTool(Tool.Ellipse); return true;
+                case Keys.A: this.SetTool(Tool.ReplaceAll); return true;
+                case Keys.D: this.SetTool(Tool.ReplaceBrush); return true;
                 case Keys.S: this.SetTool(Tool.Select); return true;
+                case Keys.H: this.SetTool(Tool.Pan); return true;
+                case Keys.OemPlus or Keys.Add: this.SetZoom(this.Zoom + 1, this.CanvasArea.Center); return true;
+                case Keys.OemMinus or Keys.Subtract: this.SetZoom(this.Zoom - 1, this.CanvasArea.Center); return true;
+                case Keys.D0 or Keys.NumPad0: this.FitWidth(); return true;
                 case Keys.C: this.CopySelection(); return true;
                 case Keys.V: this.PasteClipboard(); return true;
                 case Keys.Delete: this.ClearSelection(); return true;
@@ -1059,6 +1078,27 @@ namespace CustomContentCore.UI
             }
             this.Refresh(area);
             this.CommitStroke();
+        }
+
+        /// <summary>The colour the art is shown in, which is only a preview and never saved.</summary>
+        private Color Tint => this.TintName switch
+        {
+            "blonde" => new Color(255, 224, 130),
+            "ginger" => new Color(214, 116, 48),
+            "brown" => new Color(120, 78, 48),
+            "black" => new Color(70, 62, 62),
+            "red" => new Color(200, 60, 60),
+            "blue" => new Color(90, 130, 210),
+            "green" => new Color(96, 168, 96),
+            "pink" => new Color(240, 140, 180),
+            "custom" => this.CustomTint,
+            _ => Color.White
+        };
+
+        /// <summary>Choose any colour to preview the art in.</summary>
+        private void PickTint()
+        {
+            this.Root.Push(new ColourPickerScreen(this.CustomTint, colour => this.CustomTint = new Color(colour.R, colour.G, colour.B)));
         }
 
         /// <summary>Whether Shift is held, which keeps lines straight and boxes square.</summary>

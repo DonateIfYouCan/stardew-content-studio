@@ -42,6 +42,9 @@ and a rectangular selection you can move, copy, paste, clear, flip or turn. Shap
 lines straight and boxes square, and mirror drawing repeats your strokes inside the sprite you're drawing in. There's
 zoom (to the cursor), a grid for sprite and pixel boundaries, and undo/redo.
 
+**Colour** shows the art in a colour without changing it, which is what you want for sheets the game colours itself: hair is
+stored in grey so your character's hair colour can tint it, and this previews that. Pick one of the presets or any colour.
+
 **Guides** show what the game expects in the sheet you're editing: where each sprite begins and ends, and the parts inside
 it (which facing direction a band of pixels is, for example). The top right always says where the cursor is: the pixel, the
 sprite number, the position within that sprite, and which part it's in. **Sprite** jumps to a sprite by the same number the
@@ -55,7 +58,9 @@ the bigger sizes are for HD art. The colours below the canvas are the ones the i
 it uses them or grouped by colour; **Choose colour** opens a picker for any other colour (drag in the shade square, pick a
 hue, or type red, green, blue and see-through values), and the colours you pick that way stay in the row while you paint.
 
-Keys: `B` pencil, `E` eraser, `I` pick colour, `F` fill, `Z` undo, `Y` redo, arrow keys to move around, mouse wheel to zoom.
+Keys - tools: `B` pencil, `E` eraser, `I` pick colour, `F` fill, `L` line, `R` rectangle, `O` oval, `A` replace all,
+`D` replace drag, `S` select, `H` move view. Other: `C` copy, `V` paste, `Delete` clears the selection, `Z` undo, `Y` redo,
+`+`/`-` zoom, `0` fills the width, `Shift` keeps lines and boxes straight, and holding `space` drags the image.
 
 ## Support
 
