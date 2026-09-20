@@ -28,7 +28,7 @@ A pixel editor on every image the mods use: paintings and photo frames, crops (i
 - Wallpaper and floors: use a whole picture squeezed into a tile, or drag the crop box to any shape with *Lock shape* off.
 - The start page has *Settings*, *Multiplayer* and *Earlier versions*; the editor says when the window is smaller than it's laid out for (1600x900).
 - Every sheet layout was checked against the game's own code, including the second hairstyles sheet, which has four directions per style.
-- `dotnet test` runs checks that don't need the game: what another player may send, what a received file becomes, and habits every screen has to keep.
+- `dotnet test` runs 45 checks that don't need the game: what another player may send, what a received file becomes, which image a reference finds, and habits every screen has to keep.
 
 ## Fixes worth knowing
 
@@ -36,3 +36,5 @@ A pixel editor on every image the mods use: paintings and photo frames, crops (i
 - Saving a painted sheet is one step.
 - Long names are kept in full, and `[77]`-style tokens can't be smuggled through a name.
 - A change from another player keeps the folder its image lives in, so the item isn't dropped for a missing picture.
+- An image named without the folder it sits in is found anyway, so items written by an older version (or by hand) come back instead of being skipped.
+- Adding something in a host's game no longer needs the host's *Let players change my content*; that switch is only about the host's own items. A refusal now says which it was.
