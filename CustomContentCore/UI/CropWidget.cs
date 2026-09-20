@@ -32,6 +32,9 @@ namespace CustomContentCore.UI
         /// <summary>The required width / height ratio of the crop.</summary>
         public double Aspect { get; private set; } = 1;
 
+        /// <summary>Whether the crop may be any shape, for content that squeezes the whole picture into its own shape.</summary>
+        public bool FreeShape { get; set; }
+
         /// <summary>Whether the user is currently dragging.</summary>
         public bool IsDragging => this.Drag != DragMode.None;
 
@@ -62,7 +65,7 @@ namespace CustomContentCore.UI
             this.Display = image.Downscale(1024).ToTexture();
             if (crop is not { Width: > 0, Height: > 0 } c)
                 this.Crop = ImageProcessor.DefaultCrop(image.Width, image.Height, aspect);
-            else if (Math.Abs((double)c.Width / c.Height - aspect) < 0.03)
+            else if (this.FreeShape || Math.Abs((double)c.Width / c.Height - aspect) < 0.03)
                 this.Crop = this.Clamp(c);
             else
                 this.Crop = this.Reshape(c, aspect);
@@ -72,7 +75,7 @@ namespace CustomContentCore.UI
         public void SetAspect(double aspect)
         {
             this.Aspect = aspect;
-            if (this.Image != null)
+            if (this.Image != null && !this.FreeShape)
                 this.SetCrop(this.Reshape(this.Crop, aspect));
         }
 
@@ -191,8 +194,9 @@ namespace CustomContentCore.UI
             if (!this.Contains(x, y) || this.Image == null)
                 return false;
             double factor = direction > 0 ? 0.9 : 1.1;
-            double w = Math.Clamp(this.Crop.Width * factor, 8, Math.Min(this.Image.Width, this.Image.Height * this.Aspect));
-            double h = w / this.Aspect;
+            double aspect = this.FreeShape ? (double)this.Crop.Width / Math.Max(1, this.Crop.Height) : this.Aspect;
+            double w = Math.Clamp(this.Crop.Width * factor, 8, Math.Min(this.Image.Width, this.Image.Height * aspect));
+            double h = w / aspect;
             Vector2 center = new(this.Crop.X + this.Crop.Width / 2f, this.Crop.Y + this.Crop.Height / 2f);
             this.SetCrop(new Rectangle((int)Math.Round(center.X - w / 2), (int)Math.Round(center.Y - h / 2), (int)Math.Round(w), (int)Math.Round(h)));
             return true;

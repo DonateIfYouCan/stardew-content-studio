@@ -469,17 +469,11 @@ namespace CustomContentCore
         *********/
         private void OnHello(long fromPlayer, HelloMessage hello)
         {
-            // one source at a time: the first player who offers is the one we answer, and our secret only goes to them
+            // one set per game: the host is the only one who offers, and our secret only goes to them
             if (this.HelloHandled)
                 return;
 
-            // sharing wins over accepting, so two players who both share keep their own content instead of swapping it
-            if (CoreMod.Config.ShareContentAsHost)
-            {
-                this.Monitor.Log($"{this.NameOf(fromPlayer, hello.HostName)} is sharing custom content, but you share your own, so you keep using yours.", LogLevel.Info);
-                return;
-            }
-
+            // 'Share my content' only says what happens when this player hosts; in someone else's game they take the host's set
             this.HelloHandled = true;
             this.SenderId = fromPlayer;
             this.HostName = this.NameOf(fromPlayer, hello.HostName);

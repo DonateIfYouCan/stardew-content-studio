@@ -27,6 +27,7 @@ namespace CustomFurniture.UI
         private readonly Cycler DetailCycler;
         private readonly Button ChooseButton;
         private readonly Button FitButton;
+        private readonly Button WholeButton;
         private readonly Button PaintButton;
         private readonly Button SaveButton;
         private readonly Button CancelButton;
@@ -65,7 +66,8 @@ namespace CustomFurniture.UI
                 v => { this.Item.Resolution = int.Parse(v); this.PreviewDirty = true; },
                 "How detailed it's drawn in the world."));
             this.ChooseButton = this.Add(new Button("Choose image", this.Browse, "Pick an image from your computer; it's copied into the mod's images folder."));
-            this.FitButton = this.Add(new Button("Fit image", () => { this.Cropper.Fit(); this.PreviewDirty = true; }));
+            this.FitButton = this.Add(new Button("Biggest fit", () => { this.Cropper.FreeShape = false; this.Cropper.Fit(); this.PreviewDirty = true; }, "Take the biggest piece of the image with the right shape for a tile, keeping it undistorted."));
+            this.WholeButton = this.Add(new Button("Whole image", this.UseWholeImage, "Squeeze the whole image into one tile. Handy for a picture that isn't the shape of a tile."));
             this.PaintButton = this.Add(new Button("Paint", this.Paint, "Draw on the image here in the game."));
             this.SaveButton = this.Add(new Button("Save", this.Save));
             this.CancelButton = this.Add(new Button("Cancel", () => this.Root.Pop()));
@@ -106,8 +108,9 @@ namespace CustomFurniture.UI
             int leftW = (int)(area.Width * 0.38);
             this.Cropper.Bounds = new Rectangle(area.X + pad, top + 36, leftW, bottom - top - 36 - 60);
             this.ChooseButton.Bounds = new Rectangle(area.X + pad, this.Cropper.Bounds.Bottom + 10, 240, 48);
-            this.FitButton.Bounds = new Rectangle(this.ChooseButton.Bounds.Right + 10, this.Cropper.Bounds.Bottom + 10, 150, 48);
-            this.PaintButton.Bounds = new Rectangle(this.FitButton.Bounds.Right + 10, this.Cropper.Bounds.Bottom + 10, 120, 48);
+            this.FitButton.Bounds = new Rectangle(this.ChooseButton.Bounds.Right + 10, this.Cropper.Bounds.Bottom + 10, 160, 48);
+            this.WholeButton.Bounds = new Rectangle(this.FitButton.Bounds.Right + 10, this.Cropper.Bounds.Bottom + 10, 180, 48);
+            this.PaintButton.Bounds = new Rectangle(this.WholeButton.Bounds.Right + 10, this.Cropper.Bounds.Bottom + 10, 120, 48);
 
             int rightX = this.Cropper.Bounds.Right + 32, rightW = area.Right - pad - this.Cropper.Bounds.Right - 32;
             int labelW = 110, y = top;
@@ -128,7 +131,8 @@ namespace CustomFurniture.UI
             Rectangle area = this.Area;
             Gfx.Panel(b, area);
             Gfx.Text(b, this.IsNew ? "New wallpaper or floor" : $"Edit '{this.Item.Name}'", new Vector2(area.X + 36, area.Y + 24), null, Gfx.TitleFont);
-            Gfx.Text(b, this.Item.IsFloor ? "Your image (square)" : "Your image (tall strip)", new Vector2(this.Cropper.Bounds.X, this.Cropper.Bounds.Y - 36), Color.DimGray);
+            string shape = this.Item.IsFloor ? "square" : "tall strip";
+            Gfx.Text(b, Gfx.Fit($"Your image - drag the box to move it, scroll to resize ({shape})", this.Cropper.Bounds.Width), new Vector2(this.Cropper.Bounds.X, this.Cropper.Bounds.Y - 36), Color.DimGray);
             Gfx.Text(b, "Name", new Vector2(this.NameField.Bounds.X - 110, this.NameField.Bounds.Y + 10));
             Gfx.Text(b, "Type", new Vector2(this.TypeCycler.Bounds.X - 110, this.TypeCycler.Bounds.Y + 10));
             Gfx.Text(b, "Detail", new Vector2(this.DetailCycler.Bounds.X - 110, this.DetailCycler.Bounds.Y + 10));
@@ -170,6 +174,18 @@ namespace CustomFurniture.UI
             }
         }
 
+        /// <summary>Use the whole image as one tile, squeezed to fit, for a picture that isn't the shape of a tile.</summary>
+        private void UseWholeImage()
+        {
+            if (this.Source == null)
+                return;
+
+            this.Cropper.FreeShape = true; // the whole picture, whatever shape it is, squeezed into the tile
+            this.Item.Crop = new[] { 0, 0, this.Source.Width, this.Source.Height };
+            this.Cropper.SetImage(this.Source, new Rectangle(0, 0, this.Source.Width, this.Source.Height), this.Aspect);
+            this.PreviewDirty = true;
+        }
+
         private void BuildPreview()
         {
             this.PreviewDirty = false;
@@ -188,7 +204,10 @@ namespace CustomFurniture.UI
         private void LoadImage()
         {
             this.Source = this.Store.Decode(this.Item.Image);
-            this.Cropper.SetImage(this.Source, this.Source != null ? ImageProcessor.ToCropRect(this.Item.Crop, this.Source.Width, this.Source.Height) : null, this.Aspect);
+            // a saved crop that isn't tile-shaped was made with 'Whole image', so keep it that way
+            Rectangle? saved = this.Source != null ? ImageProcessor.ToCropRect(this.Item.Crop, this.Source.Width, this.Source.Height) : null;
+            this.Cropper.FreeShape = saved is { } c && Math.Abs((double)c.Width / Math.Max(1, c.Height) - this.Aspect) >= 0.03;
+            this.Cropper.SetImage(this.Source, saved, this.Aspect);
             this.Cropper.EmptyText = "Choose an image";
             this.PreviewDirty = true;
         }

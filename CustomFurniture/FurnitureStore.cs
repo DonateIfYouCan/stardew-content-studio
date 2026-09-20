@@ -358,13 +358,29 @@ namespace CustomFurniture
 
         /// <summary>The IDs of the furniture in the content this mod is using now.</summary>
         /// <remarks>Only furniture: the wallpapers and floors share this file, but they're still changed as a whole list.</remarks>
-        public IEnumerable<string> GetItemIds() => this.ReadFile().Furniture.Select(f => f.Id).Where(id => !string.IsNullOrWhiteSpace(id)).ToList();
+        public IEnumerable<string> GetItemIds()
+        {
+            FurnitureFile file = this.ReadFile();
+            return file.Furniture.Select(f => f.Id)
+                .Concat(file.Wallpapers.Select(w => WallpaperItemId(w.Id))) // wallpaper and floors share this file, so their IDs are marked apart
+                .Where(id => !string.IsNullOrWhiteSpace(id) && id != WallpaperPrefix)
+                .ToList();
+        }
+
+        /// <summary>How a wallpaper or floor is named among the items, so it can't be mistaken for a piece of furniture.</summary>
+        internal const string WallpaperPrefix = "w:";
+
+        /// <summary>The item ID for a wallpaper or floor.</summary>
+        internal static string WallpaperItemId(string id) => WallpaperPrefix + id;
 
         /// <summary>Get one piece of furniture as JSON, for sending to the player whose content this is.</summary>
         /// <param name="itemId">The furniture's ID in the content being used.</param>
         public string? GetItemJson(string itemId)
         {
-            CustomFurnitureItem? item = this.ReadFile().Furniture.FirstOrDefault(f => string.Equals(f.Id, itemId, StringComparison.OrdinalIgnoreCase));
+            FurnitureFile file = this.ReadFile();
+            object? item = itemId.StartsWith(WallpaperPrefix, StringComparison.Ordinal)
+                ? file.Wallpapers.FirstOrDefault(w => string.Equals(w.Id, itemId.Substring(WallpaperPrefix.Length), StringComparison.OrdinalIgnoreCase))
+                : file.Furniture.FirstOrDefault(f => string.Equals(f.Id, itemId, StringComparison.OrdinalIgnoreCase));
             return item == null
                 ? null
                 : JsonConvert.SerializeObject(item, new JsonSerializerSettings { Formatting = Formatting.Indented, NullValueHandling = NullValueHandling.Ignore });
@@ -377,8 +393,13 @@ namespace CustomFurniture
         /// <returns>Whether it was written.</returns>
         public bool ApplyItemJson(string itemId, string json, IDictionary<string, string> files)
         {
+            if (string.IsNullOrWhiteSpace(itemId))
+                return false;
+            if (itemId.StartsWith(WallpaperPrefix, StringComparison.Ordinal))
+                return this.ApplyWallpaperJson(itemId.Substring(WallpaperPrefix.Length), json, files);
+
             CustomFurnitureItem? item = JsonConvert.DeserializeObject<CustomFurnitureItem>(json);
-            if (item == null || string.IsNullOrWhiteSpace(itemId))
+            if (item == null)
                 return false;
 
             item.Id = itemId;
@@ -400,11 +421,45 @@ namespace CustomFurniture
         public bool RemoveItem(string itemId)
         {
             FurnitureFile file = this.ReadFile();
+            if (itemId.StartsWith(WallpaperPrefix, StringComparison.Ordinal))
+            {
+                string id = itemId.Substring(WallpaperPrefix.Length);
+                int found = file.Wallpapers.FindIndex(w => string.Equals(w.Id, id, StringComparison.OrdinalIgnoreCase));
+                if (found < 0)
+                    return false;
+                file.Wallpapers.RemoveAt(found);
+                this.Save(file);
+                return true;
+            }
+
             int index = file.Furniture.FindIndex(f => string.Equals(f.Id, itemId, StringComparison.OrdinalIgnoreCase));
             if (index < 0)
                 return false;
 
             file.Furniture.RemoveAt(index);
+            this.Save(file);
+            return true;
+        }
+
+        /// <summary>Write one wallpaper or floor a player changed or added into this content.</summary>
+        /// <param name="id">Its ID, without the mark that keeps it apart from furniture.</param>
+        /// <param name="json">The wallpaper or floor.</param>
+        /// <param name="files">Images that came with it, already checked.</param>
+        private bool ApplyWallpaperJson(string id, string json, IDictionary<string, string> files)
+        {
+            CustomWallpaper? wallpaper = JsonConvert.DeserializeObject<CustomWallpaper>(json);
+            if (wallpaper == null || string.IsNullOrWhiteSpace(id))
+                return false;
+
+            wallpaper.Id = id;
+            wallpaper.Image = this.TakeImage(wallpaper.Image, files) ?? "";
+
+            FurnitureFile file = this.ReadFile();
+            int index = file.Wallpapers.FindIndex(w => string.Equals(w.Id, id, StringComparison.OrdinalIgnoreCase));
+            if (index >= 0)
+                file.Wallpapers[index] = wallpaper;
+            else
+                file.Wallpapers.Add(wallpaper);
             this.Save(file);
             return true;
         }

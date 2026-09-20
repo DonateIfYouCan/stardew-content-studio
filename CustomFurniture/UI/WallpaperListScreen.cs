@@ -32,6 +32,12 @@ namespace CustomFurniture.UI
         /// <summary>What the furniture file is called when asking to be the only one changing it. Wallpapers and furniture live in the same file, so the two lists share one lock.</summary>
         private const string LockThing = "file:" + FurnitureStore.DataFileName;
 
+        /// <summary>The wallpaper or floor being held at the moment, if any, so it can be let go of again.</summary>
+        private string? HeldItem;
+
+        /// <summary>What one wallpaper or floor is called when asking to be the only one changing it.</summary>
+        private static string ItemThing(string id) => $"item:{FurnitureStore.WallpaperItemId(id)}";
+
         public WallpaperListScreen(FurnitureStore store)
         {
             this.Store = store;
@@ -41,10 +47,10 @@ namespace CustomFurniture.UI
                 OnDoubleClick = _ => this.WhenNobodyElseIsChangingIt(this.EditSelected),
                 EmptyText = "Nothing yet. Click 'New wallpaper or floor' to make one from your own image."
             });
-            this.NewButton = this.Add(new Button("+ New wallpaper or floor", () => this.WhenNobodyElseIsChangingIt(this.CreateNew), "Turn one of your images into wallpaper for walls or a floor tile."));
+            this.NewButton = this.Add(new Button("+ New wallpaper or floor", this.CreateNew, "Turn one of your images into wallpaper for walls or a floor tile."));
             this.EditButton = this.Add(new Button("Edit", () => this.WhenNobodyElseIsChangingIt(this.EditSelected)));
             this.GiveButton = this.Add(new Button("Put in inventory", this.GiveSelected, "Adds one to your inventory, so you can hang or lay it."));
-            this.DuplicateButton = this.Add(new Button("Duplicate", () => this.WhenNobodyElseIsChangingIt(this.DuplicateSelected), "Make a copy to tweak, keeping the original."));
+            this.DuplicateButton = this.Add(new Button("Duplicate", this.DuplicateSelected, "Make a copy to tweak, keeping the original."));
             this.DeleteButton = this.Add(new Button("Delete", () => this.WhenNobodyElseIsChangingIt(this.DeleteSelected)));
             this.CloseButton = this.Add(new Button("Close", () => this.Root.Pop()));
             this.WritingButtons = new[] { this.NewButton, this.EditButton, this.DuplicateButton, this.DeleteButton }.Select(b => (b, b.Tooltip)).ToArray();
@@ -53,19 +59,53 @@ namespace CustomFurniture.UI
 
         public override void OnResume()
         {
-            CustomContent.ReleaseLock(this.Store.Manifest, LockThing); // whatever was opened is closed again
+            this.LetGo(); // whatever was opened is closed again
             this.Refresh();
         }
 
         public override void Dispose()
         {
-            CustomContent.ReleaseLock(this.Store.Manifest, LockThing);
+            this.LetGo();
             this.ClearThumbnails();
         }
 
         /// <summary>Do something that writes to the furniture file, unless another player in the game is already changing it.</summary>
         /// <remarks>Everyone in a shared game is using the Host's one copy, so Player B is told who has it rather than writing over Player A.</remarks>
+        /// <summary>Let go of the wallpaper (and the file) we were holding, so another player can change it.</summary>
+        private void LetGo()
+        {
+            if (this.HeldItem != null)
+            {
+                CustomContent.ReleaseLock(this.Store.Manifest, this.HeldItem);
+                this.HeldItem = null;
+            }
+            CustomContent.ReleaseLock(this.Store.Manifest, LockThing);
+        }
+
+        /// <summary>Change one wallpaper or floor, unless another player in the game is already changing that one.</summary>
+        /// <remarks>Player A changing one doesn't stop Player B changing another, and adding a new one needs nobody's permission.</remarks>
         private void WhenNobodyElseIsChangingIt(Action action)
+        {
+            if (this.List.Selected is not { } item)
+            {
+                action(); // nothing picked: adding something new, which nobody can be holding
+                return;
+            }
+
+            CustomContent.TakeLock(this.Store.Manifest, ItemThing(item.Id), item.Name, (granted, holder) =>
+            {
+                if (!granted)
+                {
+                    this.ShowMessage($"{holder} is changing '{item.Name}' right now.", error: true);
+                    return;
+                }
+                this.HeldItem = ItemThing(item.Id);
+                action();
+            });
+        }
+
+        /// <summary>Change the whole file rather than one item (nothing does this yet; kept so the two lists agree).</summary>
+        private void WhenNobodyElseIsChangingTheList(Action action)
         {
             CustomContent.TakeLock(this.Store.Manifest, LockThing, "the furniture", (granted, holder) =>
             {
@@ -148,12 +188,13 @@ namespace CustomFurniture.UI
             this.DuplicateButton.Visible = selected;
             this.DeleteButton.Visible = selected;
 
-            // in a game where everyone uses one set, say who's changing it instead of letting two players write over each other
-            string? busy = CustomContent.WhoIsChanging(this.Store.Manifest, LockThing);
+            // in a game where everyone uses one set, say who's changing this one instead of letting two players write over each other
+            string? busy = this.List.Selected is { } picked ? CustomContent.WhoIsChanging(this.Store.Manifest, ItemThing(picked.Id)) : null;
             foreach ((Button button, string? tooltip) in this.WritingButtons)
             {
-                button.Enabled = busy == null;
-                button.Tooltip = busy != null ? $"{busy} is changing the furniture right now." : tooltip;
+                bool perItem = button == this.EditButton || button == this.DeleteButton;
+                button.Enabled = !perItem || busy == null;
+                button.Tooltip = perItem && busy != null ? $"{busy} is changing '{this.List.Selected?.Name}' right now." : tooltip;
             }
         }
 
