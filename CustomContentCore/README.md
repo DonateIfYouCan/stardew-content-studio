@@ -37,7 +37,7 @@ All images in the screenshots are made for the demo.
 ## Paint
 
 Editors that work with pixel art have a **Paint** button that opens the image in the game. The tools are down the left:
-pencil, eraser, eyedropper, fill, line, rectangle, ellipse, replace a colour everywhere, replace it only where you drag,
+pencil, brush, eraser, eyedropper, fill, line, rectangle, ellipse, replace a colour everywhere, replace it only where you drag,
 and a rectangular selection you can move, copy, paste, clear, flip or turn. Shapes can be outlined or filled, Shift keeps
 lines straight and boxes square, and mirror drawing repeats your strokes inside the sprite you're drawing in. There's
 zoom (to the cursor), a grid for sprite and pixel boundaries, and undo/redo.
@@ -58,7 +58,12 @@ the bigger sizes are for HD art. The colours below the canvas are the ones the i
 it uses them or grouped by colour; **Choose colour** opens a picker for any other colour (drag in the shade square, pick a
 hue, or type red, green, blue and see-through values), and the colours you pick that way stay in the row while you paint.
 
-Keys - tools: `P` pencil, `E` eraser, `I` pick colour, `F` fill, `L` line, `R` rectangle, `O` oval, `A` replace all,
+The **pencil** draws crisp pixels and the **brush** fades out at its edge, which suits bigger tips and HD sheets. Both (and
+the eraser and replace-drag) use the **size** and **tip shape** chosen beside the canvas: square, round or diamond, from one
+pixel up to sixteen.
+
+Every key here can be changed with the **Keys** button, and the choice is kept in the Core's `config.json`. As they come -
+tools: `P` pencil, `B` brush, `E` eraser, `I` pick colour, `F` fill, `L` line, `R` rectangle, `O` oval, `A` replace all,
 `D` replace drag, `S` select, `H` move view. Other: `C` copy, `V` paste, `Delete` clears the selection, `Z` undo, `Y` redo,
 `+`/`-` zoom, `0` fills the width, `Shift` keeps lines and boxes straight, and holding `space` drags the image.
 

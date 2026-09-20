@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using CustomContentCore.UI;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
@@ -12,6 +13,9 @@ namespace CustomContentCore
     {
         /// <summary>The key which opens the editor.</summary>
         public StardewModdingAPI.Utilities.KeybindList EditorKey { get; set; } = StardewModdingAPI.Utilities.KeybindList.Parse("K");
+
+        /// <summary>The keys the paint screen uses, by what they do. Change them here or with the 'Keys' button while painting.</summary>
+        public Dictionary<string, string> PaintKeys { get; set; } = new();
 
         /// <summary>The folder the file browser opens first (empty = your Pictures folder).</summary>
         public string BrowserStartFolder { get; set; } = "";

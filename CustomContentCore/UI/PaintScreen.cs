@@ -19,7 +19,7 @@ namespace CustomContentCore.UI
         ** Fields
         *********/
         /// <summary>The tools you can draw with.</summary>
-        private enum Tool { Pencil, Eraser, Picker, Fill, Line, Rectangle, Ellipse, ReplaceAll, ReplaceBrush, Select, Pan }
+        private enum Tool { Pencil, Brush, Eraser, Picker, Fill, Line, Rectangle, Ellipse, ReplaceAll, ReplaceBrush, Select, Pan }
 
         /// <summary>Something that changed the image and can be undone.</summary>
         private interface IStroke
@@ -94,6 +94,7 @@ namespace CustomContentCore.UI
         private Tool Current = Tool.Pencil;
         private Color Colour = Color.Black;
         private int BrushSize = 1;
+        private string BrushShape = "square";
         private bool ShowGrid = true;
         private bool ShowGuides = true;
         private string Background = "checks";
@@ -107,8 +108,7 @@ namespace CustomContentCore.UI
             "Drag on the image to use the tool you picked on the left. Right-click always takes the colour under the cursor, whichever tool that is.\n\n"
             + "Moving around: the mouse wheel zooms towards the cursor and the arrow keys move. To drag the image, either pick the 'Move view' tool or hold space while you drag. "
             + "'Width' fills the width with the image and 'Fit' shows all of it.\n\n"
-            + "Keys - tools: P pencil, E eraser, I pick a colour, F fill, L line, R rectangle, O oval, A replace all, D replace drag, S select, H move view.\n"
-            + "Keys - other: C copy, V paste, Delete clears the selection, Z undo, Y redo, + and - zoom, 0 fills the width.\n\n"
+            + "Every key can be changed with the 'Keys' button. As they come: P pencil, B brush, E eraser, I pick a colour, F fill, L line, R rectangle, O oval, A replace all, D replace drag, S select, H move view; C copy, V paste, Delete clears the selection, Z undo, Y redo, + and - zoom, 0 fills the width.\n\n"
             + "Shapes: hold Shift to keep a line straight or a box square, and tick 'Fill shape' for solid rectangles and ovals.\n\n"
             + "Selection: drag a box with the Select tool, then drag inside it to move those pixels. The buttons on the right copy, clear, flip or turn it; with nothing selected, flip and turn work on the whole image.\n\n"
             + "'Colour' shows the art in a colour without changing it, which helps with sheets like hair that the game colours itself.\n\n"
@@ -176,6 +176,7 @@ namespace CustomContentCore.UI
 
         private readonly List<(Tool Tool, Button Button)> ToolButtons = new();
         private readonly Cycler SizeCycler;
+        private readonly Cycler ShapeCycler;
         private readonly Button UndoButton;
         private readonly Button RedoButton;
         private readonly Button ZoomInButton;
@@ -199,6 +200,7 @@ namespace CustomContentCore.UI
         private readonly Button FlipDownButton;
         private readonly Button TurnButton;
         private readonly Button HelpButton;
+        private readonly Button KeysButton;
         private readonly Button SaveButton;
         private readonly Button CancelButton;
 
@@ -236,7 +238,8 @@ namespace CustomContentCore.UI
 
             foreach ((Tool tool, string label, string tip) in new[]
             {
-                (Tool.Pencil, "Pencil", "Draw single pixels. Key: P (B works too)."),
+                (Tool.Pencil, "Pencil", "Draw crisp pixels in the size and shape chosen on the right. Key: P."),
+                (Tool.Brush, "Brush", "Like the pencil, but its edge fades out, which suits bigger sizes and HD sheets. Key: B."),
                 (Tool.Eraser, "Eraser", "Make pixels see-through. Key: E."),
                 (Tool.Picker, "Pick colour", "Take the colour under the cursor. Key: I. Right-click does this with any tool."),
                 (Tool.Fill, "Fill", "Flood one connected area of the same colour. Key: F."),
@@ -254,10 +257,15 @@ namespace CustomContentCore.UI
             }
 
             this.SizeCycler = this.Add(new Cycler(
-                new() { ("1", "1 pixel"), ("2", "2x2"), ("3", "3x3"), ("4", "4x4") },
+                new() { ("1", "1 pixel"), ("2", "2 pixels"), ("3", "3 pixels"), ("4", "4 pixels"), ("6", "6 pixels"), ("8", "8 pixels"), ("12", "12 pixels"), ("16", "16 pixels") },
                 "1",
                 v => this.BrushSize = int.Parse(v),
-                "How many pixels the pencil and eraser cover."));
+                "How wide the pencil, brush and eraser are."));
+            this.ShapeCycler = this.Add(new Cycler(
+                new() { ("square", "Square"), ("round", "Round"), ("diamond", "Diamond") },
+                "square",
+                v => this.BrushShape = v,
+                "The shape of the pencil, brush and eraser. A square tip is the usual one for pixel art."));
             this.UndoButton = this.Add(new Button("Undo", this.Undo, "Take back the last stroke."));
             this.RedoButton = this.Add(new Button("Redo", this.Redo));
             this.ZoomOutButton = this.Add(new Button("-", () => this.SetZoom(this.Zoom - 1, this.CanvasArea.Center), "Zoom out."));
@@ -297,8 +305,10 @@ namespace CustomContentCore.UI
             this.SpriteButton = this.Add(new Button("Whole sprite", this.SelectSprite, "Grow the selection to the whole sprite it's in, which is handy for copying one sprite over another."));
             this.ColourButton = this.Add(new Button("Choose colour", this.ChooseColour, "Pick any colour, or type its red, green and blue values. The eyedropper takes a colour out of the image instead."));
             this.HelpButton = this.Add(new Button("?", () => this.Root.Push(new HelpScreen("Painting", HelpText)), "How this screen works."));
+            this.KeysButton = this.Add(new Button("Keys", () => this.Root.Push(new KeysScreen(this.Bindings, CoreMod.Config.PaintKeys, CoreMod.SaveConfig)), "Change the keys used here."));
             this.SaveButton = this.Add(new Button("Save", this.Save));
             this.CancelButton = this.Add(new Button("Cancel", this.Cancel));
+            this.Bindings = this.BuildBindings();
             this.SetTool(Tool.Pencil);
             this.SyncButtons();
         }
@@ -355,8 +365,9 @@ namespace CustomContentCore.UI
             // how the tools behave, under the buttons that act on the selection
             ay += 16;
             this.SizeCycler.Bounds = new Rectangle(area.Right - pad - actionW, ay, actionW, 44);
-            this.FillBox.Bounds = new Rectangle(area.Right - pad - actionW, ay + 50, actionW, 44);
-            this.MirrorCycler.Bounds = new Rectangle(area.Right - pad - actionW, ay + 126, actionW, 44);
+            this.ShapeCycler.Bounds = new Rectangle(area.Right - pad - actionW, ay + 50, actionW, 44);
+            this.FillBox.Bounds = new Rectangle(area.Right - pad - actionW, ay + 100, actionW, 44);
+            this.MirrorCycler.Bounds = new Rectangle(area.Right - pad - actionW, ay + 176, actionW, 44);
 
             // the selection buttons share the palette row, so the top row doesn't overflow
             this.ColourButton.Bounds = new Rectangle(this.CanvasArea.X + 52, this.CanvasArea.Bottom + 8, 200, 44);
@@ -367,6 +378,7 @@ namespace CustomContentCore.UI
             this.SaveButton.Bounds = new Rectangle(area.Right - pad - 200, area.Bottom - 84, 200, 60);
             this.CancelButton.Bounds = new Rectangle(this.SaveButton.Bounds.X - 16 - 180, area.Bottom - 84, 180, 60);
             this.HelpButton.Bounds = new Rectangle(this.CancelButton.Bounds.X - 12 - 60, area.Bottom - 84, 60, 60);
+            this.KeysButton.Bounds = new Rectangle(this.HelpButton.Bounds.X - 10 - 110, area.Bottom - 84, 110, 60);
 
             if (!this.Placed)
             {
@@ -518,10 +530,11 @@ namespace CustomContentCore.UI
                 }
             }
 
-            // outline the pixel under the cursor
+            // outline the pixel under the cursor, the size of the tip for the tools that have one
             if (this.ToPixel(mouseX, mouseY) is { } pixel && this.Zoom >= 3)
             {
-                Rectangle box = new(dest.X + (pixel.X - this.View.X) * this.Zoom, dest.Y + (pixel.Y - this.View.Y) * this.Zoom, this.Zoom * this.BrushSize, this.Zoom * this.BrushSize);
+                int tip = this.Current is Tool.Pencil or Tool.Brush or Tool.Eraser or Tool.ReplaceBrush ? this.BrushSize : 1;
+                Rectangle box = new(dest.X + (pixel.X - this.View.X) * this.Zoom, dest.Y + (pixel.Y - this.View.Y) * this.Zoom, this.Zoom * tip, this.Zoom * tip);
                 Gfx.Outline(b, box, Color.White, 1);
             }
         }
@@ -662,33 +675,68 @@ namespace CustomContentCore.UI
 
         public override bool KeyPress(Keys key)
         {
-            switch (key)
+            foreach (KeysScreen.Binding binding in this.Bindings)
             {
-                case Keys.P or Keys.B: this.SetTool(Tool.Pencil); return true; // P for pencil; B because other drawing programs use it for the brush
-                case Keys.E: this.SetTool(Tool.Eraser); return true;
-                case Keys.I: this.SetTool(Tool.Picker); return true;
-                case Keys.F: this.SetTool(Tool.Fill); return true;
-                case Keys.L: this.SetTool(Tool.Line); return true;
-                case Keys.R: this.SetTool(Tool.Rectangle); return true;
-                case Keys.O: this.SetTool(Tool.Ellipse); return true;
-                case Keys.A: this.SetTool(Tool.ReplaceAll); return true;
-                case Keys.D: this.SetTool(Tool.ReplaceBrush); return true;
-                case Keys.S: this.SetTool(Tool.Select); return true;
-                case Keys.H: this.SetTool(Tool.Pan); return true;
-                case Keys.OemPlus or Keys.Add: this.SetZoom(this.Zoom + 1, this.CanvasArea.Center); return true;
-                case Keys.OemMinus or Keys.Subtract: this.SetZoom(this.Zoom - 1, this.CanvasArea.Center); return true;
-                case Keys.D0 or Keys.NumPad0: this.FitWidth(); return true;
-                case Keys.C: this.CopySelection(); return true;
-                case Keys.V: this.PasteClipboard(); return true;
-                case Keys.Delete: this.ClearSelection(); return true;
-                case Keys.Z: this.Undo(); return true;
-                case Keys.Y: this.Redo(); return true;
-                case Keys.Left: this.View.X -= 8; this.ClampView(); return true;
-                case Keys.Right: this.View.X += 8; this.ClampView(); return true;
-                case Keys.Up: this.View.Y -= 8; this.ClampView(); return true;
-                case Keys.Down: this.View.Y += 8; this.ClampView(); return true;
-                default: return false;
+                if (KeysScreen.KeyFor(binding, CoreMod.Config.PaintKeys) == key)
+                {
+                    this.Actions[binding.Id]();
+                    return true;
+                }
             }
+            return false;
+        }
+
+        /// <summary>Everything a key can do here, with the key it uses unless you change it.</summary>
+        private IReadOnlyList<KeysScreen.Binding> Bindings { get; }
+
+        /// <summary>What each of those does.</summary>
+        private Dictionary<string, Action> Actions { get; } = new();
+
+        /// <summary>Build the list of what keys do, so the same list drives the keys and the screen that changes them.</summary>
+        private List<KeysScreen.Binding> BuildBindings()
+        {
+            List<KeysScreen.Binding> bindings = new();
+
+            void Add(string id, string label, Keys key, Action run)
+            {
+                bindings.Add(new KeysScreen.Binding(id, label, key));
+                this.Actions[id] = run;
+            }
+
+            foreach ((Tool tool, Button button) in this.ToolButtons)
+            {
+                Tool chosen = tool;
+                Keys key = tool switch
+                {
+                    Tool.Pencil => Keys.P,
+                    Tool.Brush => Keys.B,
+                    Tool.Eraser => Keys.E,
+                    Tool.Picker => Keys.I,
+                    Tool.Fill => Keys.F,
+                    Tool.Line => Keys.L,
+                    Tool.Rectangle => Keys.R,
+                    Tool.Ellipse => Keys.O,
+                    Tool.ReplaceAll => Keys.A,
+                    Tool.ReplaceBrush => Keys.D,
+                    Tool.Select => Keys.S,
+                    _ => Keys.H
+                };
+                Add($"tool.{tool}", button.Label, key, () => this.SetTool(chosen));
+            }
+
+            Add("copy", "Copy the selection", Keys.C, this.CopySelection);
+            Add("paste", "Paste", Keys.V, this.PasteClipboard);
+            Add("clear", "Clear the selection", Keys.Delete, this.ClearSelection);
+            Add("undo", "Undo", Keys.Z, this.Undo);
+            Add("redo", "Redo", Keys.Y, this.Redo);
+            Add("zoomIn", "Zoom in", Keys.OemPlus, () => this.SetZoom(this.Zoom + 1, this.CanvasArea.Center));
+            Add("zoomOut", "Zoom out", Keys.OemMinus, () => this.SetZoom(this.Zoom - 1, this.CanvasArea.Center));
+            Add("fitWidth", "Fill the width", Keys.D0, this.FitWidth);
+            Add("left", "Move left", Keys.Left, () => { this.View.X -= 8; this.ClampView(); });
+            Add("right", "Move right", Keys.Right, () => { this.View.X += 8; this.ClampView(); });
+            Add("up", "Move up", Keys.Up, () => { this.View.Y -= 8; this.ClampView(); });
+            Add("down", "Move down", Keys.Down, () => { this.View.Y += 8; this.ClampView(); });
+            return bindings;
         }
 
         /// <summary>Handle a click on one of the palette colours.</summary>
@@ -841,26 +889,63 @@ namespace CustomContentCore.UI
                 this.PaintBrush(mirrored.X, mirrored.Y, colour);
         }
 
-        /// <summary>Paint the brush's square of pixels, with its top left at the given spot.</summary>
+        /// <summary>Paint one dab of the tip, with its top left at the given spot.</summary>
         private void PaintBrush(int x, int y, Color colour)
         {
-            for (int dy = 0; dy < this.BrushSize; dy++)
+            int size = this.BrushSize;
+            double middle = (size - 1) / 2.0;
+            double radius = size / 2.0;
+
+            for (int dy = 0; dy < size; dy++)
             {
-                for (int dx = 0; dx < this.BrushSize; dx++)
+                for (int dx = 0; dx < size; dx++)
                 {
                     int px = x + dx, py = y + dy;
                     if (px < 0 || py < 0 || px >= this.Width || py >= this.Height)
                         continue;
-                    if (this.Current == Tool.ReplaceBrush && this.Canvas[py * this.Width + px] != this.ReplaceTarget)
+
+                    // how much of this pixel the tip covers: 0 outside the shape, 1 inside, in between at a brush's edge
+                    double away = this.BrushShape switch
+                    {
+                        "round" => Math.Sqrt((dx - middle) * (dx - middle) + (dy - middle) * (dy - middle)) / Math.Max(0.5, radius),
+                        "diamond" => (Math.Abs(dx - middle) + Math.Abs(dy - middle)) / Math.Max(0.5, radius),
+                        _ => 0
+                    };
+                    if (away > 1.001)
                         continue;
-                    this.Remember(py * this.Width + px);
-                    this.Canvas[py * this.Width + px] = colour;
+                    double strength = this.Current == Tool.Brush && size > 1
+                        ? Math.Clamp(1.6 * (1 - away), 0, 1)
+                        : 1;
+                    if (strength <= 0.02)
+                        continue;
+
+                    int index = py * this.Width + px;
+                    if (this.Current == Tool.ReplaceBrush && this.Canvas[index] != this.ReplaceTarget)
+                        continue;
+
+                    this.Remember(index);
+                    this.Canvas[index] = strength >= 0.999 ? colour : Blend(this.Canvas[index], colour, strength);
                     this.Grow(px, py);
                     this.StepArea = this.StepArea.IsEmpty
                         ? new Rectangle(px, py, 1, 1)
                         : Rectangle.Union(this.StepArea, new Rectangle(px, py, 1, 1));
                 }
             }
+        }
+
+        /// <summary>Mix a colour over another one, for the brush's soft edge.</summary>
+        private static Color Blend(Color under, Color over, double strength)
+        {
+            double a = over.A / 255.0 * strength;
+            double keep = under.A / 255.0 * (1 - a);
+            double alpha = a + keep;
+            if (alpha <= 0)
+                return Color.Transparent;
+            return new Color(
+                (int)Math.Round((over.R * a + under.R * keep) / alpha),
+                (int)Math.Round((over.G * a + under.G * keep) / alpha),
+                (int)Math.Round((over.B * a + under.B * keep) / alpha),
+                (int)Math.Round(alpha * 255));
         }
 
         /// <summary>
