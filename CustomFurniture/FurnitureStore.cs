@@ -91,6 +91,9 @@ namespace CustomFurniture
         public (string Label, string Path)[] BrowserPlaces => new[] { ("Mod images", this.ImageFolder) };
         public IReadOnlyDictionary<string, LoadedFurniture> Furniture => this.Loaded;
 
+        /// <summary>The custom wallpapers and floors.</summary>
+        public WallpaperSets Wallpapers { get; }
+
 
         /*********
         ** Public methods
@@ -100,6 +103,7 @@ namespace CustomFurniture
             this.Helper = helper;
             this.Monitor = monitor;
             this.Manifest = manifest;
+            this.Wallpapers = new WallpaperSets(monitor, manifest);
             Directory.CreateDirectory(Path.Combine(helper.DirectoryPath, ImageFolderName));
         }
 
@@ -113,8 +117,17 @@ namespace CustomFurniture
                 if (!string.IsNullOrWhiteSpace(item.Sheet) && System.IO.File.Exists(path) && CustomContent.IsInsideFolder(path, this.ImageFolder))
                     files.Add(path);
             }
+            foreach (CustomWallpaper item in this.File.Wallpapers)
+            {
+                string path = Path.Combine(this.ImageFolder, item.Image ?? "");
+                if (!string.IsNullOrWhiteSpace(item.Image) && System.IO.File.Exists(path) && CustomContent.IsInsideFolder(path, this.ImageFolder))
+                    files.Add(path);
+            }
             return files;
         }
+
+        /// <summary>The item ID for a wallpaper or floor, like <c>Example.Mod_Wallpapers:2</c>.</summary>
+        public string? GetWallpaperItemId(string id) => this.Wallpapers.GetItemId(id);
 
         public string GetItemId(string id) => $"{this.Manifest.UniqueID}_{id}";
         private string GetTextureAsset(string id) => $"Mods/{this.Manifest.UniqueID}/{id}";
@@ -245,13 +258,15 @@ namespace CustomFurniture
                     this.Monitor.Log($"Furniture '{item.Name}': {error}", LogLevel.Warn);
             }
             this.Loaded = loaded;
+            this.Wallpapers.Reload(this.File.Wallpapers, this.Decode);
 
             this.Helper.GameContent.InvalidateCache(asset =>
                 asset.Name.IsEquivalentTo("Data/Furniture")
+                || asset.Name.IsEquivalentTo("Data/AdditionalWallpaperFlooring")
                 || asset.Name.IsEquivalentTo("Data/Shops")
                 || asset.Name.StartsWith($"Mods/{this.Manifest.UniqueID}/")
             );
-            this.Monitor.Log($"Loaded {this.Loaded.Count} custom furniture item(s).", LogLevel.Info);
+            this.Monitor.Log($"Loaded {this.Loaded.Count} custom furniture item(s) and {this.Wallpapers.Count} wallpaper(s)/floor(s).", LogLevel.Info);
         }
 
         /// <summary>Load a piece of furniture's art. Also used by the editor for previews.</summary>
@@ -294,7 +309,14 @@ namespace CustomFurniture
         public void OnAssetRequested(AssetRequestedEventArgs e)
         {
             string prefix = $"Mods/{this.Manifest.UniqueID}/";
-            if (e.Name.StartsWith(prefix) && this.Loaded.TryGetValue(e.Name.BaseName[prefix.Length..], out LoadedFurniture? furniture))
+            if (this.Wallpapers.IsSheet(e.NameWithoutLocale.Name))
+            {
+                string sheetName = e.NameWithoutLocale.Name;
+                e.LoadFrom(() => this.Wallpapers.CreateSheet(sheetName), AssetLoadPriority.Exclusive);
+            }
+            else if (e.Name.IsEquivalentTo("Data/AdditionalWallpaperFlooring"))
+                e.Edit(asset => this.Wallpapers.EditData(asset.GetData<List<StardewValley.GameData.ModWallpaperOrFlooring>>()), AssetEditPriority.Late);
+            else if (e.Name.StartsWith(prefix) && this.Loaded.TryGetValue(e.Name.BaseName[prefix.Length..], out LoadedFurniture? furniture))
             {
                 string assetName = e.NameWithoutLocale.Name;
                 e.LoadFrom(() => this.CreateGameTexture(furniture, assetName), AssetLoadPriority.Exclusive);

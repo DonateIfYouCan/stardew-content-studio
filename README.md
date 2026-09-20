@@ -11,7 +11,7 @@ in-game editor (press `K`), in HD where you want it.
 | [Custom Paintings](CustomPaintings) | Add, replace or hide paintings; photo frames and slideshows; full-screen viewer; sell them in shops or catch them fishing. |
 | [Custom Characters](CustomCharacters) | Villager portraits (per emotion) and sprites, and the farmer's body, hair and clothes, in HD. |
 | [Custom Crops](CustomCrops) | Your own crops: seeds, growth stages and harvest. |
-| [Custom Furniture](CustomFurniture) | Furniture based on a game piece: lamps that turn on, fireplaces, beds, animated decor and more. |
+| [Custom Furniture](CustomFurniture) | Furniture based on a game piece: lamps that turn on, fireplaces, beds, animated decor and more. Also wallpaper and floors from your images. |
 
 Each mod's folder has its own README with details and screenshots.
 

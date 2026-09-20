@@ -6,5 +6,7 @@
   "UniqueID": "DonateIfYouCan.CustomContentCore",
   "EntryDll": "CustomContentCore.dll",
   "MinimumApiVersion": "4.0.0",
-  "UpdateKeys": []
+  "UpdateKeys": [
+    "Nexus:52609"
+  ]
 }

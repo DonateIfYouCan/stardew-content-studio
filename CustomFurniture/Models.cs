@@ -7,6 +7,31 @@ namespace CustomFurniture
     internal sealed class FurnitureFile
     {
         public List<CustomFurnitureItem> Furniture { get; set; } = new();
+
+        /// <summary>Custom wallpapers and floors.</summary>
+        public List<CustomWallpaper> Wallpapers { get; set; } = new();
+    }
+
+    /// <summary>A custom wallpaper or floor made from one of your images (tiled by the game).</summary>
+    internal sealed class CustomWallpaper
+    {
+        /// <summary>A unique ID within this mod. Don't change it after using it in a save, or placed copies break.</summary>
+        public string Id { get; set; } = "";
+
+        /// <summary>The name shown in the editor (the game itself just calls them Wallpaper and Flooring).</summary>
+        public string Name { get; set; } = "";
+
+        /// <summary>The image file, relative to the mod's <c>images</c> folder.</summary>
+        public string Image { get; set; } = "";
+
+        /// <summary>The area of the image to use as <c>[x, y, width, height]</c>, or null for the biggest area that fits.</summary>
+        public int[]? Crop { get; set; }
+
+        /// <summary>Whether this is a floor (32x32 tile); else a wallpaper (16x48 strip).</summary>
+        public bool IsFloor { get; set; }
+
+        /// <summary>How detailed it's drawn: 1 = the game's own resolution, up to 8; 0 = auto (matches your zoom).</summary>
+        public int Resolution { get; set; }
     }
 
     /// <summary>A custom piece of furniture, based on a game furniture item (which provides its type, size and behavior).</summary>

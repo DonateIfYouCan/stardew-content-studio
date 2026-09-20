@@ -7,7 +7,12 @@
   "EntryDll": "CustomFurniture.dll",
   "MinimumApiVersion": "4.0.0",
   "Dependencies": [
-    { "UniqueID": "DonateIfYouCan.CustomContentCore", "MinimumVersion": "0.1.0" }
+    {
+      "UniqueID": "DonateIfYouCan.CustomContentCore",
+      "MinimumVersion": "0.1.0"
+    }
   ],
-  "UpdateKeys": []
+  "UpdateKeys": [
+    "Nexus:52609"
+  ]
 }
