@@ -101,6 +101,25 @@ namespace CustomContentCore
         /// <summary>Whether a mod is showing a multiplayer host's content right now (editing should be disabled).</summary>
         public static bool IsUsingHostContent(IManifest mod) => ContentPacks.IsUsingHostContent(mod);
 
+        /// <summary>Ask to be the only one changing something, so two players in a game can't change it at once.</summary>
+        /// <param name="mod">The mod the thing belongs to.</param>
+        /// <param name="thing">What's being changed, e.g. <c>item:sunset</c> or <c>file:paintings/sunset.png</c>.</param>
+        /// <param name="label">What to call it when telling another player it's taken.</param>
+        /// <param name="onReply">Called with whether it's yours and, if not, who has it. Outside a shared game it's granted straight away.</param>
+        public static void TakeLock(IManifest mod, string thing, string label, Action<bool, string> onReply)
+        {
+            if (CoreMod.Locks is { } locks)
+                locks.Take($"{mod.UniqueID}|{thing}", label, onReply);
+            else
+                onReply(true, "");
+        }
+
+        /// <summary>Let go of something you asked for with <see cref="TakeLock"/>, so someone else can change it.</summary>
+        public static void ReleaseLock(IManifest mod, string thing) => CoreMod.Locks?.Release($"{mod.UniqueID}|{thing}");
+
+        /// <summary>Which player is changing something right now, if it isn't you.</summary>
+        public static string? WhoIsChanging(IManifest mod, string thing) => CoreMod.Locks?.WhoHas($"{mod.UniqueID}|{thing}");
+
         /// <summary>Throw a friendly error if a mod's content can't be edited right now.</summary>
         /// <remarks>In a multiplayer game you edit the host's content, which is what everyone is using; what you save is sent to the host, who keeps it.</remarks>
         public static void EnsureEditable(IManifest mod)

@@ -48,6 +48,9 @@ namespace CustomContentCore
         /// <summary>Shares custom content between host and players in multiplayer.</summary>
         internal static MultiplayerSync? Sync { get; private set; }
 
+        /// <summary>Keeps two players from changing the same thing at once.</summary>
+        internal static ContentLocks? Locks { get; private set; }
+
         public override void Entry(IModHelper helper)
         {
             StaticMonitor = this.Monitor;
@@ -58,6 +61,7 @@ namespace CustomContentCore
             HdTextures.Apply(harmony, this.Monitor);
 
             Sync = new MultiplayerSync(helper, this.Monitor, this.ModManifest);
+            Locks = new ContentLocks(helper, this.Monitor, this.ModManifest);
             helper.Events.Input.ButtonPressed += this.OnButtonPressed;
             helper.Events.GameLoop.ReturnedToTitle += (_, _) => DropPausedEditor();
             helper.Events.GameLoop.SaveLoaded += (_, _) => DropPausedEditor();

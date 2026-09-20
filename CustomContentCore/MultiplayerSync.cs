@@ -847,6 +847,13 @@ namespace CustomContentCore
             if (!ContentValidator.IsInsideFolder(path, registration.Folder))
                 return;
 
+            // they may write a file they're holding, or add one we don't have; anything else is someone else's turn
+            if (File.Exists(path) && CoreMod.Locks?.MayChange(playerId, $"{modId}|file:{relativePath}") == false)
+            {
+                this.Monitor.Log($"Refused a change to '{relativePath}' from {this.NameOf(playerId, null)}: someone else is changing it.", LogLevel.Info);
+                return;
+            }
+
             this.KeepVersion(registration.Folder, relativePath, path);
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             File.WriteAllBytes(path, clean);

@@ -84,7 +84,7 @@ namespace CustomPaintings
 
         private readonly IModHelper Helper;
         private readonly IMonitor Monitor;
-        private readonly IManifest Manifest;
+        internal readonly IManifest Manifest;
         private readonly string TextureAssetPrefix;
 
         /// <summary>Rendered sprites by normalized asset name (premultiplied).</summary>

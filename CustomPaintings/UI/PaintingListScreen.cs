@@ -78,13 +78,13 @@ namespace CustomPaintings.UI
             this.GameTab = this.Add(new Button("Game paintings", () => this.SwitchTab(true)));
             this.SearchField = this.Add(new TextField("", _ => this.ApplyFilter(), limit: 60));
 
-            this.NewPaintingButton = this.Add(new Button("+ New painting", () => this.CreateNew(table: false), "Pick an image from your computer and turn it into a painting."));
-            this.NewFrameButton = this.Add(new Button("+ New photo frame", () => this.CreateNew(table: true), "A small standing photo frame for tables and floors."));
-            this.EditButton = this.Add(new Button("Edit", this.EditSelected));
-            this.DeleteButton = this.Add(new Button("Delete", this.DeleteSelected));
-            this.DuplicateButton = this.Add(new Button("Duplicate", this.DuplicateSelected, "Make a copy to tweak, keeping the original."));
+            this.NewPaintingButton = this.Add(new Button("+ New painting", () => this.WhenNobodyElseIsChangingIt(() => this.CreateNew(table: false)), "Pick an image from your computer and turn it into a painting."));
+            this.NewFrameButton = this.Add(new Button("+ New photo frame", () => this.WhenNobodyElseIsChangingIt(() => this.CreateNew(table: true)), "A small standing photo frame for tables and floors."));
+            this.EditButton = this.Add(new Button("Edit", () => this.WhenNobodyElseIsChangingIt(this.EditSelected)));
+            this.DeleteButton = this.Add(new Button("Delete", () => this.WhenNobodyElseIsChangingIt(this.DeleteSelected)));
+            this.DuplicateButton = this.Add(new Button("Duplicate", () => this.WhenNobodyElseIsChangingIt(this.DuplicateSelected), "Make a copy to tweak, keeping the original."));
             this.GiveButton = this.Add(new Button("Put in inventory", this.GiveSelected, "Adds one to your inventory, for testing."));
-            this.ReplaceButton = this.Add(new Button("Replace image", this.EditSelected, "Show your own image instead of this painting."));
+            this.ReplaceButton = this.Add(new Button("Replace image", () => this.WhenNobodyElseIsChangingIt(this.EditSelected), "Show your own image instead of this painting."));
             this.RestoreButton = this.Add(new Button("Restore original", this.RestoreSelected));
             this.HideButton = this.Add(new Button("Hide from shops", this.ToggleHidden, "Take it out of shops, the catalogue and fishing. Placed copies stay."));
             this.ExportButton = this.Add(new Button("Export original", this.ExportSelected, "Save the game's original art as a PNG, to edit in another program and use as a replacement."));
@@ -115,11 +115,13 @@ namespace CustomPaintings.UI
 
         public override void OnResume()
         {
+            CustomContent.ReleaseLock(this.Store.Manifest, LockThing); // whatever was opened is closed again
             this.Refresh();
         }
 
         public override void Dispose()
         {
+            CustomContent.ReleaseLock(this.Store.Manifest, LockThing);
             this.DisposeThumbnails();
         }
 
@@ -355,6 +357,14 @@ namespace CustomPaintings.UI
             this.NewFrameButton.Visible = mine;
             this.AutoAddBox.Visible = mine;
 
+            // in a game where everyone uses one set, say who's changing it instead of letting two people write over each other
+            string? busy = CustomContent.WhoIsChanging(this.Store.Manifest, LockThing);
+            foreach (Button button in new[] { this.NewPaintingButton, this.NewFrameButton, this.EditButton, this.DeleteButton, this.DuplicateButton, this.ReplaceButton, this.RestoreButton, this.HideButton })
+            {
+                button.Enabled = busy == null;
+                button.Tooltip = busy != null ? $"{busy} is changing the paintings right now." : button.Tooltip;
+            }
+
             this.EditButton.Visible = mine && row != null;
             this.DeleteButton.Visible = mine && row != null;
             this.DuplicateButton.Visible = mine && row != null && !row.AutoAdded;
@@ -395,6 +405,21 @@ namespace CustomPaintings.UI
             PaintingsFile file = this.Store.ReadFile();
             file.AutoAddImages = value;
             this.SaveFile(file, value ? "Images in the paintings folder are added automatically." : "Only paintings made here (or listed in paintings.json) are added.");
+        }
+
+        /// <summary>What the paintings file is called when asking to be the only one changing it.</summary>
+        private const string LockThing = "file:" + PaintingStore.DataFileName;
+
+        /// <summary>Do something that writes to the paintings file, unless another player in the game is already changing it.</summary>
+        private void WhenNobodyElseIsChangingIt(Action action)
+        {
+            CustomContent.TakeLock(this.Store.Manifest, LockThing, "the paintings", (granted, holder) =>
+            {
+                if (granted)
+                    action();
+                else
+                    this.ShowMessage($"{holder} is changing the paintings right now.", error: true);
+            });
         }
 
         private void CreateNew(bool table)
