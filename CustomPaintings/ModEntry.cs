@@ -46,7 +46,8 @@ namespace CustomPaintings
             // plug into Content Studio: Core
             CustomContent.RegisterEditor(this.ModManifest, "Paintings", "Your own paintings, photo frames and slideshows", () => new PaintingListScreen(Store));
             CustomContent.RegisterFurnitureRenderer(Store.TryGetWorldTexture);
-            ContentPacks.Register(this.ModManifest, helper.DirectoryPath, new[] { PaintingStore.DataFileName, PaintingStore.ImageFolderName, PaintingStore.FrameFolderName }, Store.Reload, Store.GetSharedFiles);
+            ContentPacks.Register(this.ModManifest, helper.DirectoryPath, new[] { PaintingStore.DataFileName, PaintingStore.ImageFolderName, PaintingStore.FrameFolderName }, Store.Reload, Store.GetSharedFiles,
+                new ContentPacks.ContentEditing(Store.GetItemIds, Store.GetItemJson, Store.ApplyItemJson, Store.RemoveItem));
 
             helper.Events.GameLoop.GameLaunched += (_, _) => Store.Reload();
             helper.Events.GameLoop.UpdateTicked += this.OnUpdateTicked;

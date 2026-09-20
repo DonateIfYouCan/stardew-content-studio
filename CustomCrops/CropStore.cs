@@ -290,6 +290,81 @@ namespace CustomCrops
             return System.IO.File.Exists(path) && CustomContent.IsInsideFolder(path, this.ImageFolder) ? Path.GetFullPath(path) : null; // only inside the content folder
         }
 
+        /// <summary>The IDs of the crops in the content this mod is using now.</summary>
+        public IEnumerable<string> GetItemIds() => this.ReadFile().Crops.Select(c => c.Id).Where(id => !string.IsNullOrWhiteSpace(id)).ToList();
+
+        /// <summary>Get one crop as JSON, for sending to the player whose content this is.</summary>
+        /// <param name="itemId">The crop's ID in the content being used.</param>
+        public string? GetItemJson(string itemId)
+        {
+            CustomCrop? crop = this.ReadFile().Crops.FirstOrDefault(c => string.Equals(c.Id, itemId, StringComparison.OrdinalIgnoreCase));
+            return crop == null
+                ? null
+                : JsonConvert.SerializeObject(crop, new JsonSerializerSettings { Formatting = Formatting.Indented, NullValueHandling = NullValueHandling.Ignore });
+        }
+
+        /// <summary>Write one crop a player changed or added into this content.</summary>
+        /// <param name="itemId">The crop's ID; a change can't rename it or land on another crop.</param>
+        /// <param name="json">The crop.</param>
+        /// <param name="files">Images that came with it, already checked: the name the data uses, and a file to copy in. Usually empty, since images are sent as files of their own.</param>
+        /// <returns>Whether it was written.</returns>
+        public bool ApplyItemJson(string itemId, string json, IDictionary<string, string> files)
+        {
+            CustomCrop? crop = JsonConvert.DeserializeObject<CustomCrop>(json);
+            if (crop == null || string.IsNullOrWhiteSpace(itemId))
+                return false;
+
+            crop.Id = itemId;
+            if (crop.HarvestImage != null)
+                crop.HarvestImage.File = this.TakeImage(crop.HarvestImage.File, files);
+            if (crop.SeedImage != null)
+                crop.SeedImage.File = this.TakeImage(crop.SeedImage.File, files);
+            string sheet = this.TakeImage(crop.GrowthSheet, files);
+            crop.GrowthSheet = sheet.Length > 0 ? sheet : null; // no sheet means the plant copies a game crop instead
+
+            CropsFile file = this.ReadFile();
+            int index = file.Crops.FindIndex(c => string.Equals(c.Id, itemId, StringComparison.OrdinalIgnoreCase));
+            if (index >= 0)
+                file.Crops[index] = crop;
+            else
+                file.Crops.Add(crop);
+            this.Save(file);
+            return true;
+        }
+
+        /// <summary>Take one crop out of this content, because the player who changed it deleted it.</summary>
+        /// <param name="itemId">The crop's ID in the content being used.</param>
+        /// <returns>Whether there was such a crop to take out.</returns>
+        public bool RemoveItem(string itemId)
+        {
+            CropsFile file = this.ReadFile();
+            int index = file.Crops.FindIndex(c => string.Equals(c.Id, itemId, StringComparison.OrdinalIgnoreCase));
+            if (index < 0)
+                return false;
+
+            file.Crops.RemoveAt(index);
+            this.Save(file);
+            return true;
+        }
+
+        /// <summary>Reduce an image reference to a plain file name, and copy in the file if one came with the change.</summary>
+        /// <param name="file">The image reference as the change names it.</param>
+        /// <param name="files">The files that came with the change, by the name the data uses.</param>
+        /// <returns>The file name, or an empty string if there's no image.</returns>
+        /// <remarks>Only a file name, never a path: Player A's change names an image, and that image belongs in this content's own images folder, not somewhere else on the Host's computer.</remarks>
+        private string TakeImage(string? file, IDictionary<string, string> files)
+        {
+            string name = Path.GetFileName(file ?? "");
+            if (name.Length == 0)
+                return "";
+            if (files.TryGetValue(name, out string? sent) && System.IO.File.Exists(sent))
+            {
+                Directory.CreateDirectory(this.ImageFolder);
+                System.IO.File.Copy(sent, Path.Combine(this.ImageFolder, name), overwrite: true);
+            }
+            return name;
+        }
+
         public Pixels? Decode(string? file)
         {
             string? path = this.ResolveImage(file);

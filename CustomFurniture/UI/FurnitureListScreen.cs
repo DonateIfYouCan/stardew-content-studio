@@ -23,14 +23,18 @@ namespace CustomFurniture.UI
         private readonly Button CloseButton;
         private readonly Dictionary<string, Texture2D> Thumbnails = new();
 
-        /// <summary>The buttons that write to the furniture file, with the tooltip each one has when nobody else is changing it.</summary>
-        private readonly (Button Button, string? Tooltip)[] WritingButtons;
-
         private string? Message;
         private Color MessageColor = Color.DarkGreen;
 
-        /// <summary>What the furniture file is called when asking to be the only one changing it. The wallpapers live in the same file, so the two lists share one lock.</summary>
-        private const string LockThing = "file:" + FurnitureStore.DataFileName;
+        /// <summary>What the furniture file is called when asking to be the only one changing the list's own settings. The wallpapers live in the same file, so that list holds this same one.</summary>
+        /// <remarks>Nothing on this page changes the list as a whole yet; it's still let go of, in case a lock is left over from elsewhere.</remarks>
+        private const string ListLockThing = "file:" + FurnitureStore.DataFileName;
+
+        /// <summary>The furniture we're holding at the moment, if any, so it can be let go of again.</summary>
+        private string? HeldItem;
+
+        /// <summary>What a piece of furniture is called when asking to be the only one changing it.</summary>
+        private static string ItemThing(string id) => $"item:{id}";
 
         public FurnitureListScreen(FurnitureStore store)
         {
@@ -41,38 +45,62 @@ namespace CustomFurniture.UI
                 OnDoubleClick = _ => this.WhenNobodyElseIsChangingIt(this.EditSelected),
                 EmptyText = "No furniture yet. Click 'New furniture' to make some."
             });
-            this.NewButton = this.Add(new Button("+ New furniture", () => this.WhenNobodyElseIsChangingIt(this.CreateNew), "Make furniture based on a game piece: lamps, fireplaces, beds, tables, decor..."));
+            // making new furniture takes nothing: Player B can't be holding a piece that doesn't exist yet
+            this.NewButton = this.Add(new Button("+ New furniture", this.CreateNew, "Make furniture based on a game piece: lamps, fireplaces, beds, tables, decor..."));
             this.EditButton = this.Add(new Button("Edit", () => this.WhenNobodyElseIsChangingIt(this.EditSelected)));
             this.GiveButton = this.Add(new Button("Put in inventory", this.GiveSelected, "Adds one to your inventory, for testing."));
-            this.DuplicateButton = this.Add(new Button("Duplicate", () => this.WhenNobodyElseIsChangingIt(this.DuplicateSelected), "Make a copy to tweak, keeping the original."));
+            this.DuplicateButton = this.Add(new Button("Duplicate", this.DuplicateSelected, "Make a copy to tweak, keeping the original."));
             this.DeleteButton = this.Add(new Button("Delete", () => this.WhenNobodyElseIsChangingIt(this.DeleteSelected)));
             this.CloseButton = this.Add(new Button("Close", () => this.Root.Pop()));
-            this.WritingButtons = new[] { this.NewButton, this.EditButton, this.DuplicateButton, this.DeleteButton }.Select(b => (b, b.Tooltip)).ToArray();
             this.Refresh();
         }
 
         public override void OnResume()
         {
-            CustomContent.ReleaseLock(this.Store.Manifest, LockThing); // whatever was opened is closed again
+            this.LetGo(); // whatever was opened is closed again
             this.Refresh();
+        }
+
+        /// <summary>Let go of the furniture (and the list) we were holding, so another player can change it.</summary>
+        private void LetGo()
+        {
+            if (this.HeldItem != null)
+            {
+                CustomContent.ReleaseLock(this.Store.Manifest, this.HeldItem);
+                this.HeldItem = null;
+            }
+            CustomContent.ReleaseLock(this.Store.Manifest, ListLockThing);
         }
 
         public override void Dispose()
         {
-            CustomContent.ReleaseLock(this.Store.Manifest, LockThing);
+            this.LetGo();
             this.ClearThumbnails();
         }
 
-        /// <summary>Do something that writes to the furniture file, unless another player in the game is already changing it.</summary>
-        /// <remarks>Everyone in a shared game is using the Host's one copy, so Player B is told who has it rather than writing over Player A.</remarks>
+        /// <summary>Change one piece of furniture, unless another player in the game is already changing that one.</summary>
+        /// <remarks>
+        /// Everyone in a shared game is using the Host's one copy, but each piece is held on its own: Player A renaming a lamp
+        /// no longer stops Player B touching a table.
+        /// </remarks>
         private void WhenNobodyElseIsChangingIt(Action action)
         {
-            CustomContent.TakeLock(this.Store.Manifest, LockThing, "the furniture", (granted, holder) =>
+            CustomFurnitureItem? item = this.List.Selected;
+            if (item == null)
             {
-                if (granted)
-                    action();
-                else
-                    this.ShowMessage($"{holder} is changing the furniture right now.", error: true);
+                action(); // nothing picked: adding something new, which nobody can be holding
+                return;
+            }
+
+            CustomContent.TakeLock(this.Store.Manifest, ItemThing(item.Id), item.Name, (granted, holder) =>
+            {
+                if (!granted)
+                {
+                    this.ShowMessage($"{holder} is changing '{item.Name}' right now.", error: true);
+                    return;
+                }
+                this.HeldItem = ItemThing(item.Id);
+                action();
             });
         }
 
@@ -112,6 +140,16 @@ namespace CustomFurniture.UI
 
         private void DrawRow(SpriteBatch b, CustomFurnitureItem item, Rectangle row, bool selected, bool hover)
         {
+            // in a game where everyone uses the Host's set, say on the row itself who's changing this piece
+            string? busy = CustomContent.WhoIsChanging(this.Store.Manifest, ItemThing(item.Id));
+            if (busy != null)
+            {
+                string badge = $"{busy} is changing this";
+                Vector2 size = Gfx.Font.MeasureString(badge);
+                Gfx.Text(b, badge, new Vector2(row.Right - size.X - 12, row.Y + 10), new Color(160, 80, 20));
+            }
+            int rightPad = busy != null ? 240 : 140;
+
             if (this.Store.Furniture.TryGetValue(item.Id, out FurnitureStore.LoadedFurniture? loaded))
             {
                 if (!this.Thumbnails.TryGetValue(item.Id, out Texture2D? thumb))
@@ -122,12 +160,12 @@ namespace CustomFurniture.UI
                 }
                 FurnitureTemplate t = loaded.Template;
                 Gfx.Fitted(b, thumb, new Rectangle(0, 0, t.Source.Width * loaded.Scale, t.Source.Height * loaded.Scale), new Rectangle(row.X + 8, row.Y + 4, 100, row.Height - 8), pixelated: loaded.Scale == 1);
-                Gfx.Text(b, Gfx.Fit(item.Name, row.Right - row.X - 140), new Vector2(row.X + 124, row.Y + 10));
+                Gfx.Text(b, Gfx.Fit(item.Name, row.Right - row.X - rightPad), new Vector2(row.X + 124, row.Y + 10));
                 string details = $"{t.Kind} ({t.Name}) · {t.TilesWide}x{t.TilesHigh} · {item.Price}g" + (loaded.AnimationFrames > 1 ? $" · animated ({loaded.AnimationFrames} frames)" : "");
                 Gfx.Text(b, Gfx.Fit(details, row.Right - row.X - 140), new Vector2(row.X + 124, row.Y + 46), Color.DimGray);
             }
             else
-                Gfx.Text(b, Gfx.Fit($"{item.Name} (can't load: check the SMAPI console)", row.Right - row.X - 140), new Vector2(row.X + 124, row.Y + 26), Color.DarkRed);
+                Gfx.Text(b, Gfx.Fit($"{item.Name} (can't load: check the SMAPI console)", row.Right - row.X - rightPad), new Vector2(row.X + 124, row.Y + 26), Color.DarkRed);
         }
 
         private void ClearThumbnails()
@@ -155,12 +193,13 @@ namespace CustomFurniture.UI
             this.DuplicateButton.Visible = selected;
             this.DeleteButton.Visible = selected;
 
-            // in a game where everyone uses one set, say who's changing it instead of letting two players write over each other
-            string? busy = CustomContent.WhoIsChanging(this.Store.Manifest, LockThing);
-            foreach ((Button button, string? tooltip) in this.WritingButtons)
+            // in a game where everyone uses one set, say who's changing this piece instead of letting two players write over each other
+            CustomFurnitureItem? item = this.List.Selected;
+            string? busy = item != null ? CustomContent.WhoIsChanging(this.Store.Manifest, ItemThing(item.Id)) : null;
+            foreach (Button button in new[] { this.EditButton, this.DeleteButton })
             {
                 button.Enabled = busy == null;
-                button.Tooltip = busy != null ? $"{busy} is changing the furniture right now." : tooltip;
+                button.Tooltip = busy != null ? $"{busy} is changing '{item?.Name}' right now." : null;
             }
         }
 

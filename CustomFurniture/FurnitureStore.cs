@@ -356,6 +356,77 @@ namespace CustomFurniture
             return Path.GetFileName(target);
         }
 
+        /// <summary>The IDs of the furniture in the content this mod is using now.</summary>
+        /// <remarks>Only furniture: the wallpapers and floors share this file, but they're still changed as a whole list.</remarks>
+        public IEnumerable<string> GetItemIds() => this.ReadFile().Furniture.Select(f => f.Id).Where(id => !string.IsNullOrWhiteSpace(id)).ToList();
+
+        /// <summary>Get one piece of furniture as JSON, for sending to the player whose content this is.</summary>
+        /// <param name="itemId">The furniture's ID in the content being used.</param>
+        public string? GetItemJson(string itemId)
+        {
+            CustomFurnitureItem? item = this.ReadFile().Furniture.FirstOrDefault(f => string.Equals(f.Id, itemId, StringComparison.OrdinalIgnoreCase));
+            return item == null
+                ? null
+                : JsonConvert.SerializeObject(item, new JsonSerializerSettings { Formatting = Formatting.Indented, NullValueHandling = NullValueHandling.Ignore });
+        }
+
+        /// <summary>Write one piece of furniture a player changed or added into this content.</summary>
+        /// <param name="itemId">The furniture's ID; a change can't rename it or land on another piece.</param>
+        /// <param name="json">The furniture.</param>
+        /// <param name="files">Images that came with it, already checked: the name the data uses, and a file to copy in. Usually empty, since images are sent as files of their own.</param>
+        /// <returns>Whether it was written.</returns>
+        public bool ApplyItemJson(string itemId, string json, IDictionary<string, string> files)
+        {
+            CustomFurnitureItem? item = JsonConvert.DeserializeObject<CustomFurnitureItem>(json);
+            if (item == null || string.IsNullOrWhiteSpace(itemId))
+                return false;
+
+            item.Id = itemId;
+            item.Sheet = this.TakeImage(item.Sheet, files);
+
+            FurnitureFile file = this.ReadFile();
+            int index = file.Furniture.FindIndex(f => string.Equals(f.Id, itemId, StringComparison.OrdinalIgnoreCase));
+            if (index >= 0)
+                file.Furniture[index] = item;
+            else
+                file.Furniture.Add(item);
+            this.Save(file);
+            return true;
+        }
+
+        /// <summary>Take one piece of furniture out of this content, because the player who changed it deleted it.</summary>
+        /// <param name="itemId">The furniture's ID in the content being used.</param>
+        /// <returns>Whether there was such a piece to take out.</returns>
+        public bool RemoveItem(string itemId)
+        {
+            FurnitureFile file = this.ReadFile();
+            int index = file.Furniture.FindIndex(f => string.Equals(f.Id, itemId, StringComparison.OrdinalIgnoreCase));
+            if (index < 0)
+                return false;
+
+            file.Furniture.RemoveAt(index);
+            this.Save(file);
+            return true;
+        }
+
+        /// <summary>Reduce an image reference to a plain file name, and copy in the file if one came with the change.</summary>
+        /// <param name="file">The image reference as the change names it.</param>
+        /// <param name="files">The files that came with the change, by the name the data uses.</param>
+        /// <returns>The file name, or an empty string if there's no image.</returns>
+        /// <remarks>Only a file name, never a path: Player A's change names a sheet, and that sheet belongs in this content's own images folder, not somewhere else on the Host's computer.</remarks>
+        private string TakeImage(string? file, IDictionary<string, string> files)
+        {
+            string name = Path.GetFileName(file ?? "");
+            if (name.Length == 0)
+                return "";
+            if (files.TryGetValue(name, out string? sent) && System.IO.File.Exists(sent))
+            {
+                Directory.CreateDirectory(this.ImageFolder);
+                System.IO.File.Copy(sent, Path.Combine(this.ImageFolder, name), overwrite: true);
+            }
+            return name;
+        }
+
         public Pixels? Decode(string? file)
         {
             if (string.IsNullOrWhiteSpace(file))

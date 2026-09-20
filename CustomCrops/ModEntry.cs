@@ -25,7 +25,8 @@ namespace CustomCrops
 
             // plug into Content Studio: Core
             CustomContent.RegisterEditor(this.ModManifest, "Crops", "Your own crops: seeds, growing plant and harvest", () => new CropListScreen(Store));
-            ContentPacks.Register(this.ModManifest, helper.DirectoryPath, new[] { CropStore.DataFileName, CropStore.ImageFolderName }, Store.Reload, Store.GetSharedFiles);
+            ContentPacks.Register(this.ModManifest, helper.DirectoryPath, new[] { CropStore.DataFileName, CropStore.ImageFolderName }, Store.Reload, Store.GetSharedFiles,
+                new ContentPacks.ContentEditing(Store.GetItemIds, Store.GetItemJson, Store.ApplyItemJson, Store.RemoveItem));
 
             helper.Events.GameLoop.GameLaunched += (_, _) => Store.Reload();
             helper.Events.GameLoop.UpdateTicked += this.OnUpdateTicked;

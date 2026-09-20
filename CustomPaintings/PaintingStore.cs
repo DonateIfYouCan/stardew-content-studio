@@ -323,6 +323,70 @@ namespace CustomPaintings
             return null;
         }
 
+        /// <summary>The IDs of the paintings in the content this mod is using now.</summary>
+        public IEnumerable<string> GetItemIds() => this.ReadFile().Paintings.Select(p => p.Id).Where(id => !string.IsNullOrWhiteSpace(id)).ToList();
+
+        /// <summary>Get one painting as JSON, for sending to the player whose content this is.</summary>
+        /// <param name="itemId">The painting's ID in the content being used.</param>
+        public string? GetItemJson(string itemId)
+        {
+            CustomPainting? painting = this.ReadFile().Paintings.FirstOrDefault(p => string.Equals(p.Id, itemId, StringComparison.OrdinalIgnoreCase));
+            return painting == null
+                ? null
+                : JsonConvert.SerializeObject(painting, new JsonSerializerSettings { Formatting = Formatting.Indented, NullValueHandling = NullValueHandling.Ignore });
+        }
+
+        /// <summary>Write one painting a player changed or added into this content.</summary>
+        /// <param name="itemId">The painting's ID; a change can't rename it or land on another painting.</param>
+        /// <param name="json">The painting.</param>
+        /// <param name="files">Images that came with it, already checked: the name the data uses, and a file to copy in. Usually empty, since images are sent as files of their own.</param>
+        /// <returns>Whether it was written.</returns>
+        public bool ApplyItemJson(string itemId, string json, IDictionary<string, string> files)
+        {
+            CustomPainting? painting = JsonConvert.DeserializeObject<CustomPainting>(json);
+            if (painting == null || string.IsNullOrWhiteSpace(itemId))
+                return false;
+
+            painting.Id = itemId;
+            List<Slide> slides = painting.GetSlides();
+            foreach (Slide slide in slides)
+            {
+                // only a file name, never a path: the image belongs in this content's own images folder
+                string name = Path.GetFileName(slide.File ?? "");
+                if (name.Length == 0)
+                    continue;
+                slide.File = name;
+                if (files.TryGetValue(name, out string? sent) && System.IO.File.Exists(sent))
+                {
+                    Directory.CreateDirectory(this.ImageFolder);
+                    System.IO.File.Copy(sent, Path.Combine(this.ImageFolder, name), overwrite: true);
+                }
+            }
+            painting.SetSlides(slides);
+
+            PaintingsFile file = this.ReadFile();
+            int index = file.Paintings.FindIndex(p => string.Equals(p.Id, itemId, StringComparison.OrdinalIgnoreCase));
+            if (index >= 0)
+                file.Paintings[index] = painting;
+            else
+                file.Paintings.Add(painting);
+            this.Save(file);
+            return true;
+        }
+
+        /// <summary>Take one painting out of this content, because the player who changed it deleted it.</summary>
+        public bool RemoveItem(string itemId)
+        {
+            PaintingsFile file = this.ReadFile();
+            int index = file.Paintings.FindIndex(p => string.Equals(p.Id, itemId, StringComparison.OrdinalIgnoreCase));
+            if (index < 0)
+                return false;
+
+            file.Paintings.RemoveAt(index);
+            this.Save(file);
+            return true;
+        }
+
         /// <summary>Get the files in use (data file, images and custom frames), which are the only ones shared in multiplayer.</summary>
         public IEnumerable<string> GetSharedFiles()
         {

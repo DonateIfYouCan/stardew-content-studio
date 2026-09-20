@@ -150,6 +150,9 @@ namespace CustomContentCore
                 this.SendToHost(new LockUpdate { Key = key, Finished = true }, UpdateType);
         }
 
+        /// <summary>Whether we're the one holding something.</summary>
+        public bool IHoldIt(string key) => this.Mine.ContainsKey(key);
+
         /// <summary>Who is changing something right now, if anyone else is.</summary>
         public string? WhoHas(string key)
         {

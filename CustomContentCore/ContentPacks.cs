@@ -15,7 +15,21 @@ namespace CustomContentCore
         ** Types
         *********/
         /// <summary>A mod's content registered for packs.</summary>
-        private sealed record Registration(IManifest Mod, string Folder, string[] Paths, Action Reload, Func<IEnumerable<string>>? SharedFiles);
+        private sealed record Registration(IManifest Mod, string Folder, string[] Paths, Action Reload, Func<IEnumerable<string>>? SharedFiles, ContentEditing? Editing);
+
+        /// <summary>How a mod's items can be sent one at a time, so two players in a game can change different items at once.</summary>
+        /// <param name="GetItemIds">The IDs of the items in the content this mod is using now.</param>
+        /// <param name="GetItemJson">One item as JSON, or null if there's no such item.</param>
+        /// <param name="ApplyItemJson">
+        /// Write one item into the content: its ID, its JSON, and the images that came with it (the name the data uses, and a
+        /// checked file to copy in). Adds it if there's no item with that ID. Returns whether it worked.
+        /// </param>
+        /// <param name="RemoveItem">Take one item out of the content. Returns whether it worked.</param>
+        public sealed record ContentEditing(
+            Func<IEnumerable<string>> GetItemIds,
+            Func<string, string?> GetItemJson,
+            Func<string, string, IDictionary<string, string>, bool> ApplyItemJson,
+            Func<string, bool> RemoveItem);
 
         /// <summary>The manifest stored in each pack.</summary>
         private sealed class PackManifest
@@ -147,11 +161,21 @@ namespace CustomContentCore
         /// Gets the files actually in use (full paths: the data file and the images it references). In multiplayer, only these are
         /// shared, so unused or deleted images never leave the PC. If null, every file in <paramref name="paths"/> is shared.
         /// </param>
-        public static void Register(IManifest mod, string modFolder, string[] paths, Action reload, Func<IEnumerable<string>>? sharedFiles = null)
+        /// <param name="editing">How this mod's items can be sent one at a time in multiplayer (null: its files are sent whole).</param>
+        public static void Register(IManifest mod, string modFolder, string[] paths, Action reload, Func<IEnumerable<string>>? sharedFiles = null, ContentEditing? editing = null)
         {
             Registrations.RemoveAll(r => r.Mod.UniqueID == mod.UniqueID);
-            Registrations.Add(new Registration(mod, modFolder, paths, reload, sharedFiles));
+            Registrations.Add(new Registration(mod, modFolder, paths, reload, sharedFiles, editing));
         }
+
+        /// <summary>How a mod's items can be sent one at a time, if it supports that.</summary>
+        internal static ContentEditing? GetEditing(string modId)
+        {
+            return Registrations.FirstOrDefault(r => r.Mod.UniqueID.Equals(modId, StringComparison.OrdinalIgnoreCase))?.Editing;
+        }
+
+        /// <summary>Whether a relative path is a mod's data file rather than one of its images.</summary>
+        internal static bool IsDataFile(string relativePath) => relativePath.EndsWith(".json", StringComparison.OrdinalIgnoreCase);
 
         /// <summary>Get the files a mod shares in multiplayer (full paths inside its own folder, no links).</summary>
         internal static IEnumerable<string> GetSharedFiles(string modId)
