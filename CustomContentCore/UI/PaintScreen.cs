@@ -107,7 +107,7 @@ namespace CustomContentCore.UI
             "Drag on the image to use the tool you picked on the left. Right-click always takes the colour under the cursor, whichever tool that is.\n\n"
             + "Moving around: the mouse wheel zooms towards the cursor and the arrow keys move. To drag the image, either pick the 'Move view' tool or hold space while you drag. "
             + "'Width' fills the width with the image and 'Fit' shows all of it.\n\n"
-            + "Keys - tools: B pencil, E eraser, I pick a colour, F fill, L line, R rectangle, O oval, A replace all, D replace drag, S select, H move view.\n"
+            + "Keys - tools: P pencil, E eraser, I pick a colour, F fill, L line, R rectangle, O oval, A replace all, D replace drag, S select, H move view.\n"
             + "Keys - other: C copy, V paste, Delete clears the selection, Z undo, Y redo, + and - zoom, 0 fills the width.\n\n"
             + "Shapes: hold Shift to keep a line straight or a box square, and tick 'Fill shape' for solid rectangles and ovals.\n\n"
             + "Selection: drag a box with the Select tool, then drag inside it to move those pixels. The buttons on the right copy, clear, flip or turn it; with nothing selected, flip and turn work on the whole image.\n\n"
@@ -236,7 +236,7 @@ namespace CustomContentCore.UI
 
             foreach ((Tool tool, string label, string tip) in new[]
             {
-                (Tool.Pencil, "Pencil", "Draw single pixels. Key: B."),
+                (Tool.Pencil, "Pencil", "Draw single pixels. Key: P (B works too)."),
                 (Tool.Eraser, "Eraser", "Make pixels see-through. Key: E."),
                 (Tool.Picker, "Pick colour", "Take the colour under the cursor. Key: I. Right-click does this with any tool."),
                 (Tool.Fill, "Fill", "Flood one connected area of the same colour. Key: F."),
@@ -664,7 +664,7 @@ namespace CustomContentCore.UI
         {
             switch (key)
             {
-                case Keys.B: this.SetTool(Tool.Pencil); return true;
+                case Keys.P or Keys.B: this.SetTool(Tool.Pencil); return true; // P for pencil; B because other drawing programs use it for the brush
                 case Keys.E: this.SetTool(Tool.Eraser); return true;
                 case Keys.I: this.SetTool(Tool.Picker); return true;
                 case Keys.F: this.SetTool(Tool.Fill); return true;

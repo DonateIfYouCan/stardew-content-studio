@@ -58,7 +58,7 @@ the bigger sizes are for HD art. The colours below the canvas are the ones the i
 it uses them or grouped by colour; **Choose colour** opens a picker for any other colour (drag in the shade square, pick a
 hue, or type red, green, blue and see-through values), and the colours you pick that way stay in the row while you paint.
 
-Keys - tools: `B` pencil, `E` eraser, `I` pick colour, `F` fill, `L` line, `R` rectangle, `O` oval, `A` replace all,
+Keys - tools: `P` pencil, `E` eraser, `I` pick colour, `F` fill, `L` line, `R` rectangle, `O` oval, `A` replace all,
 `D` replace drag, `S` select, `H` move view. Other: `C` copy, `V` paste, `Delete` clears the selection, `Z` undo, `Y` redo,
 `+`/`-` zoom, `0` fills the width, `Shift` keeps lines and boxes straight, and holding `space` drags the image.
 
