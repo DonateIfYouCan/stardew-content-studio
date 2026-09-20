@@ -159,12 +159,14 @@ namespace CustomContentCore
             Registration? registration = Registrations.FirstOrDefault(r => r.Mod.UniqueID.Equals(modId, StringComparison.OrdinalIgnoreCase));
             if (registration == null)
                 return Enumerable.Empty<string>();
-            IEnumerable<string> files = registration.SharedFiles?.Invoke() ?? GetFiles(registration);
+            // in a host's game the mod is reading and writing the host's copy, so that's the folder these files live in
+            string root = GetContentRoot(registration.Mod, registration.Folder);
+            IEnumerable<string> files = registration.SharedFiles?.Invoke() ?? GetFiles(registration, root);
             return files
                 .Where(File.Exists)
                 .Select(Path.GetFullPath)
                 .Distinct()
-                .Where(f => ContentValidator.IsInsideFolder(f, registration.Folder) && IsContentPath(modId, Path.GetRelativePath(registration.Folder, f).Replace('\\', '/')))
+                .Where(f => ContentValidator.IsInsideFolder(f, root) && IsContentPath(modId, Path.GetRelativePath(root, f).Replace('\\', '/')))
                 .ToList();
         }
 
@@ -276,18 +278,22 @@ namespace CustomContentCore
         /*********
         ** Private methods
         *********/
-        private static IEnumerable<string> GetFiles(Registration registration)
+        /// <summary>Get a mod's content files (full paths), following its registered paths.</summary>
+        /// <param name="registration">The mod's registration.</param>
+        /// <param name="root">The folder to read from: the mod's own, or (in a host's game) the host's copy.</param>
+        private static IEnumerable<string> GetFiles(Registration registration, string? root = null)
         {
+            root ??= registration.Folder;
             foreach (string relative in registration.Paths)
             {
-                string path = Path.Combine(registration.Folder, relative);
-                if (File.Exists(path) && ContentValidator.IsInsideFolder(path, registration.Folder))
+                string path = Path.Combine(root, relative);
+                if (File.Exists(path) && ContentValidator.IsInsideFolder(path, root))
                     yield return path;
                 else if (Directory.Exists(path))
                 {
                     foreach (string file in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
                     {
-                        if (ContentValidator.IsInsideFolder(file, registration.Folder))
+                        if (ContentValidator.IsInsideFolder(file, root))
                             yield return file; // skip links pointing elsewhere
                     }
                 }
