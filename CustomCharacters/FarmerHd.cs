@@ -64,10 +64,11 @@ namespace CustomCharacters
         *********/
         public static readonly FarmerLayer[] Layers =
         {
-            new("farmer_base", "Body (male)", true),
-            new("farmer_girl_base", "Body (female)", true),
-            new("farmer_base_bald", "Body (male, bald)", true),
-            new("farmer_girl_base_bald", "Body (female, bald)", true),
+            // the game reads body frames six to a row (frame * 16 % 96), whatever the sheet's width; the rest of each row is arms
+            new("farmer_base", "Body (male)", true, GridWidth: 96),
+            new("farmer_girl_base", "Body (female)", true, GridWidth: 96),
+            new("farmer_base_bald", "Body (male, bald)", true, GridWidth: 96),
+            new("farmer_girl_base_bald", "Body (female, bald)", true, GridWidth: 96),
             new("hairstyles", "Hairstyles", false, CellWidth: 16, CellHeight: 96,        // one style, three rows of directions
                 PartHeight: 32, PartLabels: new[] { "facing you", "facing right", "facing away" }),
             // every style in this sheet has its own left-facing sprite (Data/HairData says usesUniqueLeftSprite), so it's four
@@ -76,7 +77,7 @@ namespace CustomCharacters
                 PartHeight: 32, PartLabels: new[] { "facing you", "facing right", "facing away", "facing left" }),
             new("shirts", "Shirts", false, CellWidth: 8, CellHeight: 32, Group: ClothesGroup, GridWidth: 128, // 8x8 per direction
                 PartHeight: 8, PartLabels: new[] { "facing you", "facing right", "facing away", "facing left" }), // the right half holds the dye masks
-            new("pants", "Pants", false, CellWidth: 16, CellHeight: 32, Group: ClothesGroup, StrideX: 192, StrideY: 688), // one frame; each pants takes a 192x688 block
+            new("pants", "Pants", false, CellWidth: 16, CellHeight: 32, Group: ClothesGroup, StrideX: 192, StrideY: 688, GridWidth: 1920), // ten per row (pants % 10 * 192), each a 192x688 block
             new("hats", "Hats", false, CellWidth: 20, CellHeight: 80, Group: ClothesGroup,                   // 20x20 per direction
                 PartHeight: 20, PartLabels: new[] { "facing you", "facing right", "facing away", "facing left" }),
             new("accessories", "Accessories (beards, glasses...)", false, CellWidth: 16, CellHeight: 32,     // 16x16 facing you, with the side view below it

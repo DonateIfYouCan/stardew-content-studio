@@ -3,7 +3,7 @@
 [SMAPI](https://smapi.io) mods for Stardew Valley 1.6 that add your own content from your own images, made and edited in an
 in-game editor (press `K`), in HD where you want it.
 
-![Custom paintings, a photo frame and an HD lamp in a shed](docs/screenshots/world-paintings-wall.png)
+![Stardew Content Studio: make your own content in the game, including a pixel editor](docs/banner.png)
 
 | Mod | What it does |
 |---|---|
