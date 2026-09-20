@@ -687,7 +687,7 @@ namespace CustomContentCore.UI
         }
 
         /// <summary>Everything a key can do here, with the key it uses unless you change it.</summary>
-        private IReadOnlyList<KeysScreen.Binding> Bindings { get; }
+        private IReadOnlyList<KeysScreen.Binding> Bindings { get; } = Array.Empty<KeysScreen.Binding>();
 
         /// <summary>What each of those does.</summary>
         private Dictionary<string, Action> Actions { get; } = new();

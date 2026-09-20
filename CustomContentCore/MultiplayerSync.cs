@@ -119,7 +119,9 @@ namespace CustomContentCore
         private bool HelloHandled;
         private string HostName = "";
         private OfferMessage? CurrentOffer;
-        private long HostId;
+
+        /// <summary>The player whose content we're taking: the host, or another player who shares. Only one at a time.</summary>
+        private long SenderId;
         private readonly Dictionary<string, (int Count, byte[]?[] Parts)> Incoming = new(StringComparer.OrdinalIgnoreCase);
         private Dictionary<string, string> Index = new(StringComparer.OrdinalIgnoreCase);
         private readonly List<(int Generation, string Key, OfferedFile File, Task<(bool Ok, byte[] Clean, string Error)> Task)> Sanitizing = new();
@@ -150,14 +152,14 @@ namespace CustomContentCore
         /// <summary>As host, send the (changed) content to players who accepted it, e.g. after editing.</summary>
         public void QueueOfferToAcceptingPlayers()
         {
-            if (Context.IsMultiplayer && Context.IsMainPlayer && CoreMod.Config.ShareContentAsHost && this.PlayerTokens.Count > 0)
+            if (Context.IsMultiplayer && CoreMod.Config.ShareContentAsHost && this.PlayerTokens.Count > 0)
                 this.OfferQueued = true;
         }
 
         /// <summary>As player, ask the host for its content if 'Accept content from hosts' was just turned on.</summary>
         public void OnAcceptChanged()
         {
-            if (Context.IsMultiplayer && !Context.IsMainPlayer && this.HelloHandled && CoreMod.Config.AcceptContentFromHost && this.Token == null)
+            if (Context.IsMultiplayer && this.HelloHandled && CoreMod.Config.AcceptContentFromHost && this.Token == null)
                 this.SendJoin();
         }
 
@@ -167,7 +169,7 @@ namespace CustomContentCore
         *********/
         private void OnPeerConnected(object? sender, PeerConnectedEventArgs e)
         {
-            if (!Context.IsMainPlayer || !CoreMod.Config.ShareContentAsHost || e.Peer.IsSplitScreen || e.Peer.GetMod(this.ModId) == null)
+            if (!CoreMod.Config.ShareContentAsHost || e.Peer.IsSplitScreen || e.Peer.GetMod(this.ModId) == null)
                 return;
             this.Helper.Multiplayer.SendMessage(new HelloMessage { HostName = Game1.player.Name }, HelloType, new[] { this.ModId }, new[] { e.Peer.PlayerID });
         }
@@ -176,8 +178,8 @@ namespace CustomContentCore
         {
             this.PlayerTokens.Remove(e.Peer.PlayerID);
 
-            // player side: the host left
-            if (!Context.IsMainPlayer && e.Peer.IsHost)
+            // whoever's content we were using has gone
+            if (e.Peer.PlayerID == this.SenderId || e.Peer.IsHost && this.SenderId == 0)
                 this.StopUsingHostContent();
         }
 
@@ -330,19 +332,20 @@ namespace CustomContentCore
         /*********
         ** Player
         *********/
-        private void OnHello(HelloMessage hello)
+        private void OnHello(long fromPlayer, HelloMessage hello)
         {
-            // anyone could send this (it's not trusted), so only answer once per game and only ever to the real host
+            // one source at a time: the first player who offers is the one we answer, and our secret only goes to them
             if (this.HelloHandled)
                 return;
             this.HelloHandled = true;
+            this.SenderId = fromPlayer;
             this.HostName = CleanName(hello.HostName);
 
             if (!CoreMod.Config.AcceptContentFromHost)
             {
-                this.SendToHost(new JoinMessage { Declined = true }, JoinType);
-                Game1.addHUDMessage(new HUDMessage($"{this.HostName} is sharing custom content. Turn on 'Accept content from hosts' (K) to see it.") { noIcon = true });
-                this.Monitor.Log($"{this.HostName} offered custom content, but 'Accept content from hosts' is off; declined.", LogLevel.Info);
+                this.SendToSender(new JoinMessage { Declined = true }, JoinType);
+                Game1.addHUDMessage(new HUDMessage($"{this.HostName} is sharing custom content. Turn on 'Accept shared content' (K) to see it.") { noIcon = true });
+                this.Monitor.Log($"{this.HostName} offered custom content, but 'Accept shared content' is off; declined.", LogLevel.Info);
                 return;
             }
             this.SendJoin();
@@ -352,7 +355,7 @@ namespace CustomContentCore
         private void SendJoin()
         {
             this.Token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
-            this.SendToHost(new JoinMessage { Token = this.Token }, JoinType);
+            this.SendToSender(new JoinMessage { Token = this.Token }, JoinType);
         }
 
         private void OnOffer(OfferMessage offer)
@@ -391,7 +394,6 @@ namespace CustomContentCore
             }
             offer.Files = valid;
             this.CurrentOffer = offer;
-            this.HostId = Game1.MasterPlayer.UniqueMultiplayerID;
             this.LoadIndex();
 
             // request what's missing or changed (the cache has rebuilt files, so compare with the hash the host sent before)
@@ -403,7 +405,7 @@ namespace CustomContentCore
             this.Generation++;
             this.ReceivedBytes = 0;
             this.Pending = needed.Count;
-            this.SendToHost(new RequestMessage { Token = this.Token, Files = needed }, RequestType);
+            this.SendToSender(new RequestMessage { Token = this.Token, Files = needed }, RequestType);
             this.Monitor.Log($"The host offered {valid.Count} content files; downloading {needed.Count}.", LogLevel.Info);
             if (needed.Count > 0)
                 Game1.addHUDMessage(new HUDMessage($"Downloading {offer.HostName}'s custom content ({needed.Count} files)...") { noIcon = true });
@@ -520,6 +522,7 @@ namespace CustomContentCore
             this.Generation++;
             this.Token = null;
             this.HelloHandled = false;
+            this.SenderId = 0;
             this.Incoming.Clear();
             this.Outgoing.Clear();
             this.PlayerTokens.Clear();
@@ -545,23 +548,24 @@ namespace CustomContentCore
                 return;
             try
             {
-                // note: FromPlayerID can be forged by other farmhands; the secret is what proves a message is from the host
-                bool fromHost = !Context.IsMainPlayer && e.FromPlayerID == Game1.MasterPlayer?.UniqueMultiplayerID;
+                // note: FromPlayerID can be forged, and messages between players pass through the host; the secret is what
+                // proves an offer belongs to the player we answered, and everything received is rebuilt before it's used
+                bool fromOurSender = this.SenderId != 0 && e.FromPlayerID == this.SenderId;
                 switch (e.Type)
                 {
-                    case HelloType when fromHost:
-                        this.OnHello(e.ReadAs<HelloMessage>());
+                    case HelloType:
+                        this.OnHello(e.FromPlayerID, e.ReadAs<HelloMessage>());
                         break;
-                    case OfferType when fromHost:
+                    case OfferType when fromOurSender:
                         this.OnOffer(e.ReadAs<OfferMessage>());
                         break;
-                    case ChunkType when fromHost:
+                    case ChunkType when fromOurSender:
                         this.OnChunk(e.ReadAs<ChunkMessage>());
                         break;
-                    case JoinType when Context.IsMainPlayer:
+                    case JoinType when CoreMod.Config.ShareContentAsHost:
                         this.OnJoin(e.FromPlayerID, e.ReadAs<JoinMessage>());
                         break;
-                    case RequestType when Context.IsMainPlayer:
+                    case RequestType when CoreMod.Config.ShareContentAsHost:
                         this.OnRequest(e.FromPlayerID, e.ReadAs<RequestMessage>());
                         break;
                     default:
@@ -575,11 +579,12 @@ namespace CustomContentCore
             }
         }
 
-        /// <summary>Send a message to the host only (it's never forwarded to other players, so they can't see the secret).</summary>
-        private void SendToHost<T>(T message, string type)
+        /// <summary>Send a message to the one player whose content we're taking, and to nobody else.</summary>
+        private void SendToSender<T>(T message, string type)
         {
-            if (Game1.MasterPlayer?.UniqueMultiplayerID is long hostId)
-                this.Helper.Multiplayer.SendMessage(message, type, new[] { this.ModId }, new[] { hostId });
+            long id = this.SenderId != 0 ? this.SenderId : Game1.MasterPlayer?.UniqueMultiplayerID ?? 0;
+            if (id != 0)
+                this.Helper.Multiplayer.SendMessage(message, type, new[] { this.ModId }, new[] { id });
         }
 
         /// <summary>Reload a mod's content, so one mod failing never leaves the others half-switched.</summary>
@@ -608,7 +613,7 @@ namespace CustomContentCore
 
         private string GetHostFolder()
         {
-            string host = new string((this.HostName + "_" + this.HostId).Select(ch => IsAsciiLetterOrDigit(ch) || ch is '_' or '-' ? ch : '_').ToArray());
+            string host = new string((this.HostName + "_" + this.SenderId).Select(ch => IsAsciiLetterOrDigit(ch) || ch is '_' or '-' ? ch : '_').ToArray());
             return Path.Combine(this.Helper.DirectoryPath, "host-content", host);
         }
 
