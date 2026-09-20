@@ -327,14 +327,16 @@ namespace CustomCharacters
             return true;
         }
 
-        /// <summary>Reduce an image reference to a plain file name, and copy in the file if one came with the change.</summary>
+        /// <summary>Make an image reference safe to store, and copy in the file if one came with the change.</summary>
+        /// <remarks>The folder is kept: images often live in a sub-folder like 'imported/', and only the name would miss the file.</remarks>
         private string TakeImage(string? file, IDictionary<string, string> files)
         {
-            string name = Path.GetFileName(file ?? "");
-            if (name.Length > 0 && files.TryGetValue(name, out string? sent) && System.IO.File.Exists(sent))
+            string name = CustomContent.SafeContentPath(file);
+            if (name.Length > 0 && files.TryGetValue(Path.GetFileName(name), out string? sent) && System.IO.File.Exists(sent))
             {
-                Directory.CreateDirectory(this.ImageFolder);
-                System.IO.File.Copy(sent, Path.Combine(this.ImageFolder, name), overwrite: true);
+                string target = Path.Combine(this.ImageFolder, name.Replace('/', Path.DirectorySeparatorChar));
+                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                System.IO.File.Copy(sent, target, overwrite: true);
             }
             return name;
         }

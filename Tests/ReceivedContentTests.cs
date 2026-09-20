@@ -99,6 +99,18 @@ namespace Tests
             Assert.False(ContentValidator.TrySanitize(".png", Encoding.ASCII.GetBytes("MZ this is a program"), out _, out _));
         }
 
+        [Theory]
+        [InlineData("imported/sunset.png", "imported/sunset.png")]   // the folder matters: flattening it loses the file
+        [InlineData("sunset.png", "sunset.png")]
+        [InlineData("imported\\sunset.png", "imported/sunset.png")] // a Windows path still names the same image
+        [InlineData("../../secrets.png", "secrets.png")]             // tricks keep only the name
+        [InlineData("/etc/passwd", "passwd")]
+        [InlineData(null, "")]
+        public void KeepsTheFolderAnImageIsIn(string? reference, string expected)
+        {
+            Assert.Equal(expected, CustomContent.SafeContentPath(reference));
+        }
+
         /// <summary>A small PNG to feed the checks.</summary>
         private static byte[] MakePng(int width, int height)
         {

@@ -351,15 +351,16 @@ namespace CustomPaintings
             List<Slide> slides = painting.GetSlides();
             foreach (Slide slide in slides)
             {
-                // only a file name, never a path: the image belongs in this content's own images folder
-                string name = Path.GetFileName(slide.File ?? "");
+                // a plain path inside this content's own images folder, keeping the sub-folder it's in (often 'imported/')
+                string name = CustomContent.SafeContentPath(slide.File);
                 if (name.Length == 0)
                     continue;
                 slide.File = name;
-                if (files.TryGetValue(name, out string? sent) && System.IO.File.Exists(sent))
+                if (files.TryGetValue(Path.GetFileName(name), out string? sent) && System.IO.File.Exists(sent))
                 {
-                    Directory.CreateDirectory(this.ImageFolder);
-                    System.IO.File.Copy(sent, Path.Combine(this.ImageFolder, name), overwrite: true);
+                    string target = Path.Combine(this.ImageFolder, name.Replace('/', Path.DirectorySeparatorChar));
+                    Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                    System.IO.File.Copy(sent, target, overwrite: true);
                 }
             }
             painting.SetSlides(slides);

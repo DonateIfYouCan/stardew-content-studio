@@ -48,6 +48,10 @@ namespace CustomCharacters.UI
         private readonly Button OwnCropButton;
         private readonly Button RemoveOverrideButton;
         private readonly Button ExportButton;
+        private readonly Button PaintButton;
+
+        /// <summary>The portrait image the painter is open on, if any, as asked for with <see cref="CustomContent.TakeLock"/>.</summary>
+        private string? HeldImage;
         private readonly Cycler DetailCycler;
         private readonly Button SaveButton;
         private readonly Button CancelButton;
@@ -76,6 +80,7 @@ namespace CustomCharacters.UI
             this.OwnImageButton = this.Add(new Button("Use a different image", () => this.BrowseImage(), "Give this emotion its own image."));
             this.OwnCropButton = this.Add(new Button("Same image, own crop", this.CreateCropOverride, "Use the default image, but frame this emotion differently."));
             this.RemoveOverrideButton = this.Add(new Button("Use default image", this.RemoveOverride, "Remove this emotion's own image."));
+            this.PaintButton = this.Add(new Button("Paint", this.Paint, "Draw this portrait here in the game: the image it uses, or the game's own portrait copied at the size you pick."));
             this.ExportButton = this.Add(new Button("Export original", this.ExportOriginal, "Save the game's original portrait as a PNG, to edit in another program and import again."));
             this.DetailCycler = this.Add(new Cycler(
                 new() { ("0", "Auto"), ("64", "Pixel art"), ("128", "Sharp"), ("256", "HD") },
@@ -89,8 +94,14 @@ namespace CustomCharacters.UI
             this.SelectSlot(DefaultSlot);
         }
 
+        public override void OnResume()
+        {
+            this.ReleaseImage(); // the painter is closed again, so another player can take their turn at that image
+        }
+
         public override void Dispose()
         {
+            this.ReleaseImage();
             this.Cropper.Dispose();
             this.Original?.Dispose();
             this.ClearPreviews();
@@ -115,6 +126,7 @@ namespace CustomCharacters.UI
             this.OwnImageButton.Bounds = new Rectangle(area.X + pad, by, 290, 48);
             this.OwnCropButton.Bounds = new Rectangle(this.OwnImageButton.Bounds.Right + 10, by, 290, 48);
             this.RemoveOverrideButton.Bounds = new Rectangle(area.X + pad + leftW - 250, by, 250, 48);
+            this.PaintButton.Bounds = new Rectangle(this.FitButton.Bounds.Right + 10, by, 130, 48);
 
             // right: emotion grid, preview, detail
             int rightX = area.X + pad + leftW + 24;
@@ -307,6 +319,77 @@ namespace CustomCharacters.UI
                 this.ClearPreviews();
                 this.SelectSlot(slot);
             }, this.Store.BrowserPlaces));
+        }
+
+        /// <summary>Draw this portrait here in the game: the image it uses, or a copy of the game's own at the size picked.</summary>
+        private void Paint()
+        {
+            int slot = this.Selected;
+            ImageRef? image = slot == DefaultSlot ? this.Set.Default : this.Set.GetImage(slot);
+
+            // painting an image they already have: hold that file while the painter is open
+            if (image != null && this.GetImage(image.File) is { } mine)
+            {
+                string thing = $"file:{CharacterStore.ImageFolderName}/{image.File}";
+                CustomContent.TakeLock(this.Store.Manifest, thing, $"{this.Set.Npc}'s portrait", (granted, holder) =>
+                {
+                    if (!granted)
+                    {
+                        this.ShowError($"{holder} is changing that image right now.");
+                        return;
+                    }
+                    this.HeldImage = thing;
+                    this.OpenPaint(slot, mine);
+                });
+                return;
+            }
+
+            if (this.Original == null)
+            {
+                this.ShowError("Couldn't read the original portraits.");
+                return;
+            }
+
+            // starting from the game's own portrait: it's copied, never changed
+            Rectangle area = Game1.getSourceRectForStandardTileSheet(this.Original, Math.Max(0, slot), 64, 64);
+            Pixels original = ImageProcessor.FromTexture(this.Original, area);
+            this.Root.Push(new ChoiceScreen(
+                $"Paint a copy of {this.Set.Npc}'s portrait ({original.Width}x{original.Height}). The game's own art is never changed.\n\nWhat size do you want to draw at?",
+                ("The game's size (1x)", $"{original.Width}x{original.Height}: one pixel is one game pixel.", () => this.OpenPaint(slot, original)),
+                ("Twice the size (2x)", $"{original.Width * 2}x{original.Height * 2}: room for finer detail.", () => this.OpenPaint(slot, ImageProcessor.Enlarge(original, 2))),
+                ("Four times the size (4x)", $"{original.Width * 4}x{original.Height * 4}: the usual size for HD art.", () => this.OpenPaint(slot, ImageProcessor.Enlarge(original, 4)))));
+        }
+
+        /// <summary>Open the paint screen on a portrait and use what comes back for this emotion.</summary>
+        private void OpenPaint(int slot, Pixels image)
+        {
+            this.Root.Push(new PaintScreen(image, $"Paint {this.Set.Npc}'s portrait", pixels =>
+            {
+                try
+                {
+                    string file = CustomContent.SaveImage(this.Store.ImageFolder, $"{this.Set.Npc} portrait painted", pixels);
+                    ImageRef painted = new() { File = file };
+                    if (slot == DefaultSlot)
+                        this.Set.Default = painted;
+                    else
+                        this.Set.Overrides[slot] = painted;
+                    this.ClearPreviews();
+                    this.SelectSlot(slot);
+                }
+                catch (Exception ex)
+                {
+                    this.ShowError($"Couldn't save the image: {ex.Message}");
+                }
+            }));
+        }
+
+        /// <summary>Let go of the portrait image the painter was open on.</summary>
+        private void ReleaseImage()
+        {
+            if (this.HeldImage is not { } thing)
+                return;
+            this.HeldImage = null;
+            CustomContent.ReleaseLock(this.Store.Manifest, thing);
         }
 
         /// <summary>Export the selected emotion's original portrait (the neutral one for the default slot).</summary>

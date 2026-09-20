@@ -211,6 +211,22 @@ namespace CustomContentCore
         }
 
         /// <summary>Turn a file name into a safe one: letters, digits, '_' and '-' only, capped in length.</summary>
+        /// <summary>
+        /// Make an image reference from another player safe to store: a plain relative path inside the mod's own content, keeping
+        /// the folder it's in (images often live in a sub-folder like <c>imported/</c>, and flattening the name loses the file).
+        /// </summary>
+        /// <param name="reference">The reference as the data names it.</param>
+        /// <returns>The reference to store, or an empty string if there was none.</returns>
+        public static string SafeContentPath(string? reference)
+        {
+            string path = (reference ?? "").Replace('\\', '/').Trim();
+            if (path.Length == 0)
+                return "";
+            return ContentValidator.IsSafeRelativePath(path)
+                ? path
+                : System.IO.Path.GetFileName(path); // anything with tricks in it keeps only its name
+        }
+
         public static string ToFileName(string? name)
         {
             string safe = new string((name ?? "").Select(ch => char.IsLetterOrDigit(ch) || ch is '_' or '-' ? ch : '_').ToArray()).Trim('_');

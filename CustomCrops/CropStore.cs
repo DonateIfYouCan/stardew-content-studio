@@ -359,16 +359,18 @@ namespace CustomCrops
         /// <param name="file">The image reference as the change names it.</param>
         /// <param name="files">The files that came with the change, by the name the data uses.</param>
         /// <returns>The file name, or an empty string if there's no image.</returns>
-        /// <remarks>Only a file name, never a path: Player A's change names an image, and that image belongs in this content's own images folder, not somewhere else on the Host's computer.</remarks>
+        /// <remarks>Only a plain path inside this content's own images folder: Player A's change can't name a file somewhere else on the Host's computer.</remarks>
         private string TakeImage(string? file, IDictionary<string, string> files)
         {
-            string name = Path.GetFileName(file ?? "");
+            // keep the folder the image is in: they often live in a sub-folder like 'imported/', and only the name would miss the file
+            string name = CustomContent.SafeContentPath(file);
             if (name.Length == 0)
                 return "";
-            if (files.TryGetValue(name, out string? sent) && System.IO.File.Exists(sent))
+            if (files.TryGetValue(Path.GetFileName(name), out string? sent) && System.IO.File.Exists(sent))
             {
-                Directory.CreateDirectory(this.ImageFolder);
-                System.IO.File.Copy(sent, Path.Combine(this.ImageFolder, name), overwrite: true);
+                string target = Path.Combine(this.ImageFolder, name.Replace('/', Path.DirectorySeparatorChar));
+                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                System.IO.File.Copy(sent, target, overwrite: true);
             }
             return name;
         }

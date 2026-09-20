@@ -305,7 +305,8 @@ namespace CustomCharacters.UI
         {
             // in a game where everyone uses the Host's set, say who's changing this sheet rather than let two players save over each other
             this.NormalTooltips ??= new[] { this.ChooseButton, this.PaintButton, this.RemoveButton }.Select(b => (b, b.Tooltip)).ToArray();
-            string? busy = CustomContent.WhoIsChanging(this.Store.Manifest, LayerThing(this.Layer));
+            string? busy = CustomContent.WhoIsChanging(this.Store.Manifest, LayerThing(this.Layer))
+                ?? (this.Files.TryGetValue(this.Layer.Id, out string? sheet) ? CustomContent.WhoIsChanging(this.Store.Manifest, SheetLockThing(sheet)) : null);
             foreach ((Button button, string? tooltip) in this.NormalTooltips)
             {
                 button.Enabled = busy == null;

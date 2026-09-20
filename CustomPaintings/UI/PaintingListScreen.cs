@@ -90,12 +90,12 @@ namespace CustomPaintings.UI
             this.DeleteButton = this.Add(new Button("Delete", () => this.WhenNobodyElseIsChangingIt(this.DeleteSelected)));
             this.DuplicateButton = this.Add(new Button("Duplicate", this.DuplicateSelected, "Make a copy to tweak, keeping the original."));
             this.GiveButton = this.Add(new Button("Put in inventory", this.GiveSelected, "Adds one to your inventory, for testing."));
-            this.ReplaceButton = this.Add(new Button("Replace image", () => this.WhenNobodyElseIsChangingTheList(this.EditSelected), "Show your own image instead of this painting."));
-            this.RestoreButton = this.Add(new Button("Restore original", this.RestoreSelected));
-            this.HideButton = this.Add(new Button("Hide from shops", this.ToggleHidden, "Take it out of shops, the catalogue and fishing. Placed copies stay."));
+            this.ReplaceButton = this.Add(new Button("Replace image", () => this.WhenNobodyElseIsChangingTheList(this.EditSelected, keepHolding: true), "Show your own image instead of this painting."));
+            this.RestoreButton = this.Add(new Button("Restore original", () => this.WhenNobodyElseIsChangingTheList(this.RestoreSelected)));
+            this.HideButton = this.Add(new Button("Hide from shops", () => this.WhenNobodyElseIsChangingTheList(this.ToggleHidden), "Take it out of shops, the catalogue and fishing. Placed copies stay."));
             this.ExportButton = this.Add(new Button("Export original", this.ExportSelected, "Save the game's original art as a PNG, to edit in another program and use as a replacement."));
             this.CloseButton = this.Add(new Button("Close", () => this.Root.Pop()));
-            this.AutoAddBox = this.Add(new Checkbox("Auto-add images dropped into the paintings folder", this.Store.File.AutoAddImages, this.SetAutoAdd));
+            this.AutoAddBox = this.Add(new Checkbox("Auto-add images dropped into the paintings folder", this.Store.File.AutoAddImages, value => this.WhenNobodyElseIsChangingTheList(() => this.SetAutoAdd(value))));
 
             this.Refresh();
         }
@@ -474,14 +474,25 @@ namespace CustomPaintings.UI
         }
 
         /// <summary>Change what the whole list does (what's auto-added, or which of the game's paintings are replaced or hidden).</summary>
-        private void WhenNobodyElseIsChangingTheList(Action action)
+        /// <param name="action">What to do once nobody else is changing the list.</param>
+        /// <param name="keepHolding">Whether to keep holding it afterwards, for an action that opens an editor rather than saving straight away.</param>
+        /// <remarks>
+        /// These change the list itself rather than one painting, so they're sent to the Host as the whole file - which the Host
+        /// only accepts from whoever holds it. Taking it here is what lets a hidden or replaced painting reach the others at all.
+        /// </remarks>
+        private void WhenNobodyElseIsChangingTheList(Action action, bool keepHolding = false)
         {
             CustomContent.TakeLock(this.Store.Manifest, ListLockThing, "the paintings list", (granted, holder) =>
             {
-                if (granted)
-                    action();
-                else
+                if (!granted)
+                {
                     this.ShowMessage($"{holder} is changing the paintings list right now.", error: true);
+                    return;
+                }
+
+                action();
+                if (!keepHolding)
+                    CustomContent.ReleaseLock(this.Store.Manifest, ListLockThing); // saved already, so let the others have it back
             });
         }
 
