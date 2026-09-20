@@ -31,6 +31,9 @@ namespace CustomContentCore
 
         /// <summary>When you join a multiplayer game, accept the host's custom content (used only while you're in their game).</summary>
         public bool AcceptContentFromHost { get; set; } = false;
+
+        /// <summary>Let the players you share content with take a turn at changing one of your items, which you then keep.</summary>
+        public bool LetOthersChangeMyContent { get; set; } = false;
     }
 
     /// <summary>The mod entry point.</summary>
@@ -45,6 +48,9 @@ namespace CustomContentCore
         /// <summary>Shares custom content between host and players in multiplayer.</summary>
         internal static MultiplayerSync? Sync { get; private set; }
 
+        /// <summary>Lets players change each other's shared content, one item at a time.</summary>
+        internal static CoEditing? Editing { get; private set; }
+
         public override void Entry(IModHelper helper)
         {
             StaticMonitor = this.Monitor;
@@ -55,6 +61,7 @@ namespace CustomContentCore
             HdTextures.Apply(harmony, this.Monitor);
 
             Sync = new MultiplayerSync(helper, this.Monitor, this.ModManifest);
+            Editing = new CoEditing(helper, this.Monitor, this.ModManifest);
             helper.Events.Input.ButtonPressed += this.OnButtonPressed;
             helper.Events.GameLoop.ReturnedToTitle += (_, _) => DropPausedEditor();
             helper.Events.GameLoop.SaveLoaded += (_, _) => DropPausedEditor();

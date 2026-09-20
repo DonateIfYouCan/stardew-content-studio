@@ -15,7 +15,15 @@ namespace CustomContentCore
         ** Types
         *********/
         /// <summary>A mod's content registered for packs.</summary>
-        private sealed record Registration(IManifest Mod, string Folder, string[] Paths, Action Reload, Func<IEnumerable<string>>? SharedFiles);
+        private sealed record Registration(IManifest Mod, string Folder, string[] Paths, Action Reload, Func<IEnumerable<string>>? SharedFiles, ContentEditing? Editing);
+
+        /// <summary>How a mod lets other players change one of its items in a multiplayer game.</summary>
+        /// <param name="GetItemJson">Get one of your own items as JSON, or null if there's no such item.</param>
+        /// <param name="ApplyItemJson">
+        /// Write a changed item into your own content: the item's ID, its new JSON, and the images that came with it
+        /// (the name the data refers to, and the full path of a checked file to copy in). Returns whether it was applied.
+        /// </param>
+        public sealed record ContentEditing(Func<string, string?> GetItemJson, Func<string, string, IDictionary<string, string>, bool> ApplyItemJson);
 
         /// <summary>The manifest stored in each pack.</summary>
         private sealed class PackManifest
@@ -133,10 +141,17 @@ namespace CustomContentCore
         /// Gets the files actually in use (full paths: the data file and the images it references). In multiplayer, only these are
         /// shared, so unused or deleted images never leave the PC. If null, every file in <paramref name="paths"/> is shared.
         /// </param>
-        public static void Register(IManifest mod, string modFolder, string[] paths, Action reload, Func<IEnumerable<string>>? sharedFiles = null)
+        /// <param name="editing">How other players may change this mod's items in multiplayer (null: they can't).</param>
+        public static void Register(IManifest mod, string modFolder, string[] paths, Action reload, Func<IEnumerable<string>>? sharedFiles = null, ContentEditing? editing = null)
         {
             Registrations.RemoveAll(r => r.Mod.UniqueID == mod.UniqueID);
-            Registrations.Add(new Registration(mod, modFolder, paths, reload, sharedFiles));
+            Registrations.Add(new Registration(mod, modFolder, paths, reload, sharedFiles, editing));
+        }
+
+        /// <summary>How a mod lets other players change its items, if it does.</summary>
+        internal static ContentEditing? GetEditing(string modId)
+        {
+            return Registrations.FirstOrDefault(r => r.Mod.UniqueID.Equals(modId, StringComparison.OrdinalIgnoreCase))?.Editing;
         }
 
         /// <summary>Get the files a mod shares in multiplayer (full paths inside its own folder, no links).</summary>

@@ -35,6 +35,9 @@ namespace CustomPaintings
         /// <summary>The name of the player it belongs to, empty for your own.</summary>
         public string OwnerName { get; init; } = "";
 
+        /// <summary>The ID the painting has in its owner's own data, which is what a change is sent back for.</summary>
+        public string OwnerItemId { get; init; } = "";
+
         /// <summary>Whether this is your own painting, the only kind you can change.</summary>
         public bool IsOwn => this.OwnerId == 0;
 
@@ -93,7 +96,7 @@ namespace CustomPaintings
 
         private readonly IModHelper Helper;
         private readonly IMonitor Monitor;
-        private readonly IManifest Manifest;
+        internal readonly IManifest Manifest;
         private readonly string TextureAssetPrefix;
 
         /// <summary>Rendered sprites by normalized asset name (premultiplied).</summary>
@@ -335,6 +338,51 @@ namespace CustomPaintings
                     return Path.GetFullPath(candidate);
             }
             return null;
+        }
+
+        /// <summary>Get one of your own paintings as JSON, for a player who asked to change it.</summary>
+        /// <param name="itemId">The painting's ID in your own data.</param>
+        public string? GetItemJson(string itemId)
+        {
+            CustomPainting? painting = this.ReadFile().Paintings.FirstOrDefault(p => string.Equals(p.Id, itemId, StringComparison.OrdinalIgnoreCase));
+            return painting == null
+                ? null
+                : JsonConvert.SerializeObject(painting, new JsonSerializerSettings { Formatting = Formatting.Indented, NullValueHandling = NullValueHandling.Ignore });
+        }
+
+        /// <summary>Write another player's change to one of your paintings into your own content.</summary>
+        /// <param name="itemId">The painting's ID in your own data; the change can't move to another painting or rename it.</param>
+        /// <param name="json">The changed painting.</param>
+        /// <param name="files">The images that came with it, already checked and rebuilt: the name the data uses, and the file to copy in.</param>
+        /// <returns>Whether it was applied.</returns>
+        public bool ApplyItemJson(string itemId, string json, IDictionary<string, string> files)
+        {
+            CustomPainting? painting = JsonConvert.DeserializeObject<CustomPainting>(json);
+            PaintingsFile file = this.ReadFile();
+            int index = file.Paintings.FindIndex(p => string.Equals(p.Id, itemId, StringComparison.OrdinalIgnoreCase));
+            if (painting == null || index < 0)
+                return false;
+
+            painting.Id = file.Paintings[index].Id;
+            List<Slide> slides = painting.GetSlides();
+            foreach (Slide slide in slides)
+            {
+                // only a file name, never a path: the image belongs in our own images folder
+                string name = Path.GetFileName(slide.File ?? "");
+                if (name.Length == 0)
+                    continue;
+                slide.File = name;
+                if (files.TryGetValue(name, out string? sent) && System.IO.File.Exists(sent))
+                {
+                    Directory.CreateDirectory(this.ImageFolder);
+                    System.IO.File.Copy(sent, Path.Combine(this.ImageFolder, name), overwrite: true);
+                }
+            }
+            painting.SetSlides(slides);
+
+            file.Paintings[index] = painting;
+            this.Save(file);
+            return true;
         }
 
         /// <summary>Get the files in use (data file, images and custom frames), which are the only ones shared in multiplayer.</summary>
@@ -702,6 +750,7 @@ namespace CustomPaintings
             this.Added.Add(new ResolvedEntry
             {
                 FurnitureId = itemId,
+                OwnerItemId = painting.Id,
                 OwnerId = source.OwnerId,
                 OwnerName = source.IsOwn ? "" : source.OwnerName,
                 Name = source.IsOwn ? CleanName(painting.Name ?? painting.Id) : $"{CleanName(painting.Name ?? painting.Id)} ({source.OwnerName})",

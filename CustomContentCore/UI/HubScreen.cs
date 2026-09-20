@@ -18,6 +18,7 @@ namespace CustomContentCore.UI
         private readonly Button ImportButton;
         private readonly Checkbox ShareBox;
         private readonly Checkbox AcceptBox;
+        private readonly Checkbox ChangeBox;
         private readonly Button DonateButton;
         private readonly Button GitHubButton;
 
@@ -48,6 +49,8 @@ namespace CustomContentCore.UI
                 "Multiplayer: anyone in your game who accepts shared content gets yours (paintings, crops, ...), so you see the same things. It works whether you host or join."));
             this.DonateButton = this.Add(new Button("Buy me a coffee", () => this.CopyLink(DonateUrl), $"Optional. Copies {DonateUrl} to paste in your browser. Nothing is unlocked by donating."));
             this.GitHubButton = this.Add(new Button("GitHub: bugs & ideas", () => this.CopyLink(GitHubUrl), $"Source, docs, bug reports, feedback and feature requests. Copies {GitHubUrl} to paste in your browser."));
+            this.ChangeBox = this.Add(new Checkbox("Let others change my content", CoreMod.Config.LetOthersChangeMyContent, v => { CoreMod.Config.LetOthersChangeMyContent = v; CoreMod.SaveConfig(); },
+                "Multiplayer: players you share with can ask for a turn at changing one of your items, and what they send back is saved as yours. One player at a time, and only items you already share.\nOnly turn this on if you play with people you trust."));
             this.AcceptBox = this.Add(new Checkbox("Accept shared content", CoreMod.Config.AcceptContentFromHost, this.OnAcceptToggled,
                 "Multiplayer: take the custom content of the first player in your game who shares it, host or not. It's only used while you're in that game; your own content isn't changed.\nIf you share your own content too, you keep using yours.\nOnly turn this on if you play with people you trust."));
         }
@@ -172,6 +175,7 @@ namespace CustomContentCore.UI
             int boxW = Math.Max(240, Math.Min(520, this.DonateButton.Bounds.X - 24 - (area.X + 32)));
             this.ShareBox.Bounds = new Rectangle(area.X + 32, area.Bottom - 84 - 118, boxW, 44);
             this.AcceptBox.Bounds = new Rectangle(area.X + 32, area.Bottom - 84 - 64, boxW, 44);
+            this.ChangeBox.Bounds = new Rectangle(area.X + 32 + boxW + 16, area.Bottom - 84 - 64, boxW, 44);
         }
 
         public override void Draw(SpriteBatch b, int mouseX, int mouseY)
