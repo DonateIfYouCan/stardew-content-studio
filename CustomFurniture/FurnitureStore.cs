@@ -119,14 +119,12 @@ namespace CustomFurniture
             List<string> files = new() { Path.Combine(this.ContentFolder, DataFileName) };
             foreach (CustomFurnitureItem item in this.File.Furniture)
             {
-                string path = Path.Combine(this.ImageFolder, item.Sheet ?? "");
-                if (!string.IsNullOrWhiteSpace(item.Sheet) && System.IO.File.Exists(path) && CustomContent.IsInsideFolder(path, this.ImageFolder))
+                if (CustomContent.FindImage(item.Sheet, this.ImageFolder) is { } path)
                     files.Add(path);
             }
             foreach (CustomWallpaper item in this.File.Wallpapers)
             {
-                string path = Path.Combine(this.ImageFolder, item.Image ?? "");
-                if (!string.IsNullOrWhiteSpace(item.Image) && System.IO.File.Exists(path) && CustomContent.IsInsideFolder(path, this.ImageFolder))
+                if (CustomContent.FindImage(item.Image, this.ImageFolder) is { } path)
                     files.Add(path);
             }
             return files;
@@ -486,11 +484,9 @@ namespace CustomFurniture
 
         public Pixels? Decode(string? file)
         {
-            if (string.IsNullOrWhiteSpace(file))
+            string? path = CustomContent.FindImage(file, this.ImageFolder); // only inside the content folder
+            if (path == null)
                 return null;
-            string path = Path.Combine(this.ImageFolder, file);
-            if (!System.IO.File.Exists(path) || !CustomContent.IsInsideFolder(path, this.ImageFolder))
-                return null; // only inside the content folder
             try
             {
                 return ImageProcessor.Decode(path);

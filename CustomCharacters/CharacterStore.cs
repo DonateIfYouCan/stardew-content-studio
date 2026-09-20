@@ -688,10 +688,7 @@ namespace CustomCharacters
         /// <summary>Get the full path to an image in the images folder, if it exists.</summary>
         public string? ResolveImage(string? file)
         {
-            if (string.IsNullOrWhiteSpace(file))
-                return null;
-            string path = Path.Combine(this.ImageFolder, file);
-            return System.IO.File.Exists(path) && CustomContent.IsInsideFolder(path, this.ImageFolder) ? Path.GetFullPath(path) : null; // only inside the content folder
+            return CustomContent.FindImage(file, this.ImageFolder); // only inside the content folder
         }
 
         /// <summary>Decode an image for the editor (capped in size), or null if it can't be read.</summary>

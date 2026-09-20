@@ -311,16 +311,8 @@ namespace CustomPaintings
         /// <summary>Get the full path to an image referenced in the data, if it exists.</summary>
         public string? ResolveImage(string? image)
         {
-            if (string.IsNullOrWhiteSpace(image))
-                return null;
-
             // only files inside the content folder (content can come from another player in multiplayer)
-            foreach (string candidate in new[] { Path.Combine(this.ImageFolder, image), Path.Combine(this.ModFolder, image) })
-            {
-                if (System.IO.File.Exists(candidate) && CustomContent.IsInsideFolder(candidate, this.ModFolder))
-                    return Path.GetFullPath(candidate);
-            }
-            return null;
+            return CustomContent.FindImage(image, this.ImageFolder, this.ModFolder);
         }
 
         /// <summary>The IDs of the paintings in the content this mod is using now.</summary>

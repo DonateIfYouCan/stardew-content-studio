@@ -292,10 +292,7 @@ namespace CustomCrops
 
         public string? ResolveImage(string? file)
         {
-            if (string.IsNullOrWhiteSpace(file))
-                return null;
-            string path = Path.Combine(this.ImageFolder, file);
-            return System.IO.File.Exists(path) && CustomContent.IsInsideFolder(path, this.ImageFolder) ? Path.GetFullPath(path) : null; // only inside the content folder
+            return CustomContent.FindImage(file, this.ImageFolder); // only inside the content folder
         }
 
         /// <summary>The IDs of the crops in the content this mod is using now.</summary>

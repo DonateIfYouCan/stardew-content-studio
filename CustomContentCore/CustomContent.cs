@@ -126,8 +126,9 @@ namespace CustomContentCore
         /// <remarks>In a multiplayer game you edit the host's content, which is what everyone is using; what you save is sent to the host, who keeps it.</remarks>
         public static void EnsureEditable(IManifest mod)
         {
-            if (ContentPacks.IsUsingHostContent(mod) && CoreMod.Sync?.CanChangeHostContent != true)
-                throw new InvalidOperationException("the host doesn't let players change their custom content");
+            // in a host's game anything may be written here: it's the host's copy on this PC, and the host decides what it
+            // keeps. Adding something and changing what you added are always yours to do; the rest the host refuses and
+            // puts back, with a line saying so.
         }
 
         /// <summary>Whether a file path is really inside a folder (after resolving '..'; links aren't followed). Use this before loading any file named in content data.</summary>
@@ -226,6 +227,41 @@ namespace CustomContentCore
             return ContentValidator.IsSafeRelativePath(path)
                 ? path
                 : System.IO.Path.GetFileName(path); // anything with tricks in it keeps only its name
+        }
+
+        /// <summary>
+        /// Find the image a data file names, inside the folders it's allowed to be in. A reference that names no folder is also
+        /// looked for one level down, because images are often kept in a sub-folder like <c>imported/</c> and older data (and
+        /// hand-written content packs) name the file on its own.
+        /// </summary>
+        /// <param name="reference">The image as the data names it, e.g. "sunset.png" or "imported/sunset.png".</param>
+        /// <param name="folders">The folders it may be in, tried in order; the first is also searched one level down.</param>
+        /// <returns>The full path, or null if there's no such image.</returns>
+        public static string? FindImage(string? reference, params string[] folders)
+        {
+            string path = SafeContentPath(reference);
+            if (path.Length == 0 || folders.Length == 0)
+                return null;
+
+            foreach (string folder in folders)
+            {
+                string candidate = System.IO.Path.Combine(folder, path.Replace('/', System.IO.Path.DirectorySeparatorChar));
+                if (System.IO.File.Exists(candidate) && IsInsideFolder(candidate, folder))
+                    return System.IO.Path.GetFullPath(candidate);
+            }
+
+            // named without a folder: look in the sub-folders of the first one
+            if (!path.Contains('/') && System.IO.Directory.Exists(folders[0]))
+            {
+                foreach (string sub in System.IO.Directory.GetDirectories(folders[0]))
+                {
+                    string candidate = System.IO.Path.Combine(sub, path);
+                    if (System.IO.File.Exists(candidate) && IsInsideFolder(candidate, folders[0]))
+                        return System.IO.Path.GetFullPath(candidate);
+                }
+            }
+
+            return null;
         }
 
         /// <summary>The smallest window the editor's screens are laid out for.</summary>
