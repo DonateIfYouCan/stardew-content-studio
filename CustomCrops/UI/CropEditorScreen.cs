@@ -70,37 +70,12 @@ namespace CustomCrops.UI
         private Rectangle PreviewArea;
         private readonly List<(Rectangle Row, string Label)> Labels = new();
 
-        /// <summary>The player this change is for, when changing someone else's crop (their ID is 0 for your own).</summary>
-        private readonly (long Id, string Name, string Folder) SuggestTo;
-
-        /// <summary>Their version of the crop when this edit started, so a change they made meanwhile isn't overwritten.</summary>
-        private readonly string SuggestBaseJson = "";
-
-        /// <summary>Whether this is a change to another player's crop, which they have to apply.</summary>
-        private bool Suggesting => this.SuggestTo.Id != 0;
-
 
         /*********
         ** Public methods
         *********/
-        /// <summary>Edit one of your own crops.</summary>
         public CropEditorScreen(CropStore store, CustomCrop crop, bool isNew, Action<string> onSaved)
-            : this(store, crop, isNew, onSaved, default, "") { }
-
-        /// <summary>Change another player's crop and send it back to them.</summary>
-        /// <param name="store">The crops store.</param>
-        /// <param name="crop">Their crop, as they have it now.</param>
-        /// <param name="owner">Who it belongs to, their name, and the folder their images are in.</param>
-        /// <param name="baseJson">Their version as JSON, so they can tell whether it changed while you were editing.</param>
-        /// <param name="onSaved">Called with the message to show once it's been sent.</param>
-        public CropEditorScreen(CropStore store, CustomCrop crop, (long Id, string Name, string Folder) owner, string baseJson, Action<string> onSaved)
-            : this(store, crop, isNew: false, onSaved, owner, baseJson) { }
-
-        private CropEditorScreen(CropStore store, CustomCrop crop, bool isNew, Action<string> onSaved, (long Id, string Name, string Folder) owner, string baseJson)
         {
-            // before anything reads an image: while changing another player's crop, the images come from their folder
-            this.SuggestTo = owner;
-            this.SuggestBaseJson = baseJson;
             this.Store = store;
             this.Crop = JsonConvert.DeserializeObject<CustomCrop>(JsonConvert.SerializeObject(crop))!; // edit a copy so Cancel discards changes
             this.IsNew = isNew;
@@ -156,7 +131,7 @@ namespace CustomCrops.UI
                 "How detailed the icons and plant look. Pixel art matches the game's style."));
 
             this.SaveButton = this.Add(new Button("Save", this.Save));
-            this.CancelButton = this.Add(new Button("Cancel", this.Cancel));
+            this.CancelButton = this.Add(new Button("Cancel", () => this.Root.Pop()));
 
             this.SyncImage();
         }
@@ -369,10 +344,7 @@ namespace CustomCrops.UI
         {
             if (!this.Images.TryGetValue(file, out Pixels? image))
             {
-                // their crop's images are in their folder; one you've just picked for the change is still only in yours
-                image = this.Suggesting
-                    ? this.Store.Decode(file, this.SuggestTo.Folder) ?? this.Store.Decode(file)
-                    : this.Store.Decode(file);
+                image = this.Store.Decode(file);
                 this.Images[file] = image;
             }
             return image;
@@ -389,11 +361,7 @@ namespace CustomCrops.UI
             this.PreviewGrowth = null;
             try
             {
-                // while suggesting a change, the preview reads their images, falling back to yours for one you've just picked
-                string? warning;
-                CropStore.RenderedCrop rendered = this.Suggesting
-                    ? this.Store.Render(this.Crop, out warning, new ContentPacks.ContentSource(this.SuggestTo.Id, this.SuggestTo.Name, this.SuggestTo.Folder, IsOwn: false), alsoOwnFolder: true)
-                    : this.Store.Render(this.Crop, out warning);
+                CropStore.RenderedCrop rendered = this.Store.Render(this.Crop, out string? warning);
                 this.PreviewScale = rendered.Scale;
                 this.PreviewObjects = new Texture2D(Game1.graphics.GraphicsDevice, rendered.ObjectsHd.Width, rendered.ObjectsHd.Height);
                 this.PreviewObjects.SetData(rendered.ObjectsHd.Data);
@@ -513,12 +481,6 @@ namespace CustomCrops.UI
                 return;
             }
 
-            if (this.Suggesting)
-            {
-                this.SendToOwner();
-                return;
-            }
-
             CropsFile file = this.Store.ReadFile();
             if (this.IsNew)
             {
@@ -552,49 +514,6 @@ namespace CustomCrops.UI
             Game1.playSound("newArtifact");
             this.Root.Pop();
             this.OnSaved(this.Crop.Name);
-        }
-
-        /// <summary>Send this change to the player the crop belongs to; they decide whether it's applied.</summary>
-        private void SendToOwner()
-        {
-            CustomCrop crop = this.Crop;
-
-            // the images the change needs, under the names their data will use
-            Dictionary<string, string> files = new(StringComparer.OrdinalIgnoreCase);
-            string? Gather(string? file)
-            {
-                string name = Path.GetFileName(file ?? "");
-                if (name.Length == 0)
-                    return null;
-                string? path = this.Store.ResolveImage(name, this.SuggestTo.Folder) ?? this.Store.ResolveImage(name);
-                if (path != null)
-                    files[name] = path;
-                return name;
-            }
-
-            if (crop.HarvestImage != null)
-                crop.HarvestImage.File = Gather(crop.HarvestImage.File) ?? "";
-            if (crop.SeedImage != null)
-                crop.SeedImage.File = Gather(crop.SeedImage.File) ?? "";
-            crop.GrowthSheet = Gather(crop.GrowthSheet);
-
-            string json = JsonConvert.SerializeObject(crop, new JsonSerializerSettings { Formatting = Formatting.Indented, NullValueHandling = NullValueHandling.Ignore });
-            string who = this.SuggestTo.Name;
-            CustomContent.SubmitEdit(json, this.SuggestBaseJson, files, (applied, message) =>
-            {
-                Game1.addHUDMessage(new HUDMessage(applied ? $"{who} got your change." : message) { noIcon = true });
-            });
-
-            Game1.playSound("newArtifact");
-            this.Root.Pop();
-            this.OnSaved($"Sent your change to {who}.");
-        }
-
-        private void Cancel()
-        {
-            if (this.Suggesting)
-                CustomContent.EndTurn(); // give the turn back, so they can change their crop themselves again
-            this.Root.Pop();
         }
     }
 }

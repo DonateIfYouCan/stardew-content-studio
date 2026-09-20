@@ -15,15 +15,7 @@ namespace CustomContentCore
         ** Types
         *********/
         /// <summary>A mod's content registered for packs.</summary>
-        private sealed record Registration(IManifest Mod, string Folder, string[] Paths, Action Reload, Func<IEnumerable<string>>? SharedFiles, ContentEditing? Editing);
-
-        /// <summary>How a mod lets other players change one of its items in a multiplayer game.</summary>
-        /// <param name="GetItemJson">Get one of your own items as JSON, or null if there's no such item.</param>
-        /// <param name="ApplyItemJson">
-        /// Write a changed item into your own content: the item's ID, its new JSON, and the images that came with it
-        /// (the name the data refers to, and the full path of a checked file to copy in). Returns whether it was applied.
-        /// </param>
-        public sealed record ContentEditing(Func<string, string?> GetItemJson, Func<string, string, IDictionary<string, string>, bool> ApplyItemJson);
+        private sealed record Registration(IManifest Mod, string Folder, string[] Paths, Action Reload, Func<IEnumerable<string>>? SharedFiles);
 
         /// <summary>The manifest stored in each pack.</summary>
         private sealed class PackManifest
@@ -56,42 +48,10 @@ namespace CustomContentCore
         /// <summary>Content folders to use instead of a mod's own folder (e.g. a multiplayer host's content), by mod ID.</summary>
         private static readonly Dictionary<string, string> RootOverrides = new(StringComparer.OrdinalIgnoreCase);
 
-        /// <summary>The content of other players in this multiplayer game, by mod ID, in the order they should be loaded.</summary>
-        private static readonly Dictionary<string, List<ContentSource>> PeerSources = new(StringComparer.OrdinalIgnoreCase);
-
         /// <summary>The registered mods: their ID, name, own folder, content paths and reload callback.</summary>
         internal static IEnumerable<(IManifest Mod, string Folder, string[] Paths, Action Reload)> GetRegistrations()
         {
             return Registrations.Select(r => (r.Mod, r.Folder, r.Paths, r.Reload)).ToList();
-        }
-
-        /// <summary>Where a mod loads content from: its own folder, or another player's content in a multiplayer game.</summary>
-        /// <param name="OwnerId">The player the content belongs to (0 for your own).</param>
-        /// <param name="OwnerName">The player's name, to show next to their items.</param>
-        /// <param name="Folder">The folder to read the data file and images from.</param>
-        /// <param name="IsOwn">Whether this is your own content, the only content you can write to.</param>
-        public sealed record ContentSource(long OwnerId, string OwnerName, string Folder, bool IsOwn);
-
-        /// <summary>Get everywhere a mod should load content from: its own folder first, then the other players who share theirs.</summary>
-        /// <param name="mod">The mod's manifest.</param>
-        /// <param name="ownFolder">The mod's own folder.</param>
-        /// <remarks>Only the mod's own folder is ever written to; other players' items are edited by asking their owner (that comes later, with locks).</remarks>
-        public static IReadOnlyList<ContentSource> GetContentSources(IManifest mod, string ownFolder)
-        {
-            List<ContentSource> sources = new() { new ContentSource(0, "", GetContentRoot(mod, ownFolder), IsOwn: true) };
-            if (PeerSources.TryGetValue(mod.UniqueID, out List<ContentSource>? peers))
-                sources.AddRange(peers.Where(p => Directory.Exists(p.Folder)));
-            return sources;
-        }
-
-        /// <summary>Set the other players' content for a mod (empty to clear it).</summary>
-        internal static void SetPeerSources(string modId, IEnumerable<ContentSource> sources)
-        {
-            List<ContentSource> list = sources.ToList();
-            if (list.Count > 0)
-                PeerSources[modId] = list;
-            else
-                PeerSources.Remove(modId);
         }
 
         /// <summary>Get the folder a mod should load its content from: its own folder, or (in multiplayer) the host's content.</summary>
@@ -101,6 +61,12 @@ namespace CustomContentCore
         {
             return RootOverrides.TryGetValue(mod.UniqueID, out string? root) ? root : ownFolder;
         }
+
+        /// <summary>Goes up every time content is reloaded, so an open screen can tell that its list is out of date.</summary>
+        public static int ContentVersion { get; private set; }
+
+        /// <summary>Note that content was reloaded (e.g. the host's arrived, or a player changed something).</summary>
+        internal static void NotifyReloaded() => ContentVersion++;
 
         /// <summary>Whether a mod is currently showing a multiplayer host's content (so editing should be disabled).</summary>
         public static bool IsUsingHostContent(IManifest mod) => RootOverrides.ContainsKey(mod.UniqueID);
@@ -141,23 +107,10 @@ namespace CustomContentCore
         /// Gets the files actually in use (full paths: the data file and the images it references). In multiplayer, only these are
         /// shared, so unused or deleted images never leave the PC. If null, every file in <paramref name="paths"/> is shared.
         /// </param>
-        /// <param name="editing">How other players may change this mod's items in multiplayer (null: they can't).</param>
-        public static void Register(IManifest mod, string modFolder, string[] paths, Action reload, Func<IEnumerable<string>>? sharedFiles = null, ContentEditing? editing = null)
+        public static void Register(IManifest mod, string modFolder, string[] paths, Action reload, Func<IEnumerable<string>>? sharedFiles = null)
         {
             Registrations.RemoveAll(r => r.Mod.UniqueID == mod.UniqueID);
-            Registrations.Add(new Registration(mod, modFolder, paths, reload, sharedFiles, editing));
-        }
-
-        /// <summary>Goes up every time content is reloaded, so an open screen can tell that its list is out of date.</summary>
-        public static int ContentVersion { get; private set; }
-
-        /// <summary>Note that content was reloaded (e.g. another player's arrived, or they changed something of yours).</summary>
-        internal static void NotifyReloaded() => ContentVersion++;
-
-        /// <summary>How a mod lets other players change its items, if it does.</summary>
-        internal static ContentEditing? GetEditing(string modId)
-        {
-            return Registrations.FirstOrDefault(r => r.Mod.UniqueID.Equals(modId, StringComparison.OrdinalIgnoreCase))?.Editing;
+            Registrations.Add(new Registration(mod, modFolder, paths, reload, sharedFiles));
         }
 
         /// <summary>Get the files a mod shares in multiplayer (full paths inside its own folder, no links).</summary>

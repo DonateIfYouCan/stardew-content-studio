@@ -5,20 +5,18 @@ using CustomContentCore;
 using CustomContentCore.UI;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
-using Newtonsoft.Json;
 using StardewModdingAPI;
 using StardewValley;
 
 namespace CustomFurniture.UI
 {
-    /// <summary>The Furniture section's main page: your custom furniture, and in multiplayer that of the players sharing theirs.</summary>
+    /// <summary>The Furniture section's main page: your custom furniture.</summary>
     internal sealed class FurnitureListScreen : Screen
     {
         private readonly FurnitureStore Store;
-        private readonly ScrollList<FurnitureStore.FurnitureEntry> List;
+        private readonly ScrollList<CustomFurnitureItem> List;
         private readonly Button NewButton;
         private readonly Button EditButton;
-        private readonly Button SuggestButton;
         private readonly Button GiveButton;
         private readonly Button DeleteButton;
         private readonly Button DuplicateButton;
@@ -30,7 +28,7 @@ namespace CustomFurniture.UI
         public FurnitureListScreen(FurnitureStore store)
         {
             this.Store = store;
-            this.List = this.Add(new ScrollList<FurnitureStore.FurnitureEntry>(88, this.DrawRow)
+            this.List = this.Add(new ScrollList<CustomFurnitureItem>(88, this.DrawRow)
             {
                 OnSelect = (_, _) => this.SyncButtons(),
                 OnDoubleClick = _ => this.EditSelected(),
@@ -38,7 +36,6 @@ namespace CustomFurniture.UI
             });
             this.NewButton = this.Add(new Button("+ New furniture", this.CreateNew, "Make furniture based on a game piece: lamps, fireplaces, beds, tables, decor..."));
             this.EditButton = this.Add(new Button("Edit", this.EditSelected));
-            this.SuggestButton = this.Add(new Button("Ask to change", this.SuggestChange, "Ask the player it belongs to for a turn at changing it. They get your version and can keep it."));
             this.GiveButton = this.Add(new Button("Put in inventory", this.GiveSelected, "Adds one to your inventory, for testing."));
             this.DuplicateButton = this.Add(new Button("Duplicate", this.DuplicateSelected, "Make a copy to tweak, keeping the original."));
             this.DeleteButton = this.Add(new Button("Delete", this.DeleteSelected));
@@ -49,10 +46,10 @@ namespace CustomFurniture.UI
         public override void OnResume() => this.Refresh();
         public override void Dispose() => this.ClearThumbnails();
 
-        /// <summary>Open the editor for furniture by name or ID. Only your own, since another player's can't be edited.</summary>
+        /// <summary>Open the editor for furniture by name or ID.</summary>
         public bool OpenByName(string search)
         {
-            int index = this.List.Items.FindIndex(e => e.IsOwn && (e.Item.Name.Equals(search, StringComparison.OrdinalIgnoreCase) || e.Item.Id.Equals(search, StringComparison.OrdinalIgnoreCase)));
+            int index = this.List.Items.FindIndex(f => f.Name.Equals(search, StringComparison.OrdinalIgnoreCase) || f.Id.Equals(search, StringComparison.OrdinalIgnoreCase));
             if (index < 0)
                 return false;
             this.List.SelectedIndex = index;
@@ -66,7 +63,7 @@ namespace CustomFurniture.UI
             int x = area.X + pad, y = area.Y + 84, w = area.Width - pad * 2;
             this.List.Bounds = new Rectangle(x, y, w - sideW - 16, area.Bottom - 96 - y);
             int bx = x + w - sideW, by = y;
-            foreach (Button button in new[] { this.NewButton, this.EditButton, this.SuggestButton, this.GiveButton, this.DuplicateButton, this.DeleteButton })
+            foreach (Button button in new[] { this.NewButton, this.EditButton, this.GiveButton, this.DuplicateButton, this.DeleteButton })
             {
                 button.Bounds = new Rectangle(bx, by, sideW, 56);
                 by += button == this.NewButton ? 88 : 64;
@@ -74,14 +71,8 @@ namespace CustomFurniture.UI
             this.CloseButton.Bounds = new Rectangle(area.Right - pad - 180, area.Bottom - 84, 180, 60);
         }
 
-        /// <summary>The content version the rows were built from, so the list notices when another player's content arrives or changes.</summary>
-        private int BuiltVersion = -1;
-
         public override void Draw(SpriteBatch b, int mouseX, int mouseY)
         {
-            if (this.BuiltVersion != CustomContent.ContentVersion)
-                this.Refresh(); // another player's content arrived or changed while this list was open
-
             Gfx.Panel(b, this.Area);
             Gfx.Text(b, "Custom furniture", new Vector2(this.Area.X + 36, this.Area.Y + 24), null, Gfx.TitleFont);
             base.Draw(b, mouseX, mouseY);
@@ -89,32 +80,24 @@ namespace CustomFurniture.UI
                 Gfx.Message(b, this.Message, this.CloseButton.Bounds.X - this.Area.X - 60, new Vector2(this.Area.X + 36, this.Area.Bottom - 70), this.MessageColor);
         }
 
-        private void DrawRow(SpriteBatch b, FurnitureStore.FurnitureEntry entry, Rectangle row, bool selected, bool hover)
+        private void DrawRow(SpriteBatch b, CustomFurnitureItem item, Rectangle row, bool selected, bool hover)
         {
-            CustomFurnitureItem item = entry.Item;
-            string? badge = entry.IsOwn ? null : $"from {entry.OwnerName}";
-            int nameWidth = row.Right - row.X - 140 - (badge != null ? (int)Gfx.Font.MeasureString(badge).X + 24 : 0);
-
-            if (this.Store.Furniture.TryGetValue(entry.Id, out FurnitureStore.LoadedFurniture? loaded))
+            if (this.Store.Furniture.TryGetValue(item.Id, out FurnitureStore.LoadedFurniture? loaded))
             {
-                // thumbnails are keyed by the owner-tagged ID, so two players' 'lamp' don't share one picture
-                if (!this.Thumbnails.TryGetValue(entry.Id, out Texture2D? thumb))
+                if (!this.Thumbnails.TryGetValue(item.Id, out Texture2D? thumb))
                 {
                     thumb = new Texture2D(Game1.graphics.GraphicsDevice, loaded.Hd.Width, loaded.Hd.Height);
                     thumb.SetData(loaded.Hd.Data);
-                    this.Thumbnails[entry.Id] = thumb;
+                    this.Thumbnails[item.Id] = thumb;
                 }
                 FurnitureTemplate t = loaded.Template;
                 Gfx.Fitted(b, thumb, new Rectangle(0, 0, t.Source.Width * loaded.Scale, t.Source.Height * loaded.Scale), new Rectangle(row.X + 8, row.Y + 4, 100, row.Height - 8), pixelated: loaded.Scale == 1);
-                Gfx.Text(b, Gfx.Fit(item.Name, nameWidth), new Vector2(row.X + 124, row.Y + 10));
+                Gfx.Text(b, Gfx.Fit(item.Name, row.Right - row.X - 140), new Vector2(row.X + 124, row.Y + 10));
                 string details = $"{t.Kind} ({t.Name}) · {t.TilesWide}x{t.TilesHigh} · {item.Price}g" + (loaded.AnimationFrames > 1 ? $" · animated ({loaded.AnimationFrames} frames)" : "");
                 Gfx.Text(b, Gfx.Fit(details, row.Right - row.X - 140), new Vector2(row.X + 124, row.Y + 46), Color.DimGray);
             }
             else
-                Gfx.Text(b, Gfx.Fit($"{item.Name} (can't load: check the SMAPI console)", nameWidth), new Vector2(row.X + 124, row.Y + 26), Color.DarkRed);
-
-            if (badge != null)
-                Gfx.Text(b, badge, new Vector2(row.Right - Gfx.Font.MeasureString(badge).X - 12, row.Y + 10), new Color(160, 80, 20));
+                Gfx.Text(b, Gfx.Fit($"{item.Name} (can't load: check the SMAPI console)", row.Right - row.X - 140), new Vector2(row.X + 124, row.Y + 26), Color.DarkRed);
         }
 
         private void ClearThumbnails()
@@ -126,29 +109,21 @@ namespace CustomFurniture.UI
 
         private void Refresh()
         {
-            this.BuiltVersion = CustomContent.ContentVersion;
             string? selected = this.List.Selected?.Id;
             this.ClearThumbnails();
-            this.List.Items = this.Store.Entries.ToList();
-            this.List.SelectedIndex = this.List.Items.FindIndex(e => e.Id == selected);
+            this.List.Items = this.Store.File.Furniture.ToList();
+            this.List.SelectedIndex = this.List.Items.FindIndex(f => f.Id == selected);
             this.SyncButtons();
         }
 
         private void SyncButtons()
         {
-            FurnitureStore.FurnitureEntry? selected = this.List.Selected;
-            bool own = selected?.IsOwn == true; // another player's furniture can be seen and tried out, or changed by asking them
-
-            // while someone has a turn at changing it, leave it to them: a change of ours would only get theirs refused
-            string? busy = own ? CustomContent.WhoIsEditing(this.Store.Manifest, selected!.OwnerItemId) : null;
-            this.EditButton.Visible = own;
-            this.EditButton.Enabled = busy == null;
-            this.EditButton.Tooltip = busy != null ? $"{busy} is changing this right now." : null;
-            this.SuggestButton.Visible = selected != null && !selected.IsOwn;
-            this.GiveButton.Visible = this.List.Selected != null;
+            bool selected = this.List.Selected != null;
+            this.EditButton.Visible = selected;
+            this.GiveButton.Visible = selected;
             this.GiveButton.Enabled = Context.IsWorldReady;
-            this.DuplicateButton.Visible = own;
-            this.DeleteButton.Visible = own;
+            this.DuplicateButton.Visible = selected;
+            this.DeleteButton.Visible = selected;
         }
 
         private void CreateNew()
@@ -159,53 +134,15 @@ namespace CustomFurniture.UI
 
         private void EditSelected()
         {
-            if (this.List.Selected is { IsOwn: true } entry)
-                this.Root.Push(new FurnitureEditorScreen(this.Store, entry.Item, isNew: false, name => this.ShowMessage($"Saved '{name}'.")));
-        }
-
-        /// <summary>Ask another player for a turn at changing one of their furniture items, then open it for editing.</summary>
-        private void SuggestChange()
-        {
-            FurnitureStore.FurnitureEntry? entry = this.List.Selected;
-            if (entry == null || entry.IsOwn)
-                return;
-
-            this.ShowMessage($"Asking {entry.OwnerName}...");
-            CustomContent.RequestTurn(this.Store.Manifest, entry.OwnerId, entry.OwnerItemId, (granted, json, message) =>
-            {
-                if (!granted)
-                {
-                    this.ShowMessage(message);
-                    return;
-                }
-
-                CustomFurnitureItem? item = null;
-                try
-                {
-                    item = JsonConvert.DeserializeObject<CustomFurnitureItem>(json);
-                }
-                catch (Exception ex)
-                {
-                    this.ShowMessage($"Couldn't read {entry.OwnerName}'s furniture: {ex.Message}", error: true);
-                }
-                if (item == null)
-                {
-                    CustomContent.EndTurn(); // don't sit on their item when we can't show it
-                    this.ShowMessage($"Couldn't read {entry.OwnerName}'s furniture.");
-                    return;
-                }
-
-                // their images live in their content folder, which is where the editor has to look
-                string folder = CustomContent.GetContentSources(this.Store.Manifest, this.Store.ModFolder).FirstOrDefault(source => source.OwnerId == entry.OwnerId)?.Folder ?? this.Store.ModFolder;
-                this.Root.Push(new FurnitureEditorScreen(this.Store, item, (entry.OwnerId, entry.OwnerName, folder), json, text => this.ShowMessage(text)));
-            });
+            if (this.List.Selected is { } item)
+                this.Root.Push(new FurnitureEditorScreen(this.Store, item, isNew: false, name => this.ShowMessage($"Saved '{name}'.")));
         }
 
         private void GiveSelected()
         {
-            if (this.List.Selected is not { } entry || !Context.IsWorldReady)
+            if (this.List.Selected is not { } item || !Context.IsWorldReady)
                 return;
-            Item furniture = ItemRegistry.Create("(F)" + this.Store.GetItemId(entry.Id));
+            Item furniture = ItemRegistry.Create("(F)" + this.Store.GetItemId(item.Id));
             if (!Game1.player.addItemToInventoryBool(furniture))
                 Game1.createItemDebris(furniture, Game1.player.getStandingPosition(), Game1.player.FacingDirection);
             Game1.playSound("coin");
@@ -215,9 +152,8 @@ namespace CustomFurniture.UI
         /// <summary>Copy the selected furniture, so you can tweak it without losing the original.</summary>
         private void DuplicateSelected()
         {
-            if (this.List.Selected is not { IsOwn: true } entry)
+            if (this.List.Selected is not { } item)
                 return;
-            CustomFurnitureItem item = entry.Item;
             FurnitureFile file = this.Store.ReadFile();
             CustomFurnitureItem copy = Newtonsoft.Json.JsonConvert.DeserializeObject<CustomFurnitureItem>(Newtonsoft.Json.JsonConvert.SerializeObject(item))!;
             copy.Name = $"{item.Name} copy";
@@ -240,9 +176,8 @@ namespace CustomFurniture.UI
 
         private void DeleteSelected()
         {
-            if (this.List.Selected is not { IsOwn: true } entry)
+            if (this.List.Selected is not { } item)
                 return;
-            CustomFurnitureItem item = entry.Item;
             this.Root.Push(new ConfirmScreen($"Delete '{item.Name}'?\n\nCopies placed in your world will turn into Error Items.", "Delete", () =>
             {
                 FurnitureFile file = this.Store.ReadFile();

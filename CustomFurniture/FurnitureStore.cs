@@ -56,9 +56,7 @@ namespace CustomFurniture
 
         private readonly IModHelper Helper;
         private readonly IMonitor Monitor;
-
-        /// <summary>The editor screens need this to ask the Core about turns at changing another player's furniture.</summary>
-        internal readonly IManifest Manifest;
+        private readonly IManifest Manifest;
         private DateTime IgnoreFileChangesUntil;
         private List<FurnitureTemplate>? TemplateCache;
 
@@ -71,21 +69,6 @@ namespace CustomFurniture
             public CustomFurnitureItem Data = null!;
             public FurnitureTemplate Template = null!;
 
-            /// <summary>The ID it's known by here: the one from the data file, with the owner's tag in front for another player's furniture.</summary>
-            public string Id = "";
-
-            /// <summary>The name shown in-game; another player's has their name after it, so you can tell whose it is.</summary>
-            public string Name = "";
-
-            /// <summary>The player this furniture belongs to (0 for your own), in a multiplayer game where players share content.</summary>
-            public long OwnerId;
-
-            /// <summary>The name of the player it belongs to, empty for your own.</summary>
-            public string OwnerName = "";
-
-            /// <summary>Whether this is your own furniture, the only kind you can change.</summary>
-            public bool IsOwn => this.OwnerId == 0;
-
             /// <summary>The base frames at the game's resolution (premultiplied).</summary>
             public Pixels Low = null!;
 
@@ -96,52 +79,17 @@ namespace CustomFurniture
             public Texture2D? HdTexture;
         }
 
-        /// <summary>A piece of furniture as listed in the editor, whether or not its art could be loaded.</summary>
-        /// <param name="Item">The entry from a data file.</param>
-        /// <param name="Id">The ID it's known by here, with the owner's tag in front for another player's furniture.</param>
-        /// <param name="OwnerId">The player it belongs to (0 for your own).</param>
-        /// <param name="OwnerName">The name of the player it belongs to, empty for your own.</param>
-        public sealed record FurnitureEntry(CustomFurnitureItem Item, string Id, long OwnerId, string OwnerName)
-        {
-            /// <summary>Whether this is your own furniture, the only kind you can change.</summary>
-            public bool IsOwn => this.OwnerId == 0;
-
-            /// <summary>The ID the furniture has in its owner's own data (no owner tag), which is what a change is asked for and sent back for.</summary>
-            public string OwnerItemId => this.Item.Id;
-        }
-
-        /// <summary>A wallpaper or floor as listed in the editor, whether or not its image could be loaded.</summary>
-        /// <param name="Item">The entry from a data file.</param>
-        /// <param name="Id">The ID it's known by here, with the owner's tag in front for another player's.</param>
-        /// <param name="OwnerId">The player it belongs to (0 for your own).</param>
-        /// <param name="OwnerName">The name of the player it belongs to, empty for your own.</param>
-        public sealed record WallpaperEntry(CustomWallpaper Item, string Id, long OwnerId, string OwnerName)
-        {
-            /// <summary>Whether this is your own wallpaper or floor, the only kind you can change.</summary>
-            public bool IsOwn => this.OwnerId == 0;
-        }
-
 
         /*********
         ** Accessors
         *********/
         /// <summary>The folder content is loaded from: the mod folder, or (in multiplayer) the host's content.</summary>
         private string ContentFolder => ContentPacks.GetContentRoot(this.Manifest, this.Helper.DirectoryPath);
-
-        /// <summary>The mod's own folder, which the other players' content folders are worked out from.</summary>
-        public string ModFolder => this.Helper.DirectoryPath;
-
         public string ImageFolder => Path.Combine(this.ContentFolder, ImageFolderName);
         public FurnitureFile File { get; private set; } = new();
         public bool IgnoringFileChanges => DateTime.UtcNow < this.IgnoreFileChangesUntil;
         public (string Label, string Path)[] BrowserPlaces => new[] { ("Mod images", this.ImageFolder) };
         public IReadOnlyDictionary<string, LoadedFurniture> Furniture => this.Loaded;
-
-        /// <summary>Every piece of furniture for the editor list: yours first, then that of the players sharing theirs.</summary>
-        public IReadOnlyList<FurnitureEntry> Entries { get; private set; } = Array.Empty<FurnitureEntry>();
-
-        /// <summary>Every wallpaper and floor for the editor list: yours first, then that of the players sharing theirs.</summary>
-        public IReadOnlyList<WallpaperEntry> WallpaperEntries { get; private set; } = Array.Empty<WallpaperEntry>();
 
         /// <summary>The custom wallpapers and floors.</summary>
         public WallpaperSets Wallpapers { get; }
@@ -159,49 +107,7 @@ namespace CustomFurniture
             Directory.CreateDirectory(Path.Combine(helper.DirectoryPath, ImageFolderName));
         }
 
-        /// <summary>Get one of your own furniture items as JSON, for a player who asked for a turn at changing it.</summary>
-        /// <param name="itemId">The furniture's ID in your own data (no owner tag; another player's furniture isn't yours to hand out).</param>
-        /// <returns>The item's data, or null if you have no furniture with that ID.</returns>
-        public string? GetItemJson(string itemId)
-        {
-            CustomFurnitureItem? item = this.ReadFile().Furniture.FirstOrDefault(f => string.Equals(f.Id, itemId, StringComparison.OrdinalIgnoreCase));
-            return item == null
-                ? null
-                : JsonConvert.SerializeObject(item, new JsonSerializerSettings { Formatting = Formatting.Indented, NullValueHandling = NullValueHandling.Ignore });
-        }
-
-        /// <summary>Write another player's change to one of your furniture items into your own content.</summary>
-        /// <param name="itemId">The furniture's ID in your own data; the change can't rename it or move to another item.</param>
-        /// <param name="json">The changed furniture, as they sent it.</param>
-        /// <param name="files">The images that came with it, already decoded and rebuilt by the Core: the name the data uses, and the file to copy in.</param>
-        /// <returns>Whether it was applied.</returns>
-        /// <remarks>Everything here comes from another player's game, so none of it is trusted: only the ID we already have is kept, and a sent image can only land in our own images folder under its own bare name.</remarks>
-        public bool ApplyItemJson(string itemId, string json, IDictionary<string, string> files)
-        {
-            CustomFurnitureItem? item = JsonConvert.DeserializeObject<CustomFurnitureItem>(json);
-            FurnitureFile file = this.ReadFile();
-            int index = file.Furniture.FindIndex(f => string.Equals(f.Id, itemId, StringComparison.OrdinalIgnoreCase));
-            if (item == null || index < 0)
-                return false;
-
-            item.Id = file.Furniture[index].Id;
-
-            // only a file name, never a path: the sheet belongs in our own images folder
-            string name = Path.GetFileName(item.Sheet ?? "");
-            item.Sheet = name;
-            if (name.Length > 0 && files.TryGetValue(name, out string? sent) && System.IO.File.Exists(sent))
-            {
-                Directory.CreateDirectory(this.ImageFolder);
-                System.IO.File.Copy(sent, Path.Combine(this.ImageFolder, name), overwrite: true);
-            }
-
-            file.Furniture[index] = item;
-            this.Save(file); // the normal save path, so it's reloaded and the other players hear about it
-            return true;
-        }
-
         /// <summary>Get the files in use (data file and sheets), which are the only ones shared in multiplayer.</summary>
-        /// <remarks>Only your own files: <see cref="File"/> is your own data file, so another player's images are never passed on.</remarks>
         public IEnumerable<string> GetSharedFiles()
         {
             List<string> files = new() { Path.Combine(this.ContentFolder, DataFileName) };
@@ -223,11 +129,7 @@ namespace CustomFurniture
         /// <summary>The item ID for a wallpaper or floor, like <c>Example.Mod_Wallpapers:2</c>.</summary>
         public string? GetWallpaperItemId(string id) => this.Wallpapers.GetItemId(id);
 
-        /// <summary>The game item ID for a piece of furniture.</summary>
-        /// <param name="id">Its ID here (see <see cref="LoadedFurniture.Id"/>), which carries the owner's tag for another player's furniture.</param>
         public string GetItemId(string id) => $"{this.Manifest.UniqueID}_{id}";
-
-        /// <summary>The texture asset for a piece of furniture. It carries the owner's tag too, so each player's art has its own asset and its own HD texture.</summary>
         private string GetTextureAsset(string id) => $"Mods/{this.Manifest.UniqueID}/{id}";
 
         /// <summary>Get the game furniture that custom furniture can be based on.</summary>
@@ -313,13 +215,11 @@ namespace CustomFurniture
             return true;
         }
 
-        /// <summary>Read the data file without applying it.</summary>
-        /// <param name="folder">The content folder to read from, or null for your own.</param>
-        public FurnitureFile ReadFile(string? folder = null)
+        public FurnitureFile ReadFile()
         {
             try
             {
-                return CustomContent.ReadJsonFile<FurnitureFile>(Path.Combine(folder ?? this.ContentFolder, DataFileName)) ?? new FurnitureFile();
+                return CustomContent.ReadJsonFile<FurnitureFile>(Path.Combine(this.ContentFolder, DataFileName)) ?? new FurnitureFile();
             }
             catch (Exception ex)
             {
@@ -340,59 +240,25 @@ namespace CustomFurniture
 
         public void Reload()
         {
-            IReadOnlyList<ContentPacks.ContentSource> sources = CustomContent.GetContentSources(this.Manifest, this.Helper.DirectoryPath);
             this.File = this.ReadFile();
             foreach (LoadedFurniture old in this.Loaded.Values)
                 old.HdTexture?.Dispose();
 
             Dictionary<string, LoadedFurniture> loaded = new(StringComparer.OrdinalIgnoreCase);
-            List<FurnitureEntry> entries = new();
-            List<WallpaperEntry> wallpaperEntries = new();
-            List<WallpaperSets.Input> wallpaperInputs = new();
-
-            // your own content first, then that of the players sharing theirs
-            foreach (ContentPacks.ContentSource source in sources)
+            foreach (CustomFurnitureItem item in this.File.Furniture)
             {
-                FurnitureFile file = source.IsOwn ? this.File : this.ReadFile(source.Folder);
-                string tag = CustomContent.OwnerTag(source);
-
-                foreach (CustomFurnitureItem item in file.Furniture)
+                if (string.IsNullOrWhiteSpace(item.Id) || loaded.ContainsKey(item.Id))
                 {
-                    // another player's furniture gets its own ID, so two players can both have a 'lamp' without clashing
-                    string id = source.IsOwn ? item.Id : $"{tag}_{item.Id}";
-
-                    // listed even when it can't be used, so you can see what's wrong and fix it
-                    entries.Add(new FurnitureEntry(item, id, source.OwnerId, source.IsOwn ? "" : source.OwnerName));
-                    if (string.IsNullOrWhiteSpace(item.Id) || loaded.ContainsKey(id))
-                    {
-                        this.Monitor.Log($"Skipped furniture '{item.Name}': it needs a unique Id.", LogLevel.Warn);
-                        continue;
-                    }
-
-                    if (this.Load(item, out string? error, source.Folder) is { } result)
-                    {
-                        result.Id = id;
-                        result.OwnerId = source.OwnerId;
-                        result.OwnerName = source.IsOwn ? "" : source.OwnerName;
-                        result.Name = source.IsOwn ? item.Name : $"{item.Name} ({source.OwnerName})";
-                        loaded[id] = result;
-                    }
-                    else
-                        this.Monitor.Log($"Furniture '{item.Name}'{(source.IsOwn ? "" : $" from {source.OwnerName}")}: {error}", LogLevel.Warn);
+                    this.Monitor.Log($"Skipped furniture '{item.Name}': it needs a unique Id.", LogLevel.Warn);
+                    continue;
                 }
-
-                foreach (CustomWallpaper wallpaper in file.Wallpapers)
-                {
-                    string id = source.IsOwn ? wallpaper.Id : $"{tag}_{wallpaper.Id}";
-                    wallpaperEntries.Add(new WallpaperEntry(wallpaper, id, source.OwnerId, source.IsOwn ? "" : source.OwnerName));
-                    wallpaperInputs.Add(new WallpaperSets.Input(wallpaper, source, image => this.Decode(image, source.Folder)));
-                }
+                if (this.Load(item, out string? error) is { } result)
+                    loaded[item.Id] = result;
+                else
+                    this.Monitor.Log($"Furniture '{item.Name}': {error}", LogLevel.Warn);
             }
-
             this.Loaded = loaded;
-            this.Entries = entries;
-            this.WallpaperEntries = wallpaperEntries;
-            this.Wallpapers.Reload(wallpaperInputs);
+            this.Wallpapers.Reload(this.File.Wallpapers, this.Decode);
 
             this.Helper.GameContent.InvalidateCache(asset =>
                 asset.Name.IsEquivalentTo("Data/Furniture")
@@ -400,15 +266,11 @@ namespace CustomFurniture
                 || asset.Name.IsEquivalentTo("Data/Shops")
                 || asset.Name.StartsWith($"Mods/{this.Manifest.UniqueID}/")
             );
-            string whose = sources.Count > 1 ? $" (yours and {sources.Count - 1} other player(s)')" : "";
-            this.Monitor.Log($"Loaded {this.Loaded.Count} custom furniture item(s) and {this.Wallpapers.Count} wallpaper(s)/floor(s){whose}.", LogLevel.Info);
+            this.Monitor.Log($"Loaded {this.Loaded.Count} custom furniture item(s) and {this.Wallpapers.Count} wallpaper(s)/floor(s).", LogLevel.Info);
         }
 
         /// <summary>Load a piece of furniture's art. Also used by the editor for previews.</summary>
-        /// <param name="item">The entry from a data file.</param>
-        /// <param name="error">Why it couldn't be loaded, if it couldn't.</param>
-        /// <param name="folder">The content folder its sheet lives in, or null for your own.</param>
-        public LoadedFurniture? Load(CustomFurnitureItem item, out string? error, string? folder = null)
+        public LoadedFurniture? Load(CustomFurnitureItem item, out string? error)
         {
             FurnitureTemplate? template = this.GetTemplate(item.BasedOn);
             if (template == null)
@@ -418,7 +280,7 @@ namespace CustomFurniture
             }
 
             int animationFrames = template.CanAnimate ? Math.Clamp(item.AnimationFrames, 1, 64) : 1;
-            Pixels? sheet = this.Decode(item.Sheet, folder);
+            Pixels? sheet = this.Decode(item.Sheet);
             if (sheet == null)
             {
                 error = $"sheet '{item.Sheet}' not found.";
@@ -488,30 +350,13 @@ namespace CustomFurniture
             return Path.GetFileName(target);
         }
 
-        /// <summary>Get the full path to a sheet named in the data, if it's really there.</summary>
-        /// <param name="file">The image path from the data file.</param>
-        /// <param name="folder">The content folder it belongs to: your own, or another player's in multiplayer.</param>
-        /// <returns>The full path, or null if there's no such file inside that folder.</returns>
-        public string? ResolveSheet(string? file, string? folder = null)
+        public Pixels? Decode(string? file)
         {
             if (string.IsNullOrWhiteSpace(file))
                 return null;
-            string imageFolder = folder == null ? this.ImageFolder : Path.Combine(folder, ImageFolderName);
-            string path = Path.Combine(imageFolder, file);
-
-            // only inside that content folder (content can come from another player in multiplayer)
-            return System.IO.File.Exists(path) && CustomContent.IsInsideFolder(path, imageFolder)
-                ? Path.GetFullPath(path)
-                : null;
-        }
-
-        /// <summary>Read an image named in the data.</summary>
-        /// <param name="file">The image path from the data file.</param>
-        /// <param name="folder">The content folder it belongs to: your own, or another player's in multiplayer.</param>
-        public Pixels? Decode(string? file, string? folder = null)
-        {
-            if (this.ResolveSheet(file, folder) is not { } path)
-                return null;
+            string path = Path.Combine(this.ImageFolder, file);
+            if (!System.IO.File.Exists(path) || !CustomContent.IsInsideFolder(path, this.ImageFolder))
+                return null; // only inside the content folder
             try
             {
                 return ImageProcessor.Decode(path);
@@ -565,10 +410,9 @@ namespace CustomFurniture
             {
                 CustomFurnitureItem item = furniture.Data;
                 FurnitureTemplate t = furniture.Template;
-                string name = CustomContent.ToDisplayName(furniture.Name, "Furniture"); // another player's says whose it is
-                string itemId = this.GetItemId(furniture.Id);
-                string texture = this.GetTextureAsset(furniture.Id).Replace('/', '\\'); // data fields are separated by '/'
-                data[itemId] = $"{itemId}/{t.Type}/{t.TilesWide} {t.TilesHigh}/{t.BoxWide} {t.BoxHigh}/1/{Math.Max(0, item.Price)}/{t.Placement}/{name}/0/{texture}/{(!item.InCatalogue).ToString().ToLowerInvariant()}/custom_furniture";
+                string name = CustomContent.ToDisplayName(item.Name, "Furniture");
+                string texture = this.GetTextureAsset(item.Id).Replace('/', '\\'); // data fields are separated by '/'
+                data[this.GetItemId(item.Id)] = $"{this.GetItemId(item.Id)}/{t.Type}/{t.TilesWide} {t.TilesHigh}/{t.BoxWide} {t.BoxHigh}/1/{Math.Max(0, item.Price)}/{t.Placement}/{name}/0/{texture}/{(!item.InCatalogue).ToString().ToLowerInvariant()}/custom_furniture";
             }
         }
 
@@ -582,7 +426,7 @@ namespace CustomFurniture
                     if (!shops.TryGetValue(shopId, out ShopData? shop))
                         return;
                     shop.Items ??= new List<ShopItemData>();
-                    string entryId = this.GetItemId(furniture.Id);
+                    string entryId = this.GetItemId(item.Id);
                     shop.Items.RemoveAll(i => i.Id == entryId);
                     shop.Items.Add(new ShopItemData { Id = entryId, ItemId = "(F)" + entryId, Price = Math.Max(0, item.Price), IgnoreShopPriceModifiers = true });
                 }

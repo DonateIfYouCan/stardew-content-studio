@@ -10,11 +10,11 @@ using StardewValley;
 
 namespace CustomFurniture.UI
 {
-    /// <summary>The Wallpaper &amp; floors section: your custom wallpapers and floors, and in multiplayer those of the players sharing theirs.</summary>
+    /// <summary>The Wallpaper &amp; floors section: your custom wallpapers and floors.</summary>
     internal sealed class WallpaperListScreen : Screen
     {
         private readonly FurnitureStore Store;
-        private readonly ScrollList<FurnitureStore.WallpaperEntry> List;
+        private readonly ScrollList<CustomWallpaper> List;
         private readonly Button NewButton;
         private readonly Button EditButton;
         private readonly Button GiveButton;
@@ -28,7 +28,7 @@ namespace CustomFurniture.UI
         public WallpaperListScreen(FurnitureStore store)
         {
             this.Store = store;
-            this.List = this.Add(new ScrollList<FurnitureStore.WallpaperEntry>(112, this.DrawRow)
+            this.List = this.Add(new ScrollList<CustomWallpaper>(112, this.DrawRow)
             {
                 OnSelect = (_, _) => this.SyncButtons(),
                 OnDoubleClick = _ => this.EditSelected(),
@@ -60,14 +60,8 @@ namespace CustomFurniture.UI
             this.CloseButton.Bounds = new Rectangle(area.Right - pad - 180, area.Bottom - 84, 180, 60);
         }
 
-        /// <summary>The content version the rows were built from, so the list notices when another player's content arrives or changes.</summary>
-        private int BuiltVersion = -1;
-
         public override void Draw(SpriteBatch b, int mouseX, int mouseY)
         {
-            if (this.BuiltVersion != CustomContent.ContentVersion)
-                this.Refresh(); // another player's content arrived or changed while this list was open
-
             Gfx.Panel(b, this.Area);
             Gfx.Text(b, "Wallpaper & floors", new Vector2(this.Area.X + 36, this.Area.Y + 24), null, Gfx.TitleFont);
             base.Draw(b, mouseX, mouseY);
@@ -75,19 +69,14 @@ namespace CustomFurniture.UI
             Gfx.Message(b, this.Message ?? help, this.CloseButton.Bounds.X - this.Area.X - 60, new Vector2(this.Area.X + 36, this.Area.Bottom - 70), this.Message != null ? this.MessageColor : Color.DimGray);
         }
 
-        private void DrawRow(SpriteBatch b, FurnitureStore.WallpaperEntry entry, Rectangle row, bool selected, bool hover)
+        private void DrawRow(SpriteBatch b, CustomWallpaper item, Rectangle row, bool selected, bool hover)
         {
-            CustomWallpaper item = entry.Item;
-            string? badge = entry.IsOwn ? null : $"from {entry.OwnerName}";
-            int badgeWidth = badge != null ? (int)Gfx.Font.MeasureString(badge).X + 24 : 0;
-
-            if (this.Store.Wallpapers.LoadedItems.TryGetValue(entry.Id, out WallpaperSets.Loaded? loaded))
+            if (this.Store.Wallpapers.LoadedItems.TryGetValue(item.Id, out WallpaperSets.Loaded? loaded))
             {
-                // thumbnails are keyed by the owner-tagged ID, so two players' 'stripes' don't share one picture
-                if (!this.Thumbnails.TryGetValue(entry.Id, out Texture2D? thumb))
+                if (!this.Thumbnails.TryGetValue(item.Id, out Texture2D? thumb))
                 {
                     thumb = loaded.Hd.ToTexture();
-                    this.Thumbnails[entry.Id] = thumb;
+                    this.Thumbnails[item.Id] = thumb;
                 }
                 // one whole tile, as big as fits the row, so you can see the pattern that will repeat
                 int tileW = item.IsFloor ? WallpaperSets.FloorSize : WallpaperSets.WallpaperWidth;
@@ -97,14 +86,11 @@ namespace CustomFurniture.UI
                 Rectangle dest = new(row.X + 8 + (box - tileW * scale) / 2, row.Y + 4 + (box - tileH * scale) / 2, tileW * scale, tileH * scale);
                 b.Draw(thumb, dest, new Rectangle(0, 0, tileW, tileH), Color.White);
                 int textX = row.X + 8 + box + 16;
-                Gfx.Text(b, Gfx.Fit(item.Name, row.Right - textX - 12 - badgeWidth), new Vector2(textX, row.Y + 10));
+                Gfx.Text(b, Gfx.Fit(item.Name, row.Right - textX - 12), new Vector2(textX, row.Y + 10));
                 Gfx.Text(b, item.IsFloor ? "Floor" : "Wallpaper", new Vector2(textX, row.Y + 46), Color.DimGray);
             }
             else
-                Gfx.Text(b, Gfx.Fit($"{item.Name} (can't load: check the SMAPI console)", row.Width - row.Height - 40 - badgeWidth), new Vector2(row.X + row.Height + 16, row.Y + 26), Color.DarkRed);
-
-            if (badge != null)
-                Gfx.Text(b, badge, new Vector2(row.Right - Gfx.Font.MeasureString(badge).X - 12, row.Y + 10), new Color(160, 80, 20));
+                Gfx.Text(b, Gfx.Fit($"{item.Name} (can't load: check the SMAPI console)", row.Width - row.Height - 40), new Vector2(row.X + row.Height + 16, row.Y + 26), Color.DarkRed);
         }
 
         private void ClearThumbnails()
@@ -116,22 +102,21 @@ namespace CustomFurniture.UI
 
         private void Refresh()
         {
-            this.BuiltVersion = CustomContent.ContentVersion;
             string? selected = this.List.Selected?.Id;
             this.ClearThumbnails();
-            this.List.Items = this.Store.WallpaperEntries.ToList();
-            this.List.SelectedIndex = this.List.Items.FindIndex(e => e.Id == selected);
+            this.List.Items = this.Store.File.Wallpapers.ToList();
+            this.List.SelectedIndex = this.List.Items.FindIndex(w => w.Id == selected);
             this.SyncButtons();
         }
 
         private void SyncButtons()
         {
-            bool own = this.List.Selected?.IsOwn == true; // another player's can be seen and tried out, not changed
-            this.EditButton.Visible = own;
-            this.GiveButton.Visible = this.List.Selected != null;
+            bool selected = this.List.Selected != null;
+            this.EditButton.Visible = selected;
+            this.GiveButton.Visible = selected;
             this.GiveButton.Enabled = Context.IsWorldReady;
-            this.DuplicateButton.Visible = own;
-            this.DeleteButton.Visible = own;
+            this.DuplicateButton.Visible = selected;
+            this.DeleteButton.Visible = selected;
         }
 
         private void CreateNew()
@@ -141,16 +126,15 @@ namespace CustomFurniture.UI
 
         private void EditSelected()
         {
-            if (this.List.Selected is { IsOwn: true } entry)
-                this.Root.Push(new WallpaperEditorScreen(this.Store, entry.Item, isNew: false, name => this.ShowMessage($"Saved '{name}'.")));
+            if (this.List.Selected is { } item)
+                this.Root.Push(new WallpaperEditorScreen(this.Store, item, isNew: false, name => this.ShowMessage($"Saved '{name}'.")));
         }
 
         private void GiveSelected()
         {
-            if (this.List.Selected is not { } entry || !Context.IsWorldReady)
+            if (this.List.Selected is not { } item || !Context.IsWorldReady)
                 return;
-            CustomWallpaper item = entry.Item;
-            if (this.Store.GetWallpaperItemId(entry.Id) is not { } itemId)
+            if (this.Store.GetWallpaperItemId(item.Id) is not { } itemId)
             {
                 this.ShowMessage("That one isn't loaded; check the SMAPI console.", error: true);
                 return;
@@ -165,9 +149,8 @@ namespace CustomFurniture.UI
         /// <summary>Copy the selected wallpaper or floor, so you can tweak it without losing the original.</summary>
         private void DuplicateSelected()
         {
-            if (this.List.Selected is not { IsOwn: true } entry)
+            if (this.List.Selected is not { } item)
                 return;
-            CustomWallpaper item = entry.Item;
             FurnitureFile file = this.Store.ReadFile();
             CustomWallpaper copy = Newtonsoft.Json.JsonConvert.DeserializeObject<CustomWallpaper>(Newtonsoft.Json.JsonConvert.SerializeObject(item))!;
             copy.Name = $"{item.Name} copy";
@@ -190,9 +173,8 @@ namespace CustomFurniture.UI
 
         private void DeleteSelected()
         {
-            if (this.List.Selected is not { IsOwn: true } entry)
+            if (this.List.Selected is not { } item)
                 return;
-            CustomWallpaper item = entry.Item;
             this.Root.Push(new ConfirmScreen($"Delete '{item.Name}'?\n\nRooms already using it fall back to the game's default.", "Delete", () =>
             {
                 FurnitureFile file = this.Store.ReadFile();

@@ -121,15 +121,6 @@ namespace CustomPaintings.UI
         ** Public methods
         *********/
         /// <summary>Edit a new or existing painting.</summary>
-        /// <summary>The player this change is for, when changing someone else's painting (their ID is 0 for your own).</summary>
-        private readonly (long Id, string Name, string Folder) SuggestTo;
-
-        /// <summary>Their version of the painting when this edit started, so a change they made meanwhile isn't overwritten.</summary>
-        private readonly string SuggestBaseJson = "";
-
-        /// <summary>Whether this is a change to another player's painting, which they have to apply.</summary>
-        private bool Suggesting => this.SuggestTo.Id != 0;
-
         public PaintingEditorScreen(PaintingStore store, CustomPainting painting, bool isNew, Action<string> onSaved)
             : this(store, painting, null, isNew, onSaved, (0, 0), "") { }
 
@@ -137,21 +128,8 @@ namespace CustomPaintings.UI
         public PaintingEditorScreen(PaintingStore store, Replacement replacement, bool isNew, (int W, int H) size, string originalName, Action<string> onSaved)
             : this(store, null, replacement, isNew, onSaved, size, originalName) { }
 
-        /// <summary>Change another player's painting and send it back to them.</summary>
-        /// <param name="store">The paintings store.</param>
-        /// <param name="painting">Their painting, as they have it now.</param>
-        /// <param name="owner">Who it belongs to, their name, and the folder their images are in.</param>
-        /// <param name="baseJson">Their version as JSON, so they can tell whether it changed while you were editing.</param>
-        /// <param name="onSaved">Called with the message to show once they answered.</param>
-        public PaintingEditorScreen(PaintingStore store, CustomPainting painting, (long Id, string Name, string Folder) owner, string baseJson, Action<string> onSaved)
-            : this(store, painting, null, isNew: false, onSaved, (0, 0), "", owner, baseJson) { }
-
-        private PaintingEditorScreen(PaintingStore store, CustomPainting? painting, Replacement? replacement, bool isNew, Action<string> onSaved, (int W, int H) replacementSize, string replacementName,
-            (long Id, string Name, string Folder) owner = default, string baseJson = "")
+        private PaintingEditorScreen(PaintingStore store, CustomPainting? painting, Replacement? replacement, bool isNew, Action<string> onSaved, (int W, int H) replacementSize, string replacementName)
         {
-            // before anything reads an image: while changing another player's painting, the images come from their folder
-            this.SuggestTo = owner;
-            this.SuggestBaseJson = baseJson;
             this.Store = store;
             this.IsNew = isNew;
             this.OnSaved = onSaved;
@@ -800,7 +778,7 @@ namespace CustomPaintings.UI
                 return cached;
 
             LoadedImage? loaded = null;
-            string? path = this.Store.ResolveImage(file, this.Suggesting ? this.SuggestTo.Folder : null) ?? (this.Suggesting ? this.Store.ResolveImage(file) : null);
+            string? path = this.Store.ResolveImage(file);
             if (path != null)
             {
                 try
@@ -1028,12 +1006,6 @@ namespace CustomPaintings.UI
             if (this.Slides.Count <= 1)
                 this.Settings.SlideMinutes = 0;
 
-            if (this.Suggesting)
-            {
-                this.SendToOwner();
-                return;
-            }
-
             PaintingsFile file = this.Store.ReadFile();
             if (this.Painting != null)
             {
@@ -1086,47 +1058,8 @@ namespace CustomPaintings.UI
             this.OnSaved(this.Painting?.Name ?? "");
         }
 
-        /// <summary>Send this change to the player the painting belongs to; they decide whether it's applied.</summary>
-        private void SendToOwner()
-        {
-            CustomPainting painting = this.Painting!;
-            if (string.IsNullOrWhiteSpace(painting.Name))
-                painting.Name = "Untitled";
-
-            // the images the change needs, under the names their data will use
-            Dictionary<string, string> files = new(StringComparer.OrdinalIgnoreCase);
-            foreach (Slide slide in painting.GetSlides())
-            {
-                string name = System.IO.Path.GetFileName(slide.File ?? "");
-                if (name.Length == 0)
-                    continue;
-                slide.File = name;
-                string? path = this.Store.ResolveImage(name, this.SuggestTo.Folder) ?? this.Store.ResolveImage(name);
-                if (path != null)
-                    files[name] = path;
-            }
-
-            string json = Newtonsoft.Json.JsonConvert.SerializeObject(painting, new Newtonsoft.Json.JsonSerializerSettings
-            {
-                Formatting = Newtonsoft.Json.Formatting.Indented,
-                NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore
-            });
-            string who = this.SuggestTo.Name;
-            CustomContent.SubmitEdit(json, this.SuggestBaseJson, files, (applied, message) =>
-            {
-                Game1.addHUDMessage(new HUDMessage(applied ? $"{who} got your change." : message) { noIcon = true });
-            });
-
-            Game1.playSound("newArtifact");
-            this.Root.Pop();
-            this.OnSaved($"Sent your change to {who}.");
-        }
-
         private void Cancel()
         {
-            if (this.Suggesting)
-                CustomContent.EndTurn(); // give the turn back, so they can change it themselves again
-
             // clean up images copied in for this edit but never saved
             if (this.ImportedThisSession.Count > 0)
             {

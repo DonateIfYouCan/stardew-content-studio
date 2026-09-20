@@ -14,14 +14,14 @@ namespace CustomContentCore.UI
 
         public MultiplayerScreen()
         {
-            this.ShareBox = this.Add(new Checkbox("Share my content with other players", CoreMod.Config.ShareContentAsHost,
+            this.ShareBox = this.Add(new Checkbox("Share my content when I host", CoreMod.Config.ShareContentAsHost,
                 v => { CoreMod.Config.ShareContentAsHost = v; CoreMod.SaveConfig(); CoreMod.Sync?.OnShareChanged(); },
-                "Anyone in your game who accepts shared content gets yours (paintings, crops, ...), so you see the same things. It works whether you host or join."));
+                "The players in your game use your content instead of their own, so everyone sees the same things. Their own content is saved first and comes back when they leave."));
             this.AcceptBox = this.Add(new Checkbox("Accept shared content", CoreMod.Config.AcceptContentFromHost, this.OnAcceptToggled,
-                "Show the custom content of the players who share theirs, next to your own. It's only used while you're in that game; your own content isn't changed.\nOnly turn this on if you play with people you trust."));
-            this.ChangeBox = this.Add(new Checkbox("Let others change my content", CoreMod.Config.LetOthersChangeMyContent,
+                "In a host's game, use their content instead of your own. Your own is saved first and comes back when you leave.\nOnly turn this on if you play with people you trust."));
+            this.ChangeBox = this.Add(new Checkbox("Let players change my content", CoreMod.Config.LetOthersChangeMyContent,
                 v => { CoreMod.Config.LetOthersChangeMyContent = v; CoreMod.SaveConfig(); },
-                "Players you share with can ask for a turn at changing one of your items, and what they send back is saved as yours. One item and one player at a time.\nNeeds 'Share my content' as well."));
+                "When you host: the players in your game can edit the content everyone is using, and what they save is sent to you and kept as yours. One player at a time per thing.\nThe previous version of anything they change is kept."));
             this.CloseButton = this.Add(new Button("Close", () => this.Root.Pop()));
         }
 
@@ -46,11 +46,11 @@ namespace CustomContentCore.UI
             base.Draw(b, mouseX, mouseY);
 
             int noteWidth = area.Width - 80;
-            Gfx.Message(b, "Whoever accepts shared content sees your paintings, crops, furniture and wallpaper as well as their own.", noteWidth, new Vector2(area.X + 40, this.ShareBox.Bounds.Bottom + 6), Color.DimGray);
-            Gfx.Message(b, "Their content is only shown while you're in that game, and your own content is never changed by it.", noteWidth, new Vector2(area.X + 40, this.AcceptBox.Bounds.Bottom + 6), Color.DimGray);
-            Gfx.Message(b, "You keep every change they send: it's saved as your own, for one item at a time, and they can't rename or delete anything.", noteWidth, new Vector2(area.X + 40, this.ChangeBox.Bounds.Bottom + 6), Color.DimGray);
-            if (CoreMod.Sync?.UsingPeerContent == true)
-                Gfx.Text(b, "Other players' content is shown next to yours in this game.", new Vector2(area.X + 36, area.Bottom - 120), Color.DimGray);
+            Gfx.Message(b, "As host: your paintings, crops, furniture, wallpaper and character art are what the game runs on for everyone.", noteWidth, new Vector2(area.X + 40, this.ShareBox.Bounds.Bottom + 6), Color.DimGray);
+            Gfx.Message(b, "As a player in someone else's game: their set is used while you're there, and your own is put back when you leave.", noteWidth, new Vector2(area.X + 40, this.AcceptBox.Bounds.Bottom + 6), Color.DimGray);
+            Gfx.Message(b, "A player's save is sent to you, checked, and written into your content; the version it replaces is kept in a 'versions' folder.", noteWidth, new Vector2(area.X + 40, this.ChangeBox.Bounds.Bottom + 6), Color.DimGray);
+            if (CoreMod.Sync?.UsingHostContent == true)
+                Gfx.Text(b, "You're using the host's content in this game; your own comes back when you leave.", new Vector2(area.X + 36, area.Bottom - 120), Color.DimGray);
         }
 
         /// <summary>Ask for confirmation before accepting other players' content.</summary>

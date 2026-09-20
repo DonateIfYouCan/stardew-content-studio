@@ -92,53 +92,21 @@ namespace CustomContentCore
         {
             ContentPacks.NotifyReloaded();
             CoreMod.Sync?.QueueOfferToAcceptingPlayers();
+            CoreMod.Sync?.PushChangesToHost();
         }
 
         /// <summary>Goes up whenever content is reloaded; an open list can compare it with the value it was built from and rebuild itself.</summary>
         public static int ContentVersion => ContentPacks.ContentVersion;
 
-        /// <summary>Everywhere a mod should load content from: its own folder first, then the other players who share theirs.</summary>
-        /// <param name="mod">The mod's manifest.</param>
-        /// <param name="ownFolder">The mod's own folder (its <c>DirectoryPath</c>).</param>
-        public static IReadOnlyList<ContentPacks.ContentSource> GetContentSources(IManifest mod, string ownFolder) => ContentPacks.GetContentSources(mod, ownFolder);
-
-        /// <summary>A short tag for another player's content, so their item IDs can't clash with yours (empty for your own).</summary>
-        public static string OwnerTag(ContentPacks.ContentSource source) => source.IsOwn ? "" : "p" + ((ulong)source.OwnerId).ToString("x16").Substring(0, 8);
-
-        /// <summary>Ask the owner of another player's item for a turn at changing it.</summary>
-        /// <param name="mod">The mod the item belongs to.</param>
-        /// <param name="ownerId">The player who owns it (from <see cref="ContentPacks.ContentSource.OwnerId"/>).</param>
-        /// <param name="itemId">The item's ID in the owner's own data, without the tag from <see cref="OwnerTag"/>.</param>
-        /// <param name="onReply">Called with whether you got the turn, the owner's current version of the item as JSON, and a message to show if you didn't.</param>
-        public static void RequestTurn(IManifest mod, long ownerId, string itemId, Action<bool, string, string> onReply)
-        {
-            CoreMod.Editing?.RequestTurn(mod, ownerId, itemId, onReply);
-        }
-
-        /// <summary>Send a changed item back to its owner, who writes it into their own content.</summary>
-        /// <param name="json">The item's data.</param>
-        /// <param name="baseJson">The item as it was when the turn started, so a change made meanwhile isn't overwritten.</param>
-        /// <param name="files">The images the item uses: the name the data refers to, and the full path of the file to send.</param>
-        /// <param name="onResult">Called with whether the owner applied it and a message to show.</param>
-        public static void SubmitEdit(string json, string baseJson, IDictionary<string, string> files, Action<bool, string> onResult)
-        {
-            CoreMod.Editing?.SubmitEdit(json, baseJson, files, onResult);
-        }
-
-        /// <summary>Give up a turn at changing another player's item without sending anything.</summary>
-        public static void EndTurn() => CoreMod.Editing?.EndTurn();
-
-        /// <summary>Which player is changing one of your items right now, if any.</summary>
-        public static string? WhoIsEditing(IManifest mod, string itemId) => CoreMod.Editing?.WhoIsEditing(mod.UniqueID, itemId);
-
         /// <summary>Whether a mod is showing a multiplayer host's content right now (editing should be disabled).</summary>
         public static bool IsUsingHostContent(IManifest mod) => ContentPacks.IsUsingHostContent(mod);
 
-        /// <summary>Throw a friendly error if a mod's content can't be edited right now (because it's showing a multiplayer host's content).</summary>
+        /// <summary>Throw a friendly error if a mod's content can't be edited right now.</summary>
+        /// <remarks>In a multiplayer game you edit the host's content, which is what everyone is using; what you save is sent to the host, who keeps it.</remarks>
         public static void EnsureEditable(IManifest mod)
         {
-            if (ContentPacks.IsUsingHostContent(mod))
-                throw new InvalidOperationException("you're using the host's content in this multiplayer game, so editing is off until you leave");
+            if (ContentPacks.IsUsingHostContent(mod) && CoreMod.Sync?.CanChangeHostContent != true)
+                throw new InvalidOperationException("the host doesn't let players change their custom content");
         }
 
         /// <summary>Whether a file path is really inside a folder (after resolving '..'; links aren't followed). Use this before loading any file named in content data.</summary>

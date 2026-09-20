@@ -43,9 +43,7 @@ namespace CustomContentCore.UI
             this.ExportButton = this.Add(new Button("Export pack", this.ExportPack, "Save all your custom content (data and images) into one file, e.g. to use on another PC."));
             this.ImportButton = this.Add(new Button("Import pack", this.ImportPack, "Load a pack made with 'Export pack'. Your current content is backed up first."));
             this.ExportButton.Visible = this.ImportButton.Visible = ContentPacks.Any;
-            this.MultiplayerButton = this.Add(new Button("Multiplayer", () => this.Root.Push(new MultiplayerScreen()), "Share your content with the other players in a game, take theirs, and let them change yours. All off unless you turn it on."));
-            this.DonateButton = this.Add(new Button("Buy me a coffee", () => this.CopyLink(DonateUrl), $"Optional. Copies {DonateUrl} to paste in your browser. Nothing is unlocked by donating."));
-            this.GitHubButton = this.Add(new Button("GitHub: bugs & ideas", () => this.CopyLink(GitHubUrl), $"Source, docs, bug reports, feedback and feature requests. Copies {GitHubUrl} to paste in your browser."));
+            this.MultiplayerButton = this.Add(new Button("Multiplayer", () => this.Root.Push(new MultiplayerScreen()), "Share your content with the players in your game, use a host's content, and let players change it. All off unless you turn it on."));
         }
 
         /// <summary>Copy a link to the clipboard (opening a browser from the game isn't reliable on every OS).</summary>
@@ -120,11 +118,11 @@ namespace CustomContentCore.UI
             // fit the sections in the space above the multiplayer/support rows, however many mods are installed
             int w = Math.Min(560, area.Width - 64);
             int x = area.Center.X - w / 2;
-            int note = CoreMod.Sync?.UsingPeerContent == true ? 34 : 0; // the line about other players' content sits under the title
+            int note = CoreMod.Sync?.UsingHostContent == true ? 34 : 0; // the line about the host's content sits under the title
             int top = area.Y + (this.Entries.Count > 4 ? 84 : 120) + note;
             int bottom = area.Bottom - 84 - 64 - 44; // above the bottom row of buttons, leaving room for the last description
             int count = Math.Max(1, this.Entries.Count);
-            int step = Math.Clamp((bottom - top) / count, 48, 132); // in a small window the rows shrink rather than run into the multiplayer options
+            int step = Math.Clamp((bottom - top) / count, 48, 132); // in a small window the rows shrink rather than run into the buttons below
             this.ShowDescriptions = step >= 104;
             int buttonH = this.ShowDescriptions ? Math.Min(72, step - 56) : Math.Min(56, step - 8);
             int y = top;
@@ -147,9 +145,13 @@ namespace CustomContentCore.UI
             Gfx.Panel(b, this.Area);
             Gfx.Text(b, "What do you want to edit?", new Vector2(this.Area.X + 36, this.Area.Y + 24), null, Gfx.TitleFont);
             base.Draw(b, mouseX, mouseY);
-
-            if (CoreMod.Sync?.UsingPeerContent == true)
-                Gfx.Text(b, Gfx.Fit("Other players' content is shown next to yours. You can only change your own, or ask them for a turn.", this.Area.Width - 72), new Vector2(this.Area.X + 36, this.Area.Y + 68), Color.DarkRed);
+            if (CoreMod.Sync?.UsingHostContent == true)
+            {
+                string note = CoreMod.Sync.CanChangeHostContent
+                    ? "You're using the host's content. What you save here is sent to them and kept in their game."
+                    : "You're using the host's content, and they don't let players change it.";
+                Gfx.Text(b, Gfx.Fit(note, this.Area.Width - 72), new Vector2(this.Area.X + 36, this.Area.Y + 68), Color.DarkRed);
+            }
             Gfx.Text(b, "Support (optional)", new Vector2(this.DonateButton.Bounds.X, this.DonateButton.Bounds.Y - 40), Color.DimGray);
             if (this.Message != null)
                 Gfx.Message(b, this.Message, this.SettingsButton.Bounds.X - this.ImportButton.Bounds.Right - 48, new Vector2(this.ImportButton.Bounds.Right + 24, this.CloseButton.Bounds.Y + 16), this.MessageColor);

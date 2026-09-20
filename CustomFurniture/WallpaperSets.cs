@@ -32,34 +32,10 @@ namespace CustomFurniture
         private readonly IMonitor Monitor;
         private readonly string ModId;
 
-        /// <summary>One wallpaper or floor to load, and where it comes from.</summary>
-        /// <param name="Data">The entry from a data file.</param>
-        /// <param name="Source">The content it was read from: your own, or another player's in multiplayer.</param>
-        /// <param name="Decode">Reads an image from that content's images folder (never from anyone else's).</param>
-        public sealed record Input(CustomWallpaper Data, ContentPacks.ContentSource Source, Func<string?, Pixels?> Decode);
-
         /// <summary>A loaded wallpaper or floor.</summary>
         public sealed class Loaded
         {
             public CustomWallpaper Data = null!;
-
-            /// <summary>The ID it's known by here: the one from the data file, with the owner's tag in front for another player's.</summary>
-            public string Id = "";
-
-            /// <summary>The name shown in the editor; another player's has their name after it, so you can tell whose it is.</summary>
-            public string Name = "";
-
-            /// <summary>The player it belongs to (0 for your own), in a multiplayer game where players share content.</summary>
-            public long OwnerId;
-
-            /// <summary>The name of the player it belongs to, empty for your own.</summary>
-            public string OwnerName = "";
-
-            /// <summary>Whether this is your own, the only kind you can change.</summary>
-            public bool IsOwn => this.OwnerId == 0;
-
-            /// <summary>The set it's in, as used in <c>Data/AdditionalWallpaperFlooring</c>.</summary>
-            public string SetId = "";
 
             /// <summary>The tile at the game's size.</summary>
             public Pixels Low = null!;
@@ -72,11 +48,9 @@ namespace CustomFurniture
             public int Index;
         }
 
-        /// <summary>A set (one sheet) of wallpapers or floors. Each player who shares gets their own sets, so their sheets and HD textures never mix.</summary>
+        /// <summary>A set (one sheet) of wallpapers or floors.</summary>
         public sealed class Set
         {
-            /// <summary>The set ID used in <c>Data/AdditionalWallpaperFlooring</c>.</summary>
-            public string Id = "";
             public bool IsFloor;
             public List<Loaded> Items = new();
 
@@ -85,7 +59,7 @@ namespace CustomFurniture
             public Texture2D? HdTexture;
         }
 
-        /// <summary>The sets by asset name: a wallpaper set and a floor set for you, and for each player sharing theirs.</summary>
+        /// <summary>The wallpaper set and the floor set, by asset name.</summary>
         private Dictionary<string, Set> Sets = new(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>Loaded items by their ID.</summary>
@@ -95,21 +69,16 @@ namespace CustomFurniture
         /*********
         ** Accessors
         *********/
-        /// <summary>The sheet asset for one player's wallpapers or floors. The owner's tag is part of it, so each player's sheet is a separate asset with its own HD texture.</summary>
-        /// <param name="ownerTag">The owner's tag, empty for your own.</param>
-        /// <param name="floor">Whether it's the floor sheet (else the wallpaper sheet).</param>
-        public string SheetAsset(string ownerTag, bool floor) => $"Mods/{this.ModId}/{Prefix(ownerTag)}{(floor ? "Floors" : "Wallpapers")}";
+        public string WallpaperAsset => $"Mods/{this.ModId}/Wallpapers";
+        public string FloorAsset => $"Mods/{this.ModId}/Floors";
 
-        /// <summary>The set ID used in <c>Data/AdditionalWallpaperFlooring</c>, which also carries the owner's tag.</summary>
-        /// <param name="ownerTag">The owner's tag, empty for your own.</param>
-        /// <param name="floor">Whether it's the floor set (else the wallpaper set).</param>
-        public string SetIdFor(string ownerTag, bool floor) => $"{this.ModId}_{Prefix(ownerTag)}{(floor ? "Floors" : "Wallpapers")}";
+        /// <summary>The set ID used in <c>Data/AdditionalWallpaperFlooring</c>.</summary>
+        public string WallpaperSetId => $"{this.ModId}_Wallpapers";
+        public string FloorSetId => $"{this.ModId}_Floors";
 
         public int Count => this.Items.Count;
         public IReadOnlyDictionary<string, Loaded> LoadedItems => this.Items;
 
-        /// <summary>The part of an asset or set name that says whose content it is (nothing for your own).</summary>
-        private static string Prefix(string ownerTag) => ownerTag.Length > 0 ? ownerTag + "_" : "";
 
         /*********
         ** Public methods
@@ -124,51 +93,42 @@ namespace CustomFurniture
         public bool IsSheet(string assetName) => this.Sets.ContainsKey(assetName);
 
         /// <summary>The item ID to give the player, like <c>Example.Mod_Wallpapers:3</c>.</summary>
-        /// <param name="id">Its ID here (see <see cref="Loaded.Id"/>), which carries the owner's tag for another player's.</param>
         public string? GetItemId(string id)
         {
             if (!this.Items.TryGetValue(id, out Loaded? item))
                 return null;
-            return $"{item.SetId}:{item.Index}";
+            return $"{(item.Data.IsFloor ? this.FloorSetId : this.WallpaperSetId)}:{item.Index}";
         }
 
-        /// <summary>Load the wallpapers and floors: yours first, then those of the players sharing theirs.</summary>
-        /// <param name="inputs">The entries to load, each with the content it came from.</param>
-        public void Reload(IReadOnlyList<Input> inputs)
+        /// <summary>Load the wallpapers and floors from the data file.</summary>
+        /// <param name="wallpapers">The entries to load.</param>
+        /// <param name="decode">Reads an image from the mod's images folder.</param>
+        public void Reload(List<CustomWallpaper> wallpapers, Func<string?, Pixels?> decode)
         {
             foreach (Set old in this.Sets.Values)
                 old.HdTexture?.Dispose();
 
-            Dictionary<string, Set> sets = new(StringComparer.OrdinalIgnoreCase);
+            Dictionary<string, Set> sets = new(StringComparer.OrdinalIgnoreCase)
+            {
+                [this.WallpaperAsset] = new Set { IsFloor = false },
+                [this.FloorAsset] = new Set { IsFloor = true }
+            };
             Dictionary<string, Loaded> items = new(StringComparer.OrdinalIgnoreCase);
 
-            foreach (Input input in inputs)
+            foreach (CustomWallpaper data in wallpapers)
             {
-                CustomWallpaper data = input.Data;
-                string tag = CustomContent.OwnerTag(input.Source);
-
-                // another player's wallpapers get their own IDs and their own sheet, so two players can both have a 'stripes' without clashing
-                string id = input.Source.IsOwn ? data.Id : $"{tag}_{data.Id}";
-                if (string.IsNullOrWhiteSpace(data.Id) || items.ContainsKey(id))
+                if (string.IsNullOrWhiteSpace(data.Id) || items.ContainsKey(data.Id))
                 {
                     this.Monitor.Log($"Skipped '{data.Name}': it needs a unique Id.", LogLevel.Warn);
                     continue;
                 }
-                if (this.Load(data, input.Decode) is not { } loaded)
+                if (this.Load(data, decode) is not { } loaded)
                     continue;
 
-                string asset = this.SheetAsset(tag, data.IsFloor);
-                if (!sets.TryGetValue(asset, out Set? set))
-                    sets[asset] = set = new Set { Id = this.SetIdFor(tag, data.IsFloor), IsFloor = data.IsFloor };
-
-                loaded.Id = id;
-                loaded.Name = input.Source.IsOwn ? data.Name : $"{data.Name} ({input.Source.OwnerName})";
-                loaded.OwnerId = input.Source.OwnerId;
-                loaded.OwnerName = input.Source.IsOwn ? "" : input.Source.OwnerName;
-                loaded.SetId = set.Id;
+                Set set = sets[data.IsFloor ? this.FloorAsset : this.WallpaperAsset];
                 loaded.Index = set.Items.Count;
                 set.Items.Add(loaded);
-                items[id] = loaded;
+                items[data.Id] = loaded;
             }
 
             foreach (Set set in sets.Values)
@@ -254,14 +214,14 @@ namespace CustomFurniture
         /// <summary>Add the sets to the game's wallpaper/flooring list, so they show up in the catalogue and can be placed.</summary>
         public void EditData(List<ModWallpaperOrFlooring> data)
         {
-            data.RemoveAll(set => set.Id.StartsWith(this.ModId + "_", StringComparison.OrdinalIgnoreCase)); // also drops the sets of a player who has since left
+            data.RemoveAll(set => set.Id == this.WallpaperSetId || set.Id == this.FloorSetId);
             foreach ((string asset, Set set) in this.Sets)
             {
                 if (set.Items.Count == 0)
                     continue;
                 data.Add(new ModWallpaperOrFlooring
                 {
-                    Id = set.Id,
+                    Id = set.IsFloor ? this.FloorSetId : this.WallpaperSetId,
                     Texture = asset,
                     IsFlooring = set.IsFloor,
                     Count = set.Items.Count

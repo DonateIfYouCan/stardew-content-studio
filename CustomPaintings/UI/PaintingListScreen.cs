@@ -26,9 +26,6 @@ namespace CustomPaintings.UI
             public string Name = "";
             public string Details = "";
             public string? Badge;
-            public long OwnerId;                 // 0 for your own, otherwise the player who shared it
-            public string OwnerName = "";
-            public string OwnerItemId = "";      // the ID it has in its owner's own data
             public CustomPainting? Painting;     // explicit entry in paintings.json
             public bool AutoAdded;
             public string? AutoFile;
@@ -41,9 +38,6 @@ namespace CustomPaintings.UI
         ** Fields
         *********/
         private readonly PaintingStore Store;
-
-        /// <summary>The content version the rows were built from, so the list notices when content changes underneath it.</summary>
-        private int BuiltVersion = -1;
         private bool ShowGamePaintings;
 
         private readonly ScrollList<Row> List;
@@ -53,7 +47,6 @@ namespace CustomPaintings.UI
         private readonly Button NewPaintingButton;
         private readonly Button NewFrameButton;
         private readonly Button EditButton;
-        private readonly Button SuggestButton;
         private readonly Button DeleteButton;
         private readonly Button DuplicateButton;
         private readonly Button GiveButton;
@@ -88,7 +81,6 @@ namespace CustomPaintings.UI
             this.NewPaintingButton = this.Add(new Button("+ New painting", () => this.CreateNew(table: false), "Pick an image from your computer and turn it into a painting."));
             this.NewFrameButton = this.Add(new Button("+ New photo frame", () => this.CreateNew(table: true), "A small standing photo frame for tables and floors."));
             this.EditButton = this.Add(new Button("Edit", this.EditSelected));
-            this.SuggestButton = this.Add(new Button("Ask to change", this.SuggestChange, "Ask the player it belongs to for a turn at changing it. They get your version and can keep it."));
             this.DeleteButton = this.Add(new Button("Delete", this.DeleteSelected));
             this.DuplicateButton = this.Add(new Button("Duplicate", this.DuplicateSelected, "Make a copy to tweak, keeping the original."));
             this.GiveButton = this.Add(new Button("Put in inventory", this.GiveSelected, "Adds one to your inventory, for testing."));
@@ -156,7 +148,7 @@ namespace CustomPaintings.UI
                 by += button.Visible ? 64 : 0;
             }
             by += 24;
-            foreach (Button button in new[] { this.EditButton, this.SuggestButton, this.ReplaceButton, this.ExportButton, this.GiveButton, this.DuplicateButton, this.RestoreButton, this.HideButton, this.DeleteButton })
+            foreach (Button button in new[] { this.EditButton, this.ReplaceButton, this.ExportButton, this.GiveButton, this.DuplicateButton, this.RestoreButton, this.HideButton, this.DeleteButton })
             {
                 button.Bounds = new Rectangle(bx, by, sideW, 56);
                 if (button.Visible)
@@ -169,9 +161,6 @@ namespace CustomPaintings.UI
 
         public override void Draw(SpriteBatch b, int mouseX, int mouseY)
         {
-            if (this.BuiltVersion != CustomContent.ContentVersion)
-                this.Refresh(); // another player's content arrived or changed while this list was open
-
             Rectangle area = this.Area;
             Gfx.Panel(b, area);
             Gfx.Text(b, "Paintings", new Vector2(area.X + 36, area.Y + 24), null, Gfx.TitleFont);
@@ -239,7 +228,6 @@ namespace CustomPaintings.UI
         *********/
         private void Refresh()
         {
-            this.BuiltVersion = CustomContent.ContentVersion;
             string? selectedId = this.List.Selected?.FurnitureId;
             this.DisposeThumbnails();
             this.AllRows = this.ShowGamePaintings ? this.BuildGameRows() : this.BuildMyRows();
@@ -267,13 +255,10 @@ namespace CustomPaintings.UI
                     FurnitureId = entry.FurnitureId,
                     Name = entry.Name ?? entry.FurnitureId,
                     Details = $"{kind} · {entry.Price}g · {DescribeSources(entry)}",
-                    OwnerId = entry.OwnerId,
-                    OwnerName = entry.OwnerName,
-                    OwnerItemId = entry.OwnerItemId,
-                    Painting = entry.IsOwn ? painting : null,
-                    AutoAdded = entry.IsOwn && painting == null,
-                    AutoFile = entry.IsOwn && painting == null ? entry.Slides.FirstOrDefault()?.Path : null,
-                    Badge = !entry.IsOwn ? $"from {entry.OwnerName}" : painting == null ? "auto-added" : null
+                    Painting = painting,
+                    AutoAdded = painting == null,
+                    AutoFile = painting == null ? entry.Slides.FirstOrDefault()?.Path : null,
+                    Badge = painting == null ? "auto-added" : null
                 };
                 row.Thumbnail = this.CreateThumbnail(entry);
                 rows.Add(row);
@@ -370,14 +355,9 @@ namespace CustomPaintings.UI
             this.NewFrameButton.Visible = mine;
             this.AutoAddBox.Visible = mine;
 
-            bool ownRow = row != null && row.OwnerId == 0; // another player's painting can be seen, not changed
-            string? busy = ownRow ? CustomContent.WhoIsEditing(this.Store.Manifest, row!.OwnerItemId.Length > 0 ? row.OwnerItemId : row.Painting?.Id ?? "") : null;
-            this.EditButton.Visible = mine && ownRow;
-            this.EditButton.Enabled = busy == null; // wait until they're done, so their change isn't refused
-            this.EditButton.Tooltip = busy != null ? $"{busy} is changing this right now." : null;
-            this.SuggestButton.Visible = mine && row != null && row.OwnerId != 0;
-            this.DeleteButton.Visible = mine && ownRow;
-            this.DuplicateButton.Visible = mine && ownRow && !row!.AutoAdded;
+            this.EditButton.Visible = mine && row != null;
+            this.DeleteButton.Visible = mine && row != null;
+            this.DuplicateButton.Visible = mine && row != null && !row.AutoAdded;
             this.GiveButton.Visible = row != null && ModEntry.Config.EditorCanGive;
             this.GiveButton.Enabled = Context.IsWorldReady;
             this.GiveButton.Tooltip = Context.IsWorldReady ? "Adds one to your inventory, for testing." : "Load a save first.";
@@ -535,43 +515,6 @@ namespace CustomPaintings.UI
             {
                 this.ShowMessage($"Couldn't copy: {ex.Message}", error: true);
             }
-        }
-
-        /// <summary>Ask another player for a turn at changing one of their paintings, then open it for editing.</summary>
-        private void SuggestChange()
-        {
-            Row? row = this.List.Selected;
-            if (row == null || row.OwnerId == 0)
-                return;
-
-            this.ShowMessage($"Asking {row.OwnerName}...");
-            CustomContent.RequestTurn(this.Store.Manifest, row.OwnerId, row.OwnerItemId, (granted, json, message) =>
-            {
-                if (!granted)
-                {
-                    this.ShowMessage(message);
-                    return;
-                }
-
-                CustomPainting? painting = null;
-                try
-                {
-                    painting = JsonConvert.DeserializeObject<CustomPainting>(json);
-                }
-                catch (Exception ex)
-                {
-                    this.ShowMessage($"Couldn't read {row.OwnerName}'s painting: {ex.Message}", error: true);
-                }
-                if (painting == null)
-                {
-                    CustomContent.EndTurn();
-                    this.ShowMessage($"Couldn't read {row.OwnerName}'s painting.");
-                    return;
-                }
-
-                string folder = CustomContent.GetContentSources(this.Store.Manifest, this.Store.ModFolder).FirstOrDefault(source => source.OwnerId == row.OwnerId)?.Folder ?? this.Store.ModFolder;
-                this.Root.Push(new PaintingEditorScreen(this.Store, painting, (row.OwnerId, row.OwnerName, folder), json, message => this.ShowMessage(message)));
-            });
         }
 
         private void DeleteSelected()
