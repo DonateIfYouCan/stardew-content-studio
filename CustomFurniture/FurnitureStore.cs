@@ -56,7 +56,9 @@ namespace CustomFurniture
 
         private readonly IModHelper Helper;
         private readonly IMonitor Monitor;
-        private readonly IManifest Manifest;
+
+        /// <summary>The editor screens need this to ask the Core about turns at changing another player's furniture.</summary>
+        internal readonly IManifest Manifest;
         private DateTime IgnoreFileChangesUntil;
         private List<FurnitureTemplate>? TemplateCache;
 
@@ -103,6 +105,9 @@ namespace CustomFurniture
         {
             /// <summary>Whether this is your own furniture, the only kind you can change.</summary>
             public bool IsOwn => this.OwnerId == 0;
+
+            /// <summary>The ID the furniture has in its owner's own data (no owner tag), which is what a change is asked for and sent back for.</summary>
+            public string OwnerItemId => this.Item.Id;
         }
 
         /// <summary>A wallpaper or floor as listed in the editor, whether or not its image could be loaded.</summary>
@@ -122,6 +127,10 @@ namespace CustomFurniture
         *********/
         /// <summary>The folder content is loaded from: the mod folder, or (in multiplayer) the host's content.</summary>
         private string ContentFolder => ContentPacks.GetContentRoot(this.Manifest, this.Helper.DirectoryPath);
+
+        /// <summary>The mod's own folder, which the other players' content folders are worked out from.</summary>
+        public string ModFolder => this.Helper.DirectoryPath;
+
         public string ImageFolder => Path.Combine(this.ContentFolder, ImageFolderName);
         public FurnitureFile File { get; private set; } = new();
         public bool IgnoringFileChanges => DateTime.UtcNow < this.IgnoreFileChangesUntil;
@@ -148,6 +157,47 @@ namespace CustomFurniture
             this.Manifest = manifest;
             this.Wallpapers = new WallpaperSets(monitor, manifest);
             Directory.CreateDirectory(Path.Combine(helper.DirectoryPath, ImageFolderName));
+        }
+
+        /// <summary>Get one of your own furniture items as JSON, for a player who asked for a turn at changing it.</summary>
+        /// <param name="itemId">The furniture's ID in your own data (no owner tag; another player's furniture isn't yours to hand out).</param>
+        /// <returns>The item's data, or null if you have no furniture with that ID.</returns>
+        public string? GetItemJson(string itemId)
+        {
+            CustomFurnitureItem? item = this.ReadFile().Furniture.FirstOrDefault(f => string.Equals(f.Id, itemId, StringComparison.OrdinalIgnoreCase));
+            return item == null
+                ? null
+                : JsonConvert.SerializeObject(item, new JsonSerializerSettings { Formatting = Formatting.Indented, NullValueHandling = NullValueHandling.Ignore });
+        }
+
+        /// <summary>Write another player's change to one of your furniture items into your own content.</summary>
+        /// <param name="itemId">The furniture's ID in your own data; the change can't rename it or move to another item.</param>
+        /// <param name="json">The changed furniture, as they sent it.</param>
+        /// <param name="files">The images that came with it, already decoded and rebuilt by the Core: the name the data uses, and the file to copy in.</param>
+        /// <returns>Whether it was applied.</returns>
+        /// <remarks>Everything here comes from another player's game, so none of it is trusted: only the ID we already have is kept, and a sent image can only land in our own images folder under its own bare name.</remarks>
+        public bool ApplyItemJson(string itemId, string json, IDictionary<string, string> files)
+        {
+            CustomFurnitureItem? item = JsonConvert.DeserializeObject<CustomFurnitureItem>(json);
+            FurnitureFile file = this.ReadFile();
+            int index = file.Furniture.FindIndex(f => string.Equals(f.Id, itemId, StringComparison.OrdinalIgnoreCase));
+            if (item == null || index < 0)
+                return false;
+
+            item.Id = file.Furniture[index].Id;
+
+            // only a file name, never a path: the sheet belongs in our own images folder
+            string name = Path.GetFileName(item.Sheet ?? "");
+            item.Sheet = name;
+            if (name.Length > 0 && files.TryGetValue(name, out string? sent) && System.IO.File.Exists(sent))
+            {
+                Directory.CreateDirectory(this.ImageFolder);
+                System.IO.File.Copy(sent, Path.Combine(this.ImageFolder, name), overwrite: true);
+            }
+
+            file.Furniture[index] = item;
+            this.Save(file); // the normal save path, so it's reloaded and the other players hear about it
+            return true;
         }
 
         /// <summary>Get the files in use (data file and sheets), which are the only ones shared in multiplayer.</summary>
@@ -438,17 +488,30 @@ namespace CustomFurniture
             return Path.GetFileName(target);
         }
 
-        /// <summary>Read an image named in the data.</summary>
+        /// <summary>Get the full path to a sheet named in the data, if it's really there.</summary>
         /// <param name="file">The image path from the data file.</param>
         /// <param name="folder">The content folder it belongs to: your own, or another player's in multiplayer.</param>
-        public Pixels? Decode(string? file, string? folder = null)
+        /// <returns>The full path, or null if there's no such file inside that folder.</returns>
+        public string? ResolveSheet(string? file, string? folder = null)
         {
             if (string.IsNullOrWhiteSpace(file))
                 return null;
             string imageFolder = folder == null ? this.ImageFolder : Path.Combine(folder, ImageFolderName);
             string path = Path.Combine(imageFolder, file);
-            if (!System.IO.File.Exists(path) || !CustomContent.IsInsideFolder(path, imageFolder))
-                return null; // only inside that content folder (content can come from another player in multiplayer)
+
+            // only inside that content folder (content can come from another player in multiplayer)
+            return System.IO.File.Exists(path) && CustomContent.IsInsideFolder(path, imageFolder)
+                ? Path.GetFullPath(path)
+                : null;
+        }
+
+        /// <summary>Read an image named in the data.</summary>
+        /// <param name="file">The image path from the data file.</param>
+        /// <param name="folder">The content folder it belongs to: your own, or another player's in multiplayer.</param>
+        public Pixels? Decode(string? file, string? folder = null)
+        {
+            if (this.ResolveSheet(file, folder) is not { } path)
+                return null;
             try
             {
                 return ImageProcessor.Decode(path);

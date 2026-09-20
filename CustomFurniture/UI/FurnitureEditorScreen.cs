@@ -45,8 +45,37 @@ namespace CustomFurniture.UI
         private Rectangle PreviewArea;
         private readonly List<(Rectangle Row, string Label)> Labels = new();
 
+        /// <summary>The player this change is for, when changing someone else's furniture (their ID is 0 for your own).</summary>
+        private readonly (long Id, string Name, string Folder) SuggestTo;
+
+        /// <summary>Their version of the furniture when this edit started, so a change they made meanwhile isn't overwritten.</summary>
+        private readonly string SuggestBaseJson = "";
+
+        /// <summary>Whether this is a change to another player's furniture, which they have to apply.</summary>
+        private bool Suggesting => this.SuggestTo.Id != 0;
+
+        /// <summary>Edit a new or existing piece of your own furniture.</summary>
+        /// <param name="store">The furniture store.</param>
+        /// <param name="item">The furniture to edit.</param>
+        /// <param name="isNew">Whether this is furniture being made now, which gets an ID when it's first saved.</param>
+        /// <param name="onSaved">Called with the message to show once it's saved.</param>
         public FurnitureEditorScreen(FurnitureStore store, CustomFurnitureItem item, bool isNew, Action<string> onSaved)
+            : this(store, item, isNew, onSaved, default, "") { }
+
+        /// <summary>Change another player's furniture and send it back to them.</summary>
+        /// <param name="store">The furniture store.</param>
+        /// <param name="item">Their furniture, as they have it now.</param>
+        /// <param name="owner">Who it belongs to, their name, and the content folder their images are in.</param>
+        /// <param name="baseJson">Their version as JSON, so they can tell whether it changed while you were editing.</param>
+        /// <param name="onSaved">Called with the message to show once it's been sent.</param>
+        public FurnitureEditorScreen(FurnitureStore store, CustomFurnitureItem item, (long Id, string Name, string Folder) owner, string baseJson, Action<string> onSaved)
+            : this(store, item, isNew: false, onSaved, owner, baseJson) { }
+
+        private FurnitureEditorScreen(FurnitureStore store, CustomFurnitureItem item, bool isNew, Action<string> onSaved, (long Id, string Name, string Folder) owner, string baseJson)
         {
+            // before anything reads an image: while changing another player's furniture, the sheet comes from their folder
+            this.SuggestTo = owner;
+            this.SuggestBaseJson = baseJson;
             this.Store = store;
             this.Item = JsonConvert.DeserializeObject<CustomFurnitureItem>(JsonConvert.SerializeObject(item))!; // edit a copy so Cancel discards changes
             this.IsNew = isNew;
@@ -65,8 +94,8 @@ namespace CustomFurniture.UI
             this.RobinBox = this.Add(new Checkbox("Robin", f.SoldAtRobin, v => f.SoldAtRobin = v));
             this.TravelerBox = this.Add(new Checkbox("Traveling cart", f.SoldAtTraveler, v => f.SoldAtTraveler = v));
             this.DetailCycler = this.Add(new Cycler(new() { ("0", "Auto (your sheet's detail)"), ("16", "Pixel art"), ("32", "Sharp"), ("64", "HD") }, f.Resolution.ToString(), v => f.Resolution = int.Parse(v)));
-            this.SaveButton = this.Add(new Button("Save", this.Save));
-            this.CancelButton = this.Add(new Button("Cancel", () => this.Root.Pop()));
+            this.SaveButton = this.Add(new Button(this.Suggesting ? "Send change" : "Save", this.Save, this.Suggesting ? $"Send this to {this.SuggestTo.Name}; it's theirs to keep or drop." : null));
+            this.CancelButton = this.Add(new Button("Cancel", this.Cancel));
 
             if (store.GetTemplate(f.BasedOn) is { } template)
                 this.SetTemplate(template);
@@ -126,7 +155,8 @@ namespace CustomFurniture.UI
         {
             Rectangle area = this.Area;
             Gfx.Panel(b, area);
-            Gfx.Text(b, this.IsNew ? "New furniture" : $"Edit '{this.Item.Name}'", new Vector2(area.X + 36, area.Y + 24), null, Gfx.TitleFont);
+            string title = this.IsNew ? "New furniture" : this.Suggesting ? $"Change {this.SuggestTo.Name}'s '{this.Item.Name}'" : $"Edit '{this.Item.Name}'";
+            Gfx.Text(b, title, new Vector2(area.X + 36, area.Y + 24), null, Gfx.TitleFont);
             FurnitureTemplate? t = this.Template;
             if (t != null)
                 Gfx.Text(b, Gfx.Fit($"Based on: {t.Name} ({t.Kind}, {t.TilesWide}x{t.TilesHigh} tiles)", area.X + 32 + (int)(area.Width * 0.5) - this.BaseButton.Bounds.Right - 16), new Vector2(this.BaseButton.Bounds.Right + 16, this.BaseButton.Bounds.Y + 12));
@@ -202,7 +232,10 @@ namespace CustomFurniture.UI
 
         private void LoadSheet(string file)
         {
-            this.Sheet = this.Store.Decode(file);
+            // their sheet lives in their folder; one you painted or chose during this edit is in your own
+            this.Sheet = this.Suggesting
+                ? this.Store.Decode(file, this.SuggestTo.Folder) ?? this.Store.Decode(file)
+                : this.Store.Decode(file);
             this.SheetTexture?.Dispose();
             this.SheetTexture = this.Sheet?.ToTexture();
             this.ValidateSheet();
@@ -330,6 +363,12 @@ namespace CustomFurniture.UI
                 return;
             }
 
+            if (this.Suggesting)
+            {
+                this.SendToOwner();
+                return;
+            }
+
             FurnitureFile file = this.Store.ReadFile();
             if (this.IsNew)
             {
@@ -363,6 +402,44 @@ namespace CustomFurniture.UI
             Game1.playSound("newArtifact");
             this.Root.Pop();
             this.OnSaved(this.Item.Name);
+        }
+
+        /// <summary>Send this change to the player the furniture belongs to; they decide whether it's applied.</summary>
+        private void SendToOwner()
+        {
+            CustomFurnitureItem item = this.Item;
+
+            // the sheet the change needs, under the name their data will use
+            Dictionary<string, string> files = new(StringComparer.OrdinalIgnoreCase);
+            string sheet = item.Sheet ?? "";
+            string name = Path.GetFileName(sheet);
+            if (name.Length > 0)
+            {
+                // still theirs (so it may sit in a sub-folder of their images), or one you painted or imported here
+                string? path = this.Store.ResolveSheet(sheet, this.SuggestTo.Folder) ?? this.Store.ResolveSheet(name);
+                item.Sheet = name; // they store it under a bare name in their own images folder
+                if (path != null)
+                    files[name] = path;
+            }
+
+            string json = JsonConvert.SerializeObject(item, new JsonSerializerSettings { Formatting = Formatting.Indented, NullValueHandling = NullValueHandling.Ignore });
+            string who = this.SuggestTo.Name;
+            CustomContent.SubmitEdit(json, this.SuggestBaseJson, files, (applied, message) =>
+            {
+                Game1.addHUDMessage(new HUDMessage(applied ? $"{who} got your change." : message) { noIcon = true });
+            });
+
+            Game1.playSound("newArtifact");
+            this.Root.Pop();
+            this.OnSaved($"Sent your change to {who}.");
+        }
+
+        private void Cancel()
+        {
+            if (this.Suggesting)
+                CustomContent.EndTurn(); // give the turn back, so they can change it themselves again
+
+            this.Root.Pop();
         }
     }
 }

@@ -16,9 +16,7 @@ namespace CustomContentCore.UI
         private readonly Button CloseButton;
         private readonly Button ExportButton;
         private readonly Button ImportButton;
-        private readonly Checkbox ShareBox;
-        private readonly Checkbox AcceptBox;
-        private readonly Checkbox ChangeBox;
+        private readonly Button MultiplayerButton;
         private readonly Button DonateButton;
         private readonly Button GitHubButton;
 
@@ -45,40 +43,9 @@ namespace CustomContentCore.UI
             this.ExportButton = this.Add(new Button("Export pack", this.ExportPack, "Save all your custom content (data and images) into one file, e.g. to use on another PC."));
             this.ImportButton = this.Add(new Button("Import pack", this.ImportPack, "Load a pack made with 'Export pack'. Your current content is backed up first."));
             this.ExportButton.Visible = this.ImportButton.Visible = ContentPacks.Any;
-            this.ShareBox = this.Add(new Checkbox("Share my content with other players", CoreMod.Config.ShareContentAsHost, v => { CoreMod.Config.ShareContentAsHost = v; CoreMod.SaveConfig(); CoreMod.Sync?.OnShareChanged(); },
-                "Multiplayer: anyone in your game who accepts shared content gets yours (paintings, crops, ...), so you see the same things. It works whether you host or join."));
+            this.MultiplayerButton = this.Add(new Button("Multiplayer", () => this.Root.Push(new MultiplayerScreen()), "Share your content with the other players in a game, take theirs, and let them change yours. All off unless you turn it on."));
             this.DonateButton = this.Add(new Button("Buy me a coffee", () => this.CopyLink(DonateUrl), $"Optional. Copies {DonateUrl} to paste in your browser. Nothing is unlocked by donating."));
             this.GitHubButton = this.Add(new Button("GitHub: bugs & ideas", () => this.CopyLink(GitHubUrl), $"Source, docs, bug reports, feedback and feature requests. Copies {GitHubUrl} to paste in your browser."));
-            this.ChangeBox = this.Add(new Checkbox("Let others change my content", CoreMod.Config.LetOthersChangeMyContent, v => { CoreMod.Config.LetOthersChangeMyContent = v; CoreMod.SaveConfig(); },
-                "Multiplayer: players you share with can ask for a turn at changing one of your items, and what they send back is saved as yours. One player at a time, and only items you already share.\nOnly turn this on if you play with people you trust."));
-            this.AcceptBox = this.Add(new Checkbox("Accept shared content", CoreMod.Config.AcceptContentFromHost, this.OnAcceptToggled,
-                "Multiplayer: take the custom content of the first player in your game who shares it, host or not. It's only used while you're in that game; your own content isn't changed.\nIf you share your own content too, you keep using yours.\nOnly turn this on if you play with people you trust."));
-        }
-
-        /// <summary>Ask for confirmation before accepting other players' content.</summary>
-        private void OnAcceptToggled(bool accept)
-        {
-            if (!accept)
-            {
-                this.SetAccept(false);
-                return;
-            }
-            this.AcceptBox.Checked = false; // until confirmed
-            this.Root.Push(new ConfirmScreen(
-                "Only turn this on if you play multiplayer with people you trust.\n\n"
-                + "The pictures and custom content of whoever shares - the host, or another player - are downloaded to your PC. "
-                + "They're checked and cleaned first, but someone can still show you any pictures they like. Messages between "
-                + "players pass through the host, so the host's word is the last one either way.",
-                "Turn on",
-                () => this.SetAccept(true)));
-        }
-
-        private void SetAccept(bool accept)
-        {
-            this.AcceptBox.Checked = accept;
-            CoreMod.Config.AcceptContentFromHost = accept;
-            CoreMod.SaveConfig();
-            CoreMod.Sync?.OnAcceptChanged();
         }
 
         /// <summary>Copy a link to the clipboard (opening a browser from the game isn't reliable on every OS).</summary>
@@ -155,7 +122,7 @@ namespace CustomContentCore.UI
             int x = area.Center.X - w / 2;
             int note = CoreMod.Sync?.UsingPeerContent == true ? 34 : 0; // the line about other players' content sits under the title
             int top = area.Y + (this.Entries.Count > 4 ? 84 : 120) + note;
-            int bottom = area.Bottom - 84 - 172 - 44; // above the multiplayer heading, leaving room for the last description
+            int bottom = area.Bottom - 84 - 64 - 44; // above the bottom row of buttons, leaving room for the last description
             int count = Math.Max(1, this.Entries.Count);
             int step = Math.Clamp((bottom - top) / count, 48, 132); // in a small window the rows shrink rather than run into the multiplayer options
             this.ShowDescriptions = step >= 104;
@@ -170,13 +137,9 @@ namespace CustomContentCore.UI
             this.SettingsButton.Bounds = new Rectangle(this.CloseButton.Bounds.X - 12 - 180, area.Bottom - 84, 180, 60);
             this.ExportButton.Bounds = new Rectangle(area.X + 32, area.Bottom - 84, 220, 60);
             this.ImportButton.Bounds = new Rectangle(area.X + 32 + 232, area.Bottom - 84, 220, 60);
-            this.GitHubButton.Bounds = new Rectangle(area.Right - 32 - 300, area.Bottom - 84 - 118, 300, 52);
-            this.DonateButton.Bounds = new Rectangle(this.GitHubButton.Bounds.X - 12 - 260, area.Bottom - 84 - 118, 260, 52);
-            // the checkboxes share those rows, so keep them clear of the support buttons
-            int boxW = Math.Max(240, Math.Min(520, this.DonateButton.Bounds.X - 24 - (area.X + 32)));
-            this.ShareBox.Bounds = new Rectangle(area.X + 32, area.Bottom - 84 - 172, boxW, 44);
-            this.AcceptBox.Bounds = new Rectangle(area.X + 32, area.Bottom - 84 - 118, boxW, 44);
-            this.ChangeBox.Bounds = new Rectangle(area.X + 32, area.Bottom - 84 - 64, boxW, 44);
+            this.GitHubButton.Bounds = new Rectangle(area.Right - 32 - 300, area.Bottom - 84 - 64, 300, 52);
+            this.DonateButton.Bounds = new Rectangle(this.GitHubButton.Bounds.X - 12 - 260, area.Bottom - 84 - 64, 260, 52);
+            this.MultiplayerButton.Bounds = new Rectangle(area.X + 32, area.Bottom - 84 - 64, 220, 52);
         }
 
         public override void Draw(SpriteBatch b, int mouseX, int mouseY)
@@ -184,16 +147,10 @@ namespace CustomContentCore.UI
             Gfx.Panel(b, this.Area);
             Gfx.Text(b, "What do you want to edit?", new Vector2(this.Area.X + 36, this.Area.Y + 24), null, Gfx.TitleFont);
             base.Draw(b, mouseX, mouseY);
-            Vector2 heading = new(this.ShareBox.Bounds.X, this.ShareBox.Bounds.Y - 40);
-            Gfx.Text(b, "Multiplayer", heading, Color.DimGray);
-            float noteX = Gfx.Font.MeasureString("Multiplayer ").X;
-            int noteRoom = (int)(this.DonateButton.Bounds.X - 24 - heading.X - noteX); // the support heading sits on this line too
-            if (noteRoom > 140)
-                Gfx.Text(b, Gfx.Fit("- only accept content in games with people you trust", noteRoom), heading + new Vector2(noteX, 0), Color.DarkRed);
+
             if (CoreMod.Sync?.UsingPeerContent == true)
                 Gfx.Text(b, Gfx.Fit("Other players' content is shown next to yours. You can only change your own, or ask them for a turn.", this.Area.Width - 72), new Vector2(this.Area.X + 36, this.Area.Y + 68), Color.DarkRed);
             Gfx.Text(b, "Support (optional)", new Vector2(this.DonateButton.Bounds.X, this.DonateButton.Bounds.Y - 40), Color.DimGray);
-            Gfx.Text(b, Gfx.Fit("Thanks for using these mods!", this.Area.Right - 32 - this.DonateButton.Bounds.X), new Vector2(this.DonateButton.Bounds.X, this.DonateButton.Bounds.Bottom + 8), Color.DimGray);
             if (this.Message != null)
                 Gfx.Message(b, this.Message, this.SettingsButton.Bounds.X - this.ImportButton.Bounds.Right - 48, new Vector2(this.ImportButton.Bounds.Right + 24, this.CloseButton.Bounds.Y + 16), this.MessageColor);
             if (this.ShowDescriptions)

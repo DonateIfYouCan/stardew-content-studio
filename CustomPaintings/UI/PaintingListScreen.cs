@@ -41,6 +41,9 @@ namespace CustomPaintings.UI
         ** Fields
         *********/
         private readonly PaintingStore Store;
+
+        /// <summary>The content version the rows were built from, so the list notices when content changes underneath it.</summary>
+        private int BuiltVersion = -1;
         private bool ShowGamePaintings;
 
         private readonly ScrollList<Row> List;
@@ -166,6 +169,9 @@ namespace CustomPaintings.UI
 
         public override void Draw(SpriteBatch b, int mouseX, int mouseY)
         {
+            if (this.BuiltVersion != CustomContent.ContentVersion)
+                this.Refresh(); // another player's content arrived or changed while this list was open
+
             Rectangle area = this.Area;
             Gfx.Panel(b, area);
             Gfx.Text(b, "Paintings", new Vector2(area.X + 36, area.Y + 24), null, Gfx.TitleFont);
@@ -233,6 +239,7 @@ namespace CustomPaintings.UI
         *********/
         private void Refresh()
         {
+            this.BuiltVersion = CustomContent.ContentVersion;
             string? selectedId = this.List.Selected?.FurnitureId;
             this.DisposeThumbnails();
             this.AllRows = this.ShowGamePaintings ? this.BuildGameRows() : this.BuildMyRows();

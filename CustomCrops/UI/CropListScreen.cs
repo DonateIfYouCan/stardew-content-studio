@@ -17,6 +17,7 @@ namespace CustomCrops.UI
         private readonly ScrollList<CropStore.RenderedCrop> List;
         private readonly Button NewButton;
         private readonly Button EditButton;
+        private readonly Button SuggestButton;
         private readonly Button GiveButton;
         private readonly Button DeleteButton;
         private readonly Button DuplicateButton;
@@ -36,6 +37,7 @@ namespace CustomCrops.UI
             });
             this.NewButton = this.Add(new Button("+ New crop", this.CreateNew, "Make a new crop: seeds, growing plant and harvest."));
             this.EditButton = this.Add(new Button("Edit", this.EditSelected));
+            this.SuggestButton = this.Add(new Button("Ask to change", this.SuggestChange, "Ask the player it belongs to for a turn at changing it. They get your version and can keep it."));
             this.GiveButton = this.Add(new Button("Get seeds", this.GiveSelected, "Adds 10 seeds to your inventory, for testing."));
             this.DuplicateButton = this.Add(new Button("Duplicate", this.DuplicateSelected, "Make a copy to tweak, keeping the original."));
             this.DeleteButton = this.Add(new Button("Delete", this.DeleteSelected));
@@ -70,11 +72,18 @@ namespace CustomCrops.UI
                 button.Bounds = new Rectangle(bx, by, sideW, 56);
                 by += button == this.NewButton ? 88 : 64;
             }
+            this.SuggestButton.Bounds = this.EditButton.Bounds; // a row is either yours to edit or someone else's to ask about, never both
             this.CloseButton.Bounds = new Rectangle(area.Right - pad - 180, area.Bottom - 84, 180, 60);
         }
 
+        /// <summary>The content version the rows were built from, so the list notices when another player's content arrives or changes.</summary>
+        private int BuiltVersion = -1;
+
         public override void Draw(SpriteBatch b, int mouseX, int mouseY)
         {
+            if (this.BuiltVersion != CustomContent.ContentVersion)
+                this.Refresh(); // another player's content arrived or changed while this list was open
+
             Gfx.Panel(b, this.Area);
             Gfx.Text(b, "Custom crops", new Vector2(this.Area.X + 36, this.Area.Y + 24), null, Gfx.TitleFont);
             base.Draw(b, mouseX, mouseY);
@@ -122,6 +131,7 @@ namespace CustomCrops.UI
 
         private void Refresh()
         {
+            this.BuiltVersion = CustomContent.ContentVersion;
             string? selected = this.List.Selected?.Id;
             this.ClearIcons();
             this.List.Items = this.Store.Entries.ToList(); // your own crops first, then those of the players sharing theirs
@@ -132,8 +142,12 @@ namespace CustomCrops.UI
         private void SyncButtons()
         {
             bool selected = this.List.Selected != null;
-            bool own = this.List.Selected?.IsOwn == true; // another player's crop can be looked at and planted, not changed
+            bool own = this.List.Selected?.IsOwn == true; // another player's crop can be looked at and planted, but only changed by asking them
+            string? busy = own ? CustomContent.WhoIsEditing(this.Store.Manifest, this.List.Selected!.Data.Id) : null;
             this.EditButton.Visible = own;
+            this.EditButton.Enabled = busy == null; // wait until they're done, so their change isn't refused
+            this.EditButton.Tooltip = busy != null ? $"{busy} is changing this right now." : null;
+            this.SuggestButton.Visible = selected && !own;
             this.GiveButton.Visible = selected;
             this.GiveButton.Enabled = Context.IsWorldReady;
             this.GiveButton.Tooltip = Context.IsWorldReady ? "Adds 10 seeds to your inventory, for testing." : "Load a save first.";
@@ -151,6 +165,46 @@ namespace CustomCrops.UI
         {
             if (this.List.Selected is { IsOwn: true } entry)
                 this.Root.Push(new CropEditorScreen(this.Store, entry.Data, isNew: false, name => this.ShowMessage($"Saved '{name}'.")));
+        }
+
+        /// <summary>Ask another player for a turn at changing one of their crops, then open it for editing.</summary>
+        private void SuggestChange()
+        {
+            if (this.List.Selected is not { IsOwn: false } entry)
+                return;
+
+            // their data file names the crop by its own ID, which is what a change is sent back for (ours is tagged, so the two can't clash)
+            string itemId = entry.Data.Id;
+            this.ShowMessage($"Asking {entry.OwnerName}...");
+            CustomContent.RequestTurn(this.Store.Manifest, entry.OwnerId, itemId, (granted, json, message) =>
+            {
+                if (!granted)
+                {
+                    this.ShowMessage(message);
+                    return;
+                }
+
+                CustomCrop? crop;
+                try
+                {
+                    crop = Newtonsoft.Json.JsonConvert.DeserializeObject<CustomCrop>(json);
+                }
+                catch (Newtonsoft.Json.JsonException ex)
+                {
+                    CustomContent.EndTurn(); // don't sit on a turn we can't use
+                    this.ShowMessage($"Couldn't read {entry.OwnerName}'s crop: {ex.Message}", error: true);
+                    return;
+                }
+                if (crop == null)
+                {
+                    CustomContent.EndTurn();
+                    this.ShowMessage($"Couldn't read {entry.OwnerName}'s crop.", error: true);
+                    return;
+                }
+
+                string folder = CustomContent.GetContentSources(this.Store.Manifest, this.Store.ModFolder).FirstOrDefault(source => source.OwnerId == entry.OwnerId)?.Folder ?? this.Store.ModFolder;
+                this.Root.Push(new CropEditorScreen(this.Store, crop, (entry.OwnerId, entry.OwnerName, folder), json, text => this.ShowMessage(text)));
+            });
         }
 
         private void GiveSelected()

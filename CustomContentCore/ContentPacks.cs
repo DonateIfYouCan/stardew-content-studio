@@ -148,6 +148,12 @@ namespace CustomContentCore
             Registrations.Add(new Registration(mod, modFolder, paths, reload, sharedFiles, editing));
         }
 
+        /// <summary>Goes up every time content is reloaded, so an open screen can tell that its list is out of date.</summary>
+        public static int ContentVersion { get; private set; }
+
+        /// <summary>Note that content was reloaded (e.g. another player's arrived, or they changed something of yours).</summary>
+        internal static void NotifyReloaded() => ContentVersion++;
+
         /// <summary>How a mod lets other players change its items, if it does.</summary>
         internal static ContentEditing? GetEditing(string modId)
         {

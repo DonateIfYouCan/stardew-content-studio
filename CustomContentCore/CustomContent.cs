@@ -90,8 +90,12 @@ namespace CustomContentCore
         /// <summary>Call after your mod's content changed (e.g. saved in the editor), so a multiplayer host sends the change to players.</summary>
         public static void NotifyContentChanged()
         {
+            ContentPacks.NotifyReloaded();
             CoreMod.Sync?.QueueOfferToAcceptingPlayers();
         }
+
+        /// <summary>Goes up whenever content is reloaded; an open list can compare it with the value it was built from and rebuild itself.</summary>
+        public static int ContentVersion => ContentPacks.ContentVersion;
 
         /// <summary>Everywhere a mod should load content from: its own folder first, then the other players who share theirs.</summary>
         /// <param name="mod">The mod's manifest.</param>

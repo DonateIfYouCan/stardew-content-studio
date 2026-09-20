@@ -36,7 +36,7 @@ namespace CustomCrops
 
         private readonly IModHelper Helper;
         private readonly IMonitor Monitor;
-        private readonly IManifest Manifest;
+        internal readonly IManifest Manifest; // the editor needs it to ask another player for a turn at changing their crop
         private DateTime IgnoreFileChangesUntil;
 
         /// <summary>Rendered art by crop ID.</summary>
@@ -85,6 +85,9 @@ namespace CustomCrops
         /// <summary>The folder content is loaded from: the mod folder, or (in multiplayer) the host's content.</summary>
         private string ContentFolder => ContentPacks.GetContentRoot(this.Manifest, this.Helper.DirectoryPath);
         public string ImageFolder => Path.Combine(this.ContentFolder, ImageFolderName);
+
+        /// <summary>The mod's own folder on disk, which is what the other players' content folders are looked up against.</summary>
+        internal string ModFolder => this.Helper.DirectoryPath;
 
         /// <summary>Your own <c>crops.json</c>; the only one that's ever written back.</summary>
         public CropsFile File { get; private set; } = new();
@@ -159,6 +162,74 @@ namespace CustomCrops
             CustomContent.NotifyContentChanged();
         }
 
+        /// <summary>Get one of your own crops as JSON, for another player who asked for a turn at changing it.</summary>
+        /// <param name="itemId">The crop's ID in your own <c>crops.json</c>, without the tag another player's crops are known by.</param>
+        /// <returns>The crop as JSON, or <c>null</c> if you have no such crop.</returns>
+        public string? GetItemJson(string itemId)
+        {
+            CustomCrop? crop = this.ReadFile().Crops.FirstOrDefault(c => string.Equals(c.Id, itemId, StringComparison.OrdinalIgnoreCase));
+            return crop == null
+                ? null
+                : JsonConvert.SerializeObject(crop, new JsonSerializerSettings { Formatting = Formatting.Indented, NullValueHandling = NullValueHandling.Ignore });
+        }
+
+        /// <summary>Write another player's change to one of your crops into your own content.</summary>
+        /// <param name="itemId">The crop's ID in your own data; a change can't rename it or move to another crop, since planted crops are tied to the ID.</param>
+        /// <param name="json">The changed crop, as they sent it.</param>
+        /// <param name="files">The images that came with it, already checked and rebuilt: the name the data uses, and the file to copy in.</param>
+        /// <returns>Whether it was applied.</returns>
+        /// <remarks>Everything here comes from another player, so none of it is trusted: only the crop we already have is changed, and only file names (never paths) are read out of their data.</remarks>
+        public bool ApplyItemJson(string itemId, string json, IDictionary<string, string> files)
+        {
+            CustomCrop? crop;
+            try
+            {
+                crop = JsonConvert.DeserializeObject<CustomCrop>(json);
+            }
+            catch (JsonException ex)
+            {
+                // JSON we can't read is a change we refuse, not a crash
+                this.Monitor.Log($"Couldn't read a change to crop '{itemId}': {ex.Message}", LogLevel.Warn);
+                return false;
+            }
+
+            CropsFile file = this.ReadFile();
+            int index = file.Crops.FindIndex(c => string.Equals(c.Id, itemId, StringComparison.OrdinalIgnoreCase));
+            if (crop == null || index < 0)
+                return false;
+
+            crop.Id = file.Crops[index].Id;
+            if (crop.HarvestImage != null)
+                crop.HarvestImage.File = this.TakeSentImage(crop.HarvestImage.File, files);
+            if (crop.SeedImage != null)
+                crop.SeedImage.File = this.TakeSentImage(crop.SeedImage.File, files);
+            if (!string.IsNullOrWhiteSpace(crop.GrowthSheet))
+                crop.GrowthSheet = this.TakeSentImage(crop.GrowthSheet, files);
+
+            file.Crops[index] = crop;
+            this.Save(file); // the usual save path, so the crops reload and everyone sharing gets the new version
+            return true;
+        }
+
+        /// <summary>Store an image that came with another player's change, and give back the name our own data should use for it.</summary>
+        /// <param name="file">The image as their data names it, which may be anything at all.</param>
+        /// <param name="files">The checked files that came with the change, by the name the data uses.</param>
+        private string TakeSentImage(string? file, IDictionary<string, string> files)
+        {
+            // only ever the file name: an image of ours lives in our own images folder, and nothing they send may point elsewhere
+            string name = Path.GetFileName(file ?? "");
+            if (name.Length == 0)
+                return "";
+
+            if (files.TryGetValue(name, out string? sent) && System.IO.File.Exists(sent))
+            {
+                Directory.CreateDirectory(this.ImageFolder);
+                this.IgnoreFileChangesUntil = DateTime.UtcNow.AddSeconds(2); // the save that follows reloads anyway
+                System.IO.File.Copy(sent, Path.Combine(this.ImageFolder, name), overwrite: true);
+            }
+            return name;
+        }
+
         public void Reload()
         {
             IReadOnlyList<ContentPacks.ContentSource> sources = CustomContent.GetContentSources(this.Manifest, this.Helper.DirectoryPath);
@@ -211,7 +282,12 @@ namespace CustomCrops
         /// <param name="crop">The crop data.</param>
         /// <param name="warning">A problem worth telling the player about (the crop still works).</param>
         /// <param name="source">The content it came from: your own folder, or another player's in multiplayer.</param>
-        public RenderedCrop Render(CustomCrop crop, out string? warning, ContentPacks.ContentSource? source = null)
+        /// <param name="alsoOwnFolder">
+        /// Also look in your own images folder for an image that isn't in <paramref name="source"/>'s. Only the editor does this, while you're
+        /// changing another player's crop: an image you've just picked for the change sits in your folder until they accept it. Loading their
+        /// content never does this, so their data can't reach your images.
+        /// </param>
+        public RenderedCrop Render(CustomCrop crop, out string? warning, ContentPacks.ContentSource? source = null, bool alsoOwnFolder = false)
         {
             warning = null;
             int scale = GetScale(crop.Resolution);
@@ -228,14 +304,16 @@ namespace CustomCrops
                 DisplayName = source is { IsOwn: false } ? $"{crop.Name} ({source.OwnerName})" : crop.Name
             };
 
+            Pixels? LoadIcon(ImageRef? image) => this.LoadSquare(image, 16 * scale, folder) ?? (alsoOwnFolder ? this.LoadSquare(image, 16 * scale, null) : null);
+
             // harvest icon
-            Pixels? harvest = this.LoadSquare(crop.HarvestImage, 16 * scale, folder);
+            Pixels? harvest = LoadIcon(crop.HarvestImage);
             if (harvest == null && crop.HarvestImage != null)
                 warning = $"harvest image '{crop.HarvestImage.File}' not found.";
             harvest ??= Placeholder(16 * scale);
 
             // seed icon
-            Pixels seed = this.LoadSquare(crop.SeedImage, 16 * scale, folder) ?? MakePacket(harvest, scale);
+            Pixels seed = LoadIcon(crop.SeedImage) ?? MakePacket(harvest, scale);
 
             Pixels objects = SideBySide(seed, harvest);
             result.ObjectsHd = new Pixels(ImageProcessor.Premultiply(objects.Data), objects.Width, objects.Height);
@@ -246,6 +324,8 @@ namespace CustomCrops
             if (!string.IsNullOrWhiteSpace(crop.GrowthSheet))
             {
                 growth = this.LoadGrowthSheet(crop.GrowthSheet, scale, out string? error, folder);
+                if (growth == null && alsoOwnFolder)
+                    growth = this.LoadGrowthSheet(crop.GrowthSheet, scale, out error, null);
                 if (growth == null)
                     warning = error;
             }

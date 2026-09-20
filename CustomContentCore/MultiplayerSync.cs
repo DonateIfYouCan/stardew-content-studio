@@ -74,8 +74,11 @@ namespace CustomContentCore
         {
             public long PlayerId;
 
-            /// <summary>Their name, shown next to their items.</summary>
+            /// <summary>Their name, shown next to their items. It can change while they're still making their character.</summary>
             public string Name = "";
+
+            /// <summary>The folder their files are kept in. Fixed when we first answer them, so a changing name can't orphan what we downloaded.</summary>
+            public string Folder = "";
 
             /// <summary>The secret we made for them; only messages carrying it count as theirs.</summary>
             public string? Token;
@@ -232,8 +235,9 @@ namespace CustomContentCore
         /// <summary>Tell the players who are waiting for it that we share content.</summary>
         private void SendGreetings()
         {
-            // wait until the player has a name, so the other side can say who's sharing (it's empty while they're still being made)
-            if (!CoreMod.Config.ShareContentAsHost || !Context.IsWorldReady || string.IsNullOrWhiteSpace(Game1.player?.Name))
+            // wait until the player is made and named, so the other side can say who's sharing (the name is half-typed while the
+            // character is still being created, and that's the name they'd remember)
+            if (!CoreMod.Config.ShareContentAsHost || !Context.IsWorldReady || string.IsNullOrWhiteSpace(Game1.player?.Name) || Game1.activeClickableMenu is StardewValley.Menus.CharacterCustomization)
                 return;
 
             foreach (long playerId in this.ToGreet.ToArray())
@@ -597,6 +601,9 @@ namespace CustomContentCore
                 this.SafeReload(mod, reload);
             }
 
+            foreach (Source source in ready)
+                source.Name = this.NameOf(source.PlayerId, source.Name); // they may have been mid-way through naming themselves when they first said hello
+
             foreach (Source source in ready.Where(s => !s.InUse))
             {
                 source.InUse = true;
@@ -683,6 +690,7 @@ namespace CustomContentCore
             try
             {
                 reload();
+                ContentPacks.NotifyReloaded();
             }
             catch (Exception ex)
             {
@@ -704,8 +712,12 @@ namespace CustomContentCore
         /// <summary>The folder holding one player's shared content.</summary>
         private string GetPlayerFolder(Source source)
         {
-            string name = new string((source.Name + "_" + source.PlayerId).Select(ch => IsAsciiLetterOrDigit(ch) || ch is '_' or '-' ? ch : '_').ToArray());
-            return Path.Combine(this.Helper.DirectoryPath, "host-content", name);
+            if (source.Folder.Length == 0)
+            {
+                string name = new string((source.Name + "_" + source.PlayerId).Select(ch => IsAsciiLetterOrDigit(ch) || ch is '_' or '-' ? ch : '_').ToArray());
+                source.Folder = Path.Combine(this.Helper.DirectoryPath, "host-content", name);
+            }
+            return source.Folder;
         }
 
         private string GetCacheRoot(Source source, string modId)

@@ -159,6 +159,9 @@ namespace CustomContentCore
 
         private const int ChunkBytes = 48 * 1024;
         private const int MaxEditFiles = 20;
+
+        /// <summary>How many of our items one player may have a turn on at once, so nobody can tie up everything we own.</summary>
+        private const int MaxTurnsPerPlayer = 3;
         private const long MaxEditBytes = 24L * 1024 * 1024;
 
         private readonly IModHelper Helper;
@@ -291,7 +294,7 @@ namespace CustomContentCore
             string key = Key(request.Mod, request.Item);
             string name = NameOf(fromPlayer);
 
-            if (!CoreMod.Config.LetOthersChangeMyContent)
+            if (!CoreMod.Config.LetOthersChangeMyContent || !CoreMod.Config.ShareContentAsHost)
             {
                 this.Send(fromPlayer, new TurnReply { Mod = request.Mod, Item = request.Item, Reason = "They don't let other players change their content." }, TurnReplyType);
                 this.Monitor.Log($"{name} asked to change your '{request.Item}', but 'Let others change my content' is off.", LogLevel.Info);
@@ -311,6 +314,11 @@ namespace CustomContentCore
             if (this.Turns.TryGetValue(key, out Turn? existing) && existing.Expires > DateTime.UtcNow && existing.Editor != fromPlayer)
             {
                 this.Send(fromPlayer, new TurnReply { Mod = request.Mod, Item = request.Item, Reason = $"{existing.EditorName} is changing that right now." }, TurnReplyType);
+                return;
+            }
+            if (this.Turns.Count(t => t.Value.Editor == fromPlayer && t.Value.Expires > DateTime.UtcNow) >= MaxTurnsPerPlayer)
+            {
+                this.Send(fromPlayer, new TurnReply { Mod = request.Mod, Item = request.Item, Reason = "You're already changing enough of their things; finish those first." }, TurnReplyType);
                 return;
             }
 

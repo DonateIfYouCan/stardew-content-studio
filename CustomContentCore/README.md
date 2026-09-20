@@ -16,9 +16,13 @@ It provides:
   direction. You take one player's content at a time (the first who offers), and sharing wins over accepting, so two players
   who both share keep their own content instead of swapping it. An empty offer is ignored. Received content goes to a
   per-sender cache (`host-content/`) and is only used while in that game; your own content is never changed, and editing is
-  locked while using someone else's. Only changed files are sent (SHA-256 checked), the sender's edits are pushed live. Split-screen is skipped.
-  This shares content, it isn't collaborative editing: nobody writes to anyone else's files, so no locking is involved.
+  Only changed files are sent (SHA-256 checked), the sender's edits are pushed live. Split-screen is skipped.
   See [Multiplayer security](#multiplayer-security).
+- **Changing each other's content** (off by default, *Let others change my content*): ask the owner of a shared item for a turn at
+  changing it, edit their version in the normal editor, and send it back. The owner is the only one who ever writes their own files,
+  so there is nothing to merge: a turn is one item at a time, runs out by itself, is dropped when someone leaves, and a change is
+  refused if the item moved on meanwhile. What comes back is checked again by the owner (images decoded and re-encoded, the owner
+  names the files it stores, the item ID can't be changed). See [Multiplayer security](#multiplayer-security).
 - **Full-screen image viewer** with captions and slideshow navigation.
 - **High-resolution furniture drawing**: mods register a renderer and their furniture is drawn from their own (sharper) texture.
 
@@ -121,9 +125,9 @@ pop-ups or reminders.
 The other side may run a modified mod or game and send anything, so each player's own checks are what protect them.
 
 **Who is allowed to send.** SMAPI's sender ID can be forged: the host forwards farmhands' messages, and a modified SMAPI can
-claim to be the host. So a player who accepts content makes a random 256-bit secret per game and sends it only to the host.
-Messages addressed only to the host are never forwarded, so other players never see the secret. Offers and file data without
-that secret are ignored. The host keeps the first secret per connection, so another player can't replace it.
+claim to be the host. So a player who accepts content makes a random 256-bit secret for each player who shares, and sends it
+only to them. Messages addressed to one player are never forwarded to the others, so nobody else sees the secret. Offers and
+file data without the right secret are ignored, and a player only ever gets one secret per game.
 
 **What is accepted before download:**
 - only registered mods and their content paths;
@@ -139,11 +143,19 @@ that secret are ignored. The host keeps the first secret per connection, so anot
 - JSON must be a UTF-8 object, at most 32 levels deep, with text values under 20,000 characters. It's parsed and written out
   again without comments or `$...` properties like `$type`. The mods never enable Newtonsoft type handling.
 
-**Where it goes.** Files are written only to `host-content/<host>/`, and only the 5 most recent hosts are kept. Images are
+**Changing each other's content.** A turn is asked of the item's owner, never the host, and only if they turned on *Let others
+change my content*. The owner hands out a fresh 256-bit secret with the turn; only messages carrying it can change that item.
+One player holds a turn on an item at a time, it runs out after a few minutes unless the editor says it's still going, and it's
+dropped when that player leaves. What comes back is treated like any other received content: the item ID is forced back to the
+owner's own (a change can't rename an item or move to another one), sent file names are reduced to a name the owner chooses
+itself, images go through the same decode-and-re-encode, and the change is refused if the owner's copy of the item changed while
+it was being edited. Only the owner ever writes the owner's files; the editor's game writes nothing.
+
+**Where it goes.** Files are written only to `host-content/<player>/`, and only the 5 most recent players are kept. Images are
 loaded only from inside the content folder, so a data file can't point to other files on the PC. Nothing received is ever
 executed or extracted.
 
-**On the host.** It shares only files in use: the data file and the images it references, never unused or deleted images,
+**When you share.** You share only files in use: the data file and the images it references, never unused or deleted images,
 links, config, manifests or DLLs. It ignores requests without the player's secret, requests for files it didn't offer, and
 repeated requests while a send is still in progress.
 
