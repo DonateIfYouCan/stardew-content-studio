@@ -117,9 +117,10 @@ namespace CustomContentCore.UI
             Gfx.Rect(b, new Rectangle(crop.Right, crop.Y, Math.Max(0, d.Right - crop.Right), crop.Height), shade);
             Gfx.Outline(b, crop, Color.White, 2);
             foreach (Vector2 corner in Corners(crop))
-                Gfx.Rect(b, new Rectangle((int)corner.X - 7, (int)corner.Y - 7, 14, 14), new Color(255, 210, 90));
+                Gfx.Rect(b, new Rectangle((int)corner.X - 9, (int)corner.Y - 9, 18, 18), new Color(255, 210, 90));
 
             Gfx.Text(b, $"{this.Image.Width} x {this.Image.Height}", new Vector2(this.Bounds.X + 16, this.Bounds.Bottom - 40), Color.LightGray);
+            Gfx.Text(b, this.FreeShape ? "any shape" : "shape locked", new Vector2(this.Bounds.Right - 150, this.Bounds.Bottom - 40), Color.LightGray);
         }
 
         /// <summary>Start dragging if the click is on the image or a crop corner.</summary>
@@ -134,7 +135,7 @@ namespace CustomContentCore.UI
             Vector2[] opposite = { new(this.Crop.Right, this.Crop.Bottom), new(this.Crop.X, this.Crop.Bottom), new(this.Crop.Right, this.Crop.Y), new(this.Crop.X, this.Crop.Y) };
             for (int i = 0; i < 4; i++)
             {
-                if (Vector2.Distance(corners[i], new Vector2(x, y)) <= 18)
+                if (Vector2.Distance(corners[i], new Vector2(x, y)) <= 24)
                 {
                     this.Drag = DragMode.Resize;
                     this.DragAnchor = opposite[i];
@@ -166,7 +167,15 @@ namespace CustomContentCore.UI
                 return;
             }
 
-            // resize from the anchor corner, keeping the aspect ratio
+            // resize from the anchor corner; with the shape unlocked the box follows the cursor in both directions
+            if (this.FreeShape)
+            {
+                int x1 = (int)Math.Round(Math.Min(this.DragAnchor.X, mouse.X)), x2 = (int)Math.Round(Math.Max(this.DragAnchor.X, mouse.X));
+                int y1 = (int)Math.Round(Math.Min(this.DragAnchor.Y, mouse.Y)), y2 = (int)Math.Round(Math.Max(this.DragAnchor.Y, mouse.Y));
+                this.SetCrop(new Rectangle(x1, y1, Math.Max(1, x2 - x1), Math.Max(1, y2 - y1)));
+                return;
+            }
+
             double aspect = this.Aspect;
             float dx = mouse.X - this.DragAnchor.X, dy = mouse.Y - this.DragAnchor.Y;
             int dirX = dx < 0 ? -1 : 1, dirY = dy < 0 ? -1 : 1;
@@ -205,7 +214,7 @@ namespace CustomContentCore.UI
         /// <summary>Whether a point is on the image or a crop corner (i.e. a click there would start a drag).</summary>
         public bool IsInteractive(int x, int y)
         {
-            return this.Image != null && (this.ImageDest.Contains(x, y) || Corners(this.ToScreen(this.Crop)).Any(c => Vector2.Distance(c, new Vector2(x, y)) <= 18));
+            return this.Image != null && (this.ImageDest.Contains(x, y) || Corners(this.ToScreen(this.Crop)).Any(c => Vector2.Distance(c, new Vector2(x, y)) <= 24));
         }
 
 

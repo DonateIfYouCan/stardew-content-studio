@@ -28,6 +28,7 @@ namespace CustomFurniture.UI
         private readonly Button ChooseButton;
         private readonly Button FitButton;
         private readonly Button WholeButton;
+        private readonly Checkbox LockShapeBox;
         private readonly Button PaintButton;
         private readonly Button SaveButton;
         private readonly Button CancelButton;
@@ -66,8 +67,10 @@ namespace CustomFurniture.UI
                 v => { this.Item.Resolution = int.Parse(v); this.PreviewDirty = true; },
                 "How detailed it's drawn in the world."));
             this.ChooseButton = this.Add(new Button("Choose image", this.Browse, "Pick an image from your computer; it's copied into the mod's images folder."));
-            this.FitButton = this.Add(new Button("Biggest fit", () => { this.Cropper.FreeShape = false; this.Cropper.Fit(); this.PreviewDirty = true; }, "Take the biggest piece of the image with the right shape for a tile, keeping it undistorted."));
+            this.FitButton = this.Add(new Button("Biggest fit", this.FitBiggest, "Take the biggest piece of the image with the right shape for a tile, keeping it undistorted."));
             this.WholeButton = this.Add(new Button("Whole image", this.UseWholeImage, "Squeeze the whole image into one tile. Handy for a picture that isn't the shape of a tile."));
+            this.LockShapeBox = this.Add(new Checkbox("Lock shape", true, on => { this.Cropper.FreeShape = !on; if (on) { this.Cropper.SetAspect(this.Aspect); this.PreviewDirty = true; } },
+                "Keep the box the shape of a tile while you drag its corners. Unlock it to take any part of the picture and have it squeezed into the tile."));
             this.PaintButton = this.Add(new Button("Paint", this.Paint, "Draw on the image here in the game."));
             this.SaveButton = this.Add(new Button("Save", this.Save));
             this.CancelButton = this.Add(new Button("Cancel", () => this.Root.Pop()));
@@ -111,6 +114,7 @@ namespace CustomFurniture.UI
             this.FitButton.Bounds = new Rectangle(this.ChooseButton.Bounds.Right + 10, this.Cropper.Bounds.Bottom + 10, 160, 48);
             this.WholeButton.Bounds = new Rectangle(this.FitButton.Bounds.Right + 10, this.Cropper.Bounds.Bottom + 10, 180, 48);
             this.PaintButton.Bounds = new Rectangle(this.WholeButton.Bounds.Right + 10, this.Cropper.Bounds.Bottom + 10, 120, 48);
+            this.LockShapeBox.Bounds = new Rectangle(this.PaintButton.Bounds.Right + 12, this.Cropper.Bounds.Bottom + 12, 200, 44);
 
             int rightX = this.Cropper.Bounds.Right + 32, rightW = area.Right - pad - this.Cropper.Bounds.Right - 32;
             int labelW = 110, y = top;
@@ -174,6 +178,15 @@ namespace CustomFurniture.UI
             }
         }
 
+        /// <summary>Take the biggest piece of the image that's the shape of a tile, undistorted.</summary>
+        private void FitBiggest()
+        {
+            this.Cropper.FreeShape = false;
+            this.LockShapeBox.Checked = true;
+            this.Cropper.Fit();
+            this.PreviewDirty = true;
+        }
+
         /// <summary>Use the whole image as one tile, squeezed to fit, for a picture that isn't the shape of a tile.</summary>
         private void UseWholeImage()
         {
@@ -181,6 +194,7 @@ namespace CustomFurniture.UI
                 return;
 
             this.Cropper.FreeShape = true; // the whole picture, whatever shape it is, squeezed into the tile
+            this.LockShapeBox.Checked = false;
             this.Item.Crop = new[] { 0, 0, this.Source.Width, this.Source.Height };
             this.Cropper.SetImage(this.Source, new Rectangle(0, 0, this.Source.Width, this.Source.Height), this.Aspect);
             this.PreviewDirty = true;
@@ -207,6 +221,7 @@ namespace CustomFurniture.UI
             // a saved crop that isn't tile-shaped was made with 'Whole image', so keep it that way
             Rectangle? saved = this.Source != null ? ImageProcessor.ToCropRect(this.Item.Crop, this.Source.Width, this.Source.Height) : null;
             this.Cropper.FreeShape = saved is { } c && Math.Abs((double)c.Width / Math.Max(1, c.Height) - this.Aspect) >= 0.03;
+            this.LockShapeBox.Checked = !this.Cropper.FreeShape;
             this.Cropper.SetImage(this.Source, saved, this.Aspect);
             this.Cropper.EmptyText = "Choose an image";
             this.PreviewDirty = true;
