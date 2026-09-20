@@ -19,7 +19,7 @@ namespace CustomContentCore.UI
         ** Fields
         *********/
         /// <summary>The tools you can draw with.</summary>
-        private enum Tool { Pencil, Eraser, Picker, Fill, Line, Rectangle, Ellipse, ReplaceAll, ReplaceBrush, Select }
+        private enum Tool { Pencil, Eraser, Picker, Fill, Line, Rectangle, Ellipse, ReplaceAll, ReplaceBrush, Select, Pan }
 
         /// <summary>Something that changed the image and can be undone.</summary>
         private interface IStroke
@@ -100,8 +100,18 @@ namespace CustomContentCore.UI
         private bool FillShapes;
         private string Mirror = "off";
 
+        /// <summary>What the help button explains.</summary>
+        private const string HelpText =
+            "Drag on the image to use the tool you picked on the left. Right-click always takes the colour under the cursor, whichever tool that is.\n\n"
+            + "Moving around: the mouse wheel zooms towards the cursor and the arrow keys move. To drag the image, either pick the 'Move view' tool or hold space while you drag. "
+            + "'Width' fills the width with the image and 'Fit' shows all of it.\n\n"
+            + "Keys: B pencil, E eraser, I pick a colour, F fill, L line, R rectangle, S select, C copy, V paste, Delete clears the selection, Z undo, Y redo.\n\n"
+            + "Shapes: hold Shift to keep a line straight or a box square, and tick 'Fill shape' for solid rectangles and ovals.\n\n"
+            + "Selection: drag a box with the Select tool, then drag inside it to move those pixels. The buttons on the right copy, clear, flip or turn it; with nothing selected, flip and turn work on the whole image.\n\n"
+            + "The colours under the image are the ones this image uses. 'Choose colour' picks any other colour, and those stay in the row while you paint.";
+
         /// <summary>How many of the image's colours the palette offers.</summary>
-        private const int PaletteSize = 18;
+        private const int PaletteSize = 24;
 
         /// <summary>The colours offered below the canvas, most used first.</summary>
         private readonly Color[] ByUse;
@@ -111,6 +121,9 @@ namespace CustomContentCore.UI
 
         /// <summary>The palette as it's shown now.</summary>
         private Color[] Palette;
+
+        /// <summary>How many pixels use each colour of the palette, for the tooltip.</summary>
+        private readonly Dictionary<Color, int> PaletteCounts = new();
 
         /// <summary>Colours picked by hand, newest first, so they stay within reach while painting.</summary>
         private readonly List<Color> Recent = new();
@@ -180,6 +193,7 @@ namespace CustomContentCore.UI
         private readonly Button FlipButton;
         private readonly Button FlipDownButton;
         private readonly Button TurnButton;
+        private readonly Button HelpButton;
         private readonly Button SaveButton;
         private readonly Button CancelButton;
 
@@ -209,7 +223,7 @@ namespace CustomContentCore.UI
             this.PartLabels = partLabels ?? Array.Empty<string>();
             this.Title = title;
             this.OnSave = onSave;
-            this.ByUse = GetPalette(this.Canvas);
+            this.ByUse = GetPalette(this.Canvas, this.PaletteCounts);
             this.ByHue = ByColour(this.ByUse);
             this.Palette = this.ByUse;
             this.Colour = this.Palette.FirstOrDefault(c => c.A > 0, Color.Black);
@@ -226,7 +240,8 @@ namespace CustomContentCore.UI
                 (Tool.Ellipse, "Ellipse", "Drag for an oval. Hold Shift to keep it round."),
                 (Tool.ReplaceAll, "Replace all", "Click a colour to change it everywhere in the image."),
                 (Tool.ReplaceBrush, "Replace drag", "Drag to change only the colour you started on."),
-                (Tool.Select, "Select", "Drag a box (S), then drag inside it to move what's in it.")
+                (Tool.Select, "Select", "Drag a box (S), then drag inside it to move what's in it."),
+                (Tool.Pan, "Move view", "Drag to move around the image. Holding space does this with any tool.")
             })
             {
                 Tool chosen = tool;
@@ -258,10 +273,10 @@ namespace CustomContentCore.UI
                 v => this.Mirror = v,
                 "Draw the same strokes mirrored. On a sheet it mirrors within the sprite you're drawing in, not across the whole sheet."));
             this.PaletteCycler = this.Add(new Cycler(
-                new() { ("used", "Most used"), ("hue", "By colour") },
+                new() { ("used", "Order: most used"), ("hue", "Order: by shade") },
                 "used",
                 v => this.Palette = v == "hue" ? this.ByHue : this.ByUse,
-                "The colours taken from this image: in the order the image uses them most, or grouped by colour."));
+                "The colours this image uses. 'Most used' puts the commonest first; 'by shade' lines them up from dark to light and groups colours together."));
             this.CopyButton = this.Add(new Button("Copy", this.CopySelection, "Copy what's selected."));
             this.PasteButton = this.Add(new Button("Paste", this.PasteClipboard, "Put what you copied in the top left of the selection (or of the view)."));
             this.ClearButton = this.Add(new Button("Clear", this.ClearSelection, "Make everything in the selection see-through."));
@@ -271,6 +286,7 @@ namespace CustomContentCore.UI
             this.SpriteField = this.Add(new TextField("", this.GoToSprite, numbersOnly: true, limit: 5));
             this.SpriteButton = this.Add(new Button("Whole sprite", this.SelectSprite, "Grow the selection to the whole sprite it's in, which is handy for copying one sprite over another."));
             this.ColourButton = this.Add(new Button("Choose colour", this.ChooseColour, "Pick any colour, or type its red, green and blue values. The eyedropper takes a colour out of the image instead."));
+            this.HelpButton = this.Add(new Button("?", () => this.Root.Push(new HelpScreen("Painting", HelpText)), "How this screen works."));
             this.SaveButton = this.Add(new Button("Save", this.Save));
             this.CancelButton = this.Add(new Button("Cancel", this.Cancel));
             this.SetTool(Tool.Pencil);
@@ -293,17 +309,14 @@ namespace CustomContentCore.UI
             int bottom = area.Bottom - 96;
 
             // tools down the left, with the drawing options under them; the top row keeps the view options
-            int toolW = 175, toolH = 44, toolGap = 6;
+            int toolW = 175, toolH = 42, toolGap = 5;
             int ty = top + 60;
             foreach ((_, Button button) in this.ToolButtons)
             {
                 button.Bounds = new Rectangle(area.X + pad, ty, toolW, toolH);
                 ty += toolH + toolGap;
             }
-            ty += 10;
-            this.SizeCycler.Bounds = new Rectangle(area.X + pad, ty, toolW, 44);
-            this.FillBox.Bounds = new Rectangle(area.X + pad, ty + 52, toolW, 44);
-            this.MirrorCycler.Bounds = new Rectangle(area.X + pad, ty + 130, toolW, 44);
+
 
             this.UndoButton.Bounds = new Rectangle(area.X + pad, top, 110, 48);
             this.RedoButton.Bounds = new Rectangle(this.UndoButton.Bounds.Right + 8, top, 110, 48);
@@ -328,6 +341,12 @@ namespace CustomContentCore.UI
                 ay += 50;
             }
 
+            // how the tools behave, under the buttons that act on the selection
+            ay += 16;
+            this.SizeCycler.Bounds = new Rectangle(area.Right - pad - actionW, ay, actionW, 44);
+            this.FillBox.Bounds = new Rectangle(area.Right - pad - actionW, ay + 50, actionW, 44);
+            this.MirrorCycler.Bounds = new Rectangle(area.Right - pad - actionW, ay + 126, actionW, 44);
+
             // the selection buttons share the palette row, so the top row doesn't overflow
             this.ColourButton.Bounds = new Rectangle(this.CanvasArea.X + 52, this.CanvasArea.Bottom + 8, 200, 44);
             this.SpriteField.Bounds = new Rectangle(this.ColourButton.Bounds.Right + 90, this.CanvasArea.Bottom + 8, 80, 44);
@@ -336,6 +355,7 @@ namespace CustomContentCore.UI
             this.PaletteCycler.Bounds = new Rectangle(area.Right - pad - 300, this.CanvasArea.Bottom + 8, 300, 44);
             this.SaveButton.Bounds = new Rectangle(area.Right - pad - 200, area.Bottom - 84, 200, 60);
             this.CancelButton.Bounds = new Rectangle(this.SaveButton.Bounds.X - 16 - 180, area.Bottom - 84, 180, 60);
+            this.HelpButton.Bounds = new Rectangle(this.CancelButton.Bounds.X - 12 - 60, area.Bottom - 84, 60, 60);
 
             if (!this.Placed)
             {
@@ -362,8 +382,8 @@ namespace CustomContentCore.UI
             this.DrawPalette(b, mouseX, mouseY);
             base.Draw(b, mouseX, mouseY);
 
-            string help = this.Message ?? $"{this.Width}x{this.Height}, {this.Zoom}x zoom. Drag to draw, right-click to pick a colour, wheel to zoom, arrow keys or space+drag to move. B pencil, E eraser, I pick, F fill, L line, R rectangle, S select, Z undo.";
-            Gfx.Message(b, help, this.CancelButton.Bounds.X - area.X - 60, new Vector2(area.X + 36, area.Bottom - 70), this.Message != null ? Color.DarkGreen : Color.DimGray);
+            string help = this.Message ?? $"{this.Width}x{this.Height} pixels, {this.Zoom}x zoom.";
+            Gfx.Message(b, help, this.HelpButton.Bounds.X - area.X - 60, new Vector2(area.X + 36, area.Bottom - 70), this.Message != null ? Color.DarkGreen : Color.DimGray);
         }
 
         /// <summary>Draw the image, the transparency checkerboard behind it and the sprite grid over it.</summary>
@@ -519,7 +539,7 @@ namespace CustomContentCore.UI
         *********/
         public override void LeftClick(int x, int y)
         {
-            if (Panning && this.CanvasArea.Contains(x, y))
+            if ((Panning || this.Current == Tool.Pan) && this.CanvasArea.Contains(x, y))
             {
                 this.DragFrom = new Point(x, y);
                 this.DragView = this.View;
@@ -1338,6 +1358,26 @@ namespace CustomContentCore.UI
         /*********
         ** Private methods
         *********/
+        /// <summary>Say which colour a swatch is when the cursor is over it.</summary>
+        public override string? GetTooltip(int x, int y)
+        {
+            int size = 40, gap = 6;
+            int px = this.SwatchesX, py = this.CanvasArea.Bottom + 10;
+            if (y >= py && y <= py + size)
+            {
+                foreach (Color colour in this.Swatches)
+                {
+                    if (new Rectangle(px, py, size, size).Contains(x, y))
+                    {
+                        string used = this.PaletteCounts.TryGetValue(colour, out int count) ? $", used by about {count:n0} pixels" : " (you picked this one)";
+                        return colour.A == 0 ? "See-through" : $"Red {colour.R}, green {colour.G}, blue {colour.B}{(colour.A < 255 ? $", {colour.A}/255 solid" : "")}{used}";
+                    }
+                    px += size + gap;
+                }
+            }
+            return base.GetTooltip(x, y);
+        }
+
         /// <summary>The colours in the row under the canvas: the ones you picked by hand first, then the image's own.</summary>
         private IEnumerable<Color> Swatches => this.Recent.Concat(this.Palette);
 
@@ -1397,7 +1437,7 @@ namespace CustomContentCore.UI
         /// sampled rather than counted pixel by pixel: with millions of pixels every colour worth showing turns up in the
         /// sample anyway, and it keeps opening the screen instant.
         /// </summary>
-        private static Color[] GetPalette(Color[] pixels)
+        private static Color[] GetPalette(Color[] pixels, Dictionary<Color, int> countsOut)
         {
             const int maxSamples = 400_000;
             int step = Math.Max(1, pixels.Length / maxSamples);
@@ -1410,6 +1450,8 @@ namespace CustomContentCore.UI
                 counts.TryGetValue(colour, out int count);
                 counts[colour] = count + 1;
             }
+            foreach ((Color colour, int count) in counts)
+                countsOut[colour] = count * step; // the sample stands for this many pixels
             List<Color> palette = counts.OrderByDescending(p => p.Value).Take(PaletteSize).Select(p => p.Key).ToList();
             foreach (Color extra in new[] { Color.Black, Color.White })
             {

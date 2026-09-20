@@ -89,7 +89,7 @@ namespace CustomContentCore.UI
             return widget;
         }
 
-        public string? GetTooltip(int x, int y)
+        public virtual string? GetTooltip(int x, int y)
         {
             return this.Widgets.LastOrDefault(w => w.Visible && w.Tooltip != null && w.Bounds.Contains(x, y))?.Tooltip;
         }

@@ -70,8 +70,10 @@ namespace CustomCharacters
             new("farmer_girl_base_bald", "Body (female, bald)", true),
             new("hairstyles", "Hairstyles", false, CellWidth: 16, CellHeight: 96,        // one style, three rows of directions
                 PartHeight: 32, PartLabels: new[] { "facing you", "facing right", "facing away" }),
-            new("hairstyles2", "Hairstyles (more)", false, CellWidth: 16, CellHeight: 96,
-                PartHeight: 32, PartLabels: new[] { "facing you", "facing right", "facing away" }),
+            // every style in this sheet has its own left-facing sprite (Data/HairData says usesUniqueLeftSprite), so it's four
+            // directions tall instead of three
+            new("hairstyles2", "Hairstyles (more)", false, CellWidth: 16, CellHeight: 128,
+                PartHeight: 32, PartLabels: new[] { "facing you", "facing right", "facing away", "facing left" }),
             new("shirts", "Shirts", false, CellWidth: 8, CellHeight: 32, Group: ClothesGroup, GridWidth: 128, // 8x8 per direction
                 PartHeight: 8, PartLabels: new[] { "facing you", "facing right", "facing away", "facing left" }), // the right half holds the dye masks
             new("pants", "Pants", false, CellWidth: 16, CellHeight: 32, Group: ClothesGroup, StrideX: 192, StrideY: 688), // one frame; each pants takes a 192x688 block
