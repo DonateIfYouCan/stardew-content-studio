@@ -43,7 +43,8 @@ in the mod's images folder, so the art you started from is never overwritten.
 Starting from the game's own art (a farmer sheet, a villager sprite, a piece of furniture) copies it first and asks what
 size to draw at: **the game's size (1x)**, 2x, or 4x. 1x is one pixel per game pixel, which is what most pixel art wants;
 the bigger sizes are for HD art. The colours below the canvas are the ones the image already uses, ordered by how much
-it uses them or grouped by colour.
+it uses them or grouped by colour; **Choose colour** opens a picker for any other colour (drag in the shade square, pick a
+hue, or type red, green, blue and see-through values), and the colours you pick that way stay in the row while you paint.
 
 Keys: `B` pencil, `E` eraser, `I` pick colour, `F` fill, `Z` undo, `Y` redo, arrow keys to move around, mouse wheel to zoom.
 

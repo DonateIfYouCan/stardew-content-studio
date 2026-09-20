@@ -69,6 +69,9 @@ namespace CustomContentCore.UI
         /// <summary>The palette as it's shown now.</summary>
         private Color[] Palette;
 
+        /// <summary>Colours picked by hand, newest first, so they stay within reach while painting.</summary>
+        private readonly List<Color> Recent = new();
+
         /// <summary>While drawing: where the last painted pixel was, the colour each touched pixel had before, and the area covered.</summary>
         private Point? LastPixel;
         private Dictionary<int, Color>? StrokeOriginals;
@@ -86,6 +89,7 @@ namespace CustomContentCore.UI
         private readonly Button FitButton;
         private readonly Checkbox GridBox;
         private readonly Cycler PaletteCycler;
+        private readonly Button ColourButton;
         private readonly Button SaveButton;
         private readonly Button CancelButton;
 
@@ -136,6 +140,7 @@ namespace CustomContentCore.UI
                 "used",
                 v => this.Palette = v == "hue" ? this.ByHue : this.ByUse,
                 "The colours taken from this image: in the order the image uses them most, or grouped by colour."));
+            this.ColourButton = this.Add(new Button("Choose colour", this.ChooseColour, "Pick any colour, or type its red, green and blue values. The eyedropper takes a colour out of the image instead."));
             this.SaveButton = this.Add(new Button("Save", this.Save));
             this.CancelButton = this.Add(new Button("Cancel", this.Cancel));
             this.SyncButtons();
@@ -168,6 +173,7 @@ namespace CustomContentCore.UI
             int paletteH = 56;
             this.CanvasArea = new Rectangle(area.X + pad, top + 60, area.Width - pad * 2, bottom - (top + 60) - paletteH - 12);
 
+            this.ColourButton.Bounds = new Rectangle(this.CanvasArea.X + 52, this.CanvasArea.Bottom + 8, 200, 44);
             this.PaletteCycler.Bounds = new Rectangle(area.Right - pad - 300, this.CanvasArea.Bottom + 8, 300, 44);
             this.SaveButton.Bounds = new Rectangle(area.Right - pad - 200, area.Bottom - 84, 200, 60);
             this.CancelButton.Bounds = new Rectangle(this.SaveButton.Bounds.X - 16 - 180, area.Bottom - 84, 180, 60);
@@ -242,8 +248,8 @@ namespace CustomContentCore.UI
             int x = this.CanvasArea.X, y = this.CanvasArea.Bottom + 10;
             Gfx.Rect(b, new Rectangle(x, y, size, size), this.Colour);
             Gfx.Outline(b, new Rectangle(x, y, size, size), Color.Black, 2);
-            x += size + gap * 3;
-            foreach (Color colour in this.Palette)
+            x = this.ColourButton.Bounds.Right + 16;
+            foreach (Color colour in this.Swatches)
             {
                 Rectangle box = new(x, y, size, size);
                 Gfx.Rect(b, box, colour);
@@ -313,10 +319,10 @@ namespace CustomContentCore.UI
         private bool ClickPalette(int x, int y)
         {
             int size = 40, gap = 6;
-            int px = this.CanvasArea.X + size + gap * 3, py = this.CanvasArea.Bottom + 10;
+            int px = this.ColourButton.Bounds.Right + 16, py = this.CanvasArea.Bottom + 10;
             if (y < py || y > py + size)
                 return false;
-            foreach (Color colour in this.Palette)
+            foreach (Color colour in this.Swatches)
             {
                 if (new Rectangle(px, py, size, size).Contains(x, y))
                 {
@@ -567,6 +573,22 @@ namespace CustomContentCore.UI
         /*********
         ** Private methods
         *********/
+        /// <summary>The colours in the row under the canvas: the ones you picked by hand first, then the image's own.</summary>
+        private IEnumerable<Color> Swatches => this.Recent.Concat(this.Palette);
+
+        /// <summary>Open the colour picker and keep what comes back within reach.</summary>
+        private void ChooseColour()
+        {
+            this.Root.Push(new ColourPickerScreen(this.Colour, colour =>
+            {
+                this.Colour = colour;
+                this.Recent.Remove(colour);
+                this.Recent.Insert(0, colour);
+                if (this.Recent.Count > 6)
+                    this.Recent.RemoveAt(this.Recent.Count - 1);
+            }));
+        }
+
         private void SyncButtons()
         {
             this.UndoButton.Enabled = this.Done.Count > 0;
