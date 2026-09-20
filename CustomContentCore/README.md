@@ -11,10 +11,13 @@ It provides:
 - **Content packs**: *Export pack* saves all custom content of every Custom Content mod (data + images) into one `.zip`;
   *Import pack* loads it on another PC (replacing that content, after automatically backing up the current content to `Exports/Backups`).
   Imports only write into each mod's registered content files/folders.
-- **Multiplayer content sharing** (off by default, opt-in on *both* sides): a host with *Share my content when I host* sends its
-  custom content to players who turned on *Accept content from hosts*. Received content goes to a per-host cache
-  (`host-content/`) and is only used while in that host's game; the player's own content is never changed, and editing is
-  locked while using a host's content. Only changed files are sent (SHA-256 checked), host edits are pushed live. Split-screen is skipped.
+- **Multiplayer content sharing** (off by default, opt-in on *both* sides): anyone with *Share my content with other players*
+  sends their custom content to players who turned on *Accept shared content* - the host or a player who joined, in either
+  direction. You take one player's content at a time (the first who offers), and sharing wins over accepting, so two players
+  who both share keep their own content instead of swapping it. An empty offer is ignored. Received content goes to a
+  per-sender cache (`host-content/`) and is only used while in that game; your own content is never changed, and editing is
+  locked while using someone else's. Only changed files are sent (SHA-256 checked), the sender's edits are pushed live. Split-screen is skipped.
+  This shares content, it isn't collaborative editing: nobody writes to anyone else's files, so no locking is involved.
   See [Multiplayer security](#multiplayer-security).
 - **Full-screen image viewer** with captions and slideshow navigation.
 - **High-resolution furniture drawing**: mods register a renderer and their furniture is drawn from their own (sharper) texture.

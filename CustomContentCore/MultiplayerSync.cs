@@ -114,6 +114,12 @@ namespace CustomContentCore
         private readonly Dictionary<string, (DateTime Modified, long Length, string Hash, long Size)> TransferInfoCache = new();
         private bool OfferQueued;
 
+        /// <summary>The players we've told that we share content, so they're only told once.</summary>
+        private readonly HashSet<long> Greeted = new();
+
+        /// <summary>The players still to be told, once we're in the game and have a name to show.</summary>
+        private readonly HashSet<long> ToGreet = new();
+
         // player
         private string? Token;
         private bool HelloHandled;
@@ -142,6 +148,7 @@ namespace CustomContentCore
             this.Monitor = monitor;
             this.ModId = manifest.UniqueID;
 
+            helper.Events.Multiplayer.PeerContextReceived += this.OnPeerContextReceived;
             helper.Events.Multiplayer.PeerConnected += this.OnPeerConnected;
             helper.Events.Multiplayer.PeerDisconnected += this.OnPeerDisconnected;
             helper.Events.Multiplayer.ModMessageReceived += this.OnMessageReceived;
@@ -156,6 +163,21 @@ namespace CustomContentCore
                 this.OfferQueued = true;
         }
 
+        /// <summary>Tell everyone we share content, after 'Share my content' was turned on in a game we're already in.</summary>
+        public void OnShareChanged()
+        {
+            if (!Context.IsMultiplayer)
+                return;
+
+            if (CoreMod.Config.ShareContentAsHost)
+            {
+                foreach (IMultiplayerPeer peer in this.Helper.Multiplayer.GetConnectedPlayers())
+                    this.WillGreet(peer);
+            }
+            else
+                this.ToGreet.Clear();
+        }
+
         /// <summary>As player, ask the host for its content if 'Accept content from hosts' was just turned on.</summary>
         public void OnAcceptChanged()
         {
@@ -167,16 +189,51 @@ namespace CustomContentCore
         /*********
         ** Host
         *********/
+        /// <summary>A player we host has joined. (As a player, we hear about the host through <see cref="OnPeerContextReceived"/> instead.)</summary>
         private void OnPeerConnected(object? sender, PeerConnectedEventArgs e)
         {
-            if (!CoreMod.Config.ShareContentAsHost || e.Peer.IsSplitScreen || e.Peer.GetMod(this.ModId) == null)
+            this.WillGreet(e.Peer);
+        }
+
+        /// <summary>We've learned who a player is. This is the only notice a player gets about the host, so the greeting starts here too.</summary>
+        private void OnPeerContextReceived(object? sender, PeerContextReceivedEventArgs e)
+        {
+            this.WillGreet(e.Peer);
+        }
+
+        /// <summary>Note that a player should be told we share content, once we're in the game.</summary>
+        private void WillGreet(IMultiplayerPeer peer)
+        {
+            if (peer.IsSplitScreen || peer.GetMod(this.ModId) == null || this.Greeted.Contains(peer.PlayerID))
                 return;
-            this.Helper.Multiplayer.SendMessage(new HelloMessage { HostName = Game1.player.Name }, HelloType, new[] { this.ModId }, new[] { e.Peer.PlayerID });
+            this.ToGreet.Add(peer.PlayerID);
+        }
+
+        /// <summary>Tell the players who are waiting for it that we share content.</summary>
+        private void SendGreetings()
+        {
+            // wait until the player has a name, so the other side can say who's sharing (it's empty while they're still being made)
+            if (!CoreMod.Config.ShareContentAsHost || !Context.IsWorldReady || string.IsNullOrWhiteSpace(Game1.player?.Name))
+                return;
+
+            foreach (long playerId in this.ToGreet.ToArray())
+            {
+                if (this.Helper.Multiplayer.GetConnectedPlayer(playerId) == null)
+                {
+                    this.ToGreet.Remove(playerId);
+                    continue;
+                }
+                this.Helper.Multiplayer.SendMessage(new HelloMessage { HostName = Game1.player.Name }, HelloType, new[] { this.ModId }, new[] { playerId });
+                this.Greeted.Add(playerId);
+                this.ToGreet.Remove(playerId);
+            }
         }
 
         private void OnPeerDisconnected(object? sender, PeerDisconnectedEventArgs e)
         {
             this.PlayerTokens.Remove(e.Peer.PlayerID);
+            this.Greeted.Remove(e.Peer.PlayerID);
+            this.ToGreet.Remove(e.Peer.PlayerID);
 
             // whoever's content we were using has gone
             if (e.Peer.PlayerID == this.SenderId || e.Peer.IsHost && this.SenderId == 0)
@@ -311,6 +368,9 @@ namespace CustomContentCore
 
         private void OnUpdateTicked(object? sender, UpdateTickedEventArgs e)
         {
+            if (this.ToGreet.Count > 0 && e.IsMultipleOf(15))
+                this.SendGreetings();
+
             if (this.Sanitizing.Count > 0)
                 this.SaveSanitizedFiles();
 
@@ -337,9 +397,17 @@ namespace CustomContentCore
             // one source at a time: the first player who offers is the one we answer, and our secret only goes to them
             if (this.HelloHandled)
                 return;
+
+            // sharing wins over accepting, so two players who both share keep their own content instead of swapping it
+            if (CoreMod.Config.ShareContentAsHost)
+            {
+                this.Monitor.Log($"{this.NameOf(fromPlayer, hello.HostName)} is sharing custom content, but you share your own, so you keep using yours.", LogLevel.Info);
+                return;
+            }
+
             this.HelloHandled = true;
             this.SenderId = fromPlayer;
-            this.HostName = CleanName(hello.HostName);
+            this.HostName = this.NameOf(fromPlayer, hello.HostName);
 
             if (!CoreMod.Config.AcceptContentFromHost)
             {
@@ -362,17 +430,17 @@ namespace CustomContentCore
         {
             if (!CoreMod.Config.AcceptContentFromHost || this.Token == null || !TokensEqual(this.Token, offer.Token))
             {
-                this.Monitor.Log("Ignored a content offer without the secret (not from the host).", LogLevel.Trace);
+                this.Monitor.Log("Ignored a content offer without the secret (not from the player we answered).", LogLevel.Trace);
                 return;
             }
 
             // validate the offer
             if (offer.Files.Count > MaxFiles)
             {
-                this.Monitor.Log($"The host offered {offer.Files.Count} files, more than the {MaxFiles} limit; ignored.", LogLevel.Warn);
+                this.Monitor.Log($"A player offered {offer.Files.Count} files, more than the {MaxFiles} limit; ignored.", LogLevel.Warn);
                 return;
             }
-            offer.HostName = CleanName(offer.HostName);
+            offer.HostName = this.NameOf(this.SenderId, offer.HostName);
             long total = 0;
             List<OfferedFile> valid = new();
             HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
@@ -389,7 +457,12 @@ namespace CustomContentCore
             }
             if (total > MaxTotalBytes)
             {
-                this.Monitor.Log($"The host offered {total / 1024 / 1024} MB of content, more than the {MaxTotalBytes / 1024 / 1024} MB limit; ignored.", LogLevel.Warn);
+                this.Monitor.Log($"{offer.HostName} offered {total / 1024 / 1024} MB of content, more than the {MaxTotalBytes / 1024 / 1024} MB limit; ignored.", LogLevel.Warn);
+                return;
+            }
+            if (valid.Count == 0)
+            {
+                this.Monitor.Log($"{offer.HostName} shared no custom content, so you keep using your own.", LogLevel.Info);
                 return;
             }
             offer.Files = valid;
@@ -406,7 +479,7 @@ namespace CustomContentCore
             this.ReceivedBytes = 0;
             this.Pending = needed.Count;
             this.SendToSender(new RequestMessage { Token = this.Token, Files = needed }, RequestType);
-            this.Monitor.Log($"The host offered {valid.Count} content files; downloading {needed.Count}.", LogLevel.Info);
+            this.Monitor.Log($"{offer.HostName} offered {valid.Count} content files; downloading {needed.Count}.", LogLevel.Info);
             if (needed.Count > 0)
                 Game1.addHUDMessage(new HUDMessage($"Downloading {offer.HostName}'s custom content ({needed.Count} files)...") { noIcon = true });
             else
@@ -511,8 +584,9 @@ namespace CustomContentCore
             }
             this.PruneCache();
             this.UsingHostContent = true;
-            Game1.addHUDMessage(new HUDMessage($"Using {this.CurrentOffer.HostName}'s custom content.") { noIcon = true });
-            this.Monitor.Log($"Using the host's custom content ({this.CurrentOffer.Files.Count} files).", LogLevel.Info);
+            string who = this.NameOf(this.SenderId, this.CurrentOffer.HostName);
+            Game1.addHUDMessage(new HUDMessage($"Using {who}'s custom content.") { noIcon = true });
+            this.Monitor.Log($"Using {who}'s custom content ({this.CurrentOffer.Files.Count} files).", LogLevel.Info);
         }
 
         /// <summary>Switch back to this player's own content.</summary>
@@ -526,6 +600,8 @@ namespace CustomContentCore
             this.Incoming.Clear();
             this.Outgoing.Clear();
             this.PlayerTokens.Clear();
+            this.Greeted.Clear();
+            this.ToGreet.Clear();
             if (!this.UsingHostContent)
                 return;
 
@@ -672,7 +748,14 @@ namespace CustomContentCore
         private static string CleanName(string? name)
         {
             string clean = new string((name ?? "").Where(ch => !char.IsControl(ch)).Take(32).ToArray()).Trim();
-            return clean.Length > 0 ? clean : "The host";
+            return clean.Length > 0 ? clean : "Another player";
+        }
+
+        /// <summary>The name to show for the player we're taking content from: the game's own name for them, or the one they sent.</summary>
+        private string NameOf(long playerId, string? sentName)
+        {
+            string? known = Game1.getOnlineFarmers().FirstOrDefault(f => f.UniqueMultiplayerID == playerId)?.Name;
+            return CleanName(!string.IsNullOrWhiteSpace(known) ? known : sentName);
         }
 
         private static bool IsAsciiLetterOrDigit(char ch) => ch is (>= 'a' and <= 'z') or (>= 'A' and <= 'Z') or (>= '0' and <= '9');

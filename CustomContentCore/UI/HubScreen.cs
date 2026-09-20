@@ -44,12 +44,12 @@ namespace CustomContentCore.UI
             this.ExportButton = this.Add(new Button("Export pack", this.ExportPack, "Save all your custom content (data and images) into one file, e.g. to use on another PC."));
             this.ImportButton = this.Add(new Button("Import pack", this.ImportPack, "Load a pack made with 'Export pack'. Your current content is backed up first."));
             this.ExportButton.Visible = this.ImportButton.Visible = ContentPacks.Any;
-            this.ShareBox = this.Add(new Checkbox("Share my content with other players", CoreMod.Config.ShareContentAsHost, v => { CoreMod.Config.ShareContentAsHost = v; CoreMod.SaveConfig(); },
+            this.ShareBox = this.Add(new Checkbox("Share my content with other players", CoreMod.Config.ShareContentAsHost, v => { CoreMod.Config.ShareContentAsHost = v; CoreMod.SaveConfig(); CoreMod.Sync?.OnShareChanged(); },
                 "Multiplayer: anyone in your game who accepts shared content gets yours (paintings, crops, ...), so you see the same things. It works whether you host or join."));
             this.DonateButton = this.Add(new Button("Buy me a coffee", () => this.CopyLink(DonateUrl), $"Optional. Copies {DonateUrl} to paste in your browser. Nothing is unlocked by donating."));
             this.GitHubButton = this.Add(new Button("GitHub: bugs & ideas", () => this.CopyLink(GitHubUrl), $"Source, docs, bug reports, feedback and feature requests. Copies {GitHubUrl} to paste in your browser."));
             this.AcceptBox = this.Add(new Checkbox("Accept shared content", CoreMod.Config.AcceptContentFromHost, this.OnAcceptToggled,
-                "Multiplayer: take the custom content of the first player in your game who shares it, host or not. It's only used while you're in that game; your own content isn't changed.\nOnly turn this on if you play with people you trust."));
+                "Multiplayer: take the custom content of the first player in your game who shares it, host or not. It's only used while you're in that game; your own content isn't changed.\nIf you share your own content too, you keep using yours.\nOnly turn this on if you play with people you trust."));
         }
 
         /// <summary>Ask for confirmation before accepting other players' content.</summary>
@@ -181,7 +181,10 @@ namespace CustomContentCore.UI
             base.Draw(b, mouseX, mouseY);
             Vector2 heading = new(this.ShareBox.Bounds.X, this.ShareBox.Bounds.Y - 40);
             Gfx.Text(b, "Multiplayer", heading, Color.DimGray);
-            Gfx.Text(b, "- only accept content in games with people you trust", heading + new Vector2(Gfx.Font.MeasureString("Multiplayer ").X, 0), Color.DarkRed);
+            float noteX = Gfx.Font.MeasureString("Multiplayer ").X;
+            int noteRoom = (int)(this.DonateButton.Bounds.X - 24 - heading.X - noteX); // the support heading sits on this line too
+            if (noteRoom > 140)
+                Gfx.Text(b, Gfx.Fit("- only accept content in games with people you trust", noteRoom), heading + new Vector2(noteX, 0), Color.DarkRed);
             if (CoreMod.Sync?.UsingHostContent == true)
                 Gfx.Text(b, "You're using the host's content in this game, so editing is off until you leave.", new Vector2(this.Area.X + 36, this.Area.Y + 70), Color.DarkRed);
             Gfx.Text(b, "Support (optional)", new Vector2(this.DonateButton.Bounds.X, this.DonateButton.Bounds.Y - 40), Color.DimGray);
