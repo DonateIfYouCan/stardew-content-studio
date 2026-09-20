@@ -154,7 +154,7 @@ namespace CustomFurniture.UI
                 int box = row.Height - 8;
                 int scale = Math.Max(1, Math.Min(box / tileW, box / tileH));
                 Rectangle dest = new(row.X + 8 + (box - tileW * scale) / 2, row.Y + 4 + (box - tileH * scale) / 2, tileW * scale, tileH * scale);
-                b.Draw(thumb, dest, new Rectangle(0, 0, tileW, tileH), Color.White);
+                b.Draw(thumb, dest, null, Color.White); // the whole tile: the texture is already one tile, at its own resolution
                 int textX = row.X + 8 + box + 16;
                 Gfx.Text(b, Gfx.Fit(item.Name, row.Right - textX - 12), new Vector2(textX, row.Y + 10));
                 Gfx.Text(b, item.IsFloor ? "Floor" : "Wallpaper", new Vector2(textX, row.Y + 46), Color.DimGray);
