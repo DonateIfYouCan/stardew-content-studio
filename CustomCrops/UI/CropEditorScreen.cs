@@ -46,6 +46,10 @@ namespace CustomCrops.UI
         private readonly Cycler LookCycler;
         private readonly Button ChooseSheetButton;
         private readonly Button ExportTemplateButton;
+        private readonly Button PaintSheetButton;
+
+        /// <summary>The growth sheet image the painter is open on, if any, as asked for with <see cref="CustomContent.TakeLock"/>.</summary>
+        private string? HeldSheet;
 
         // right
         private readonly TextField NameField;
@@ -104,6 +108,7 @@ namespace CustomCrops.UI
             }, "How the plant looks while growing: copy a game crop, or use your own growth sheet (8 frames of 16x32)."));
             this.ChooseSheetButton = this.Add(new Button("Choose growth sheet", this.BrowseSheet, "Your growth sheet: 8 frames of 16x32 in a row (seed, stages, grown), or a whole-number multiple like 512x128."));
             this.ExportTemplateButton = this.Add(new Button("Export template", this.ExportTemplate, "Save the selected game crop's growth sheet as a PNG to paint over."));
+            this.PaintSheetButton = this.Add(new Button("Paint growth", this.PaintSheet, "Draw the growing plant here in the game: its seedling, each stage and the ripe plant."));
 
             // fields
             this.NameField = this.Add(new TextField(c.Name, v => c.Name = v.Trim(), limit: 80));
@@ -136,8 +141,14 @@ namespace CustomCrops.UI
             this.SyncImage();
         }
 
+        public override void OnResume()
+        {
+            this.ReleaseSheet(); // the painter is closed again, so another player can take their turn at that sheet
+        }
+
         public override void Dispose()
         {
+            this.ReleaseSheet();
             this.Cropper.Dispose();
             this.PreviewObjects?.Dispose();
             this.PreviewGrowth?.Dispose();
@@ -169,7 +180,8 @@ namespace CustomCrops.UI
             this.LookCycler.Bounds = new Rectangle(lx, by, leftW, 48);
             by += 60;
             this.ChooseSheetButton.Bounds = new Rectangle(lx, by, 270, 48);
-            this.ExportTemplateButton.Bounds = new Rectangle(lx + 280, by, Math.Max(120, leftW - 280), 48);
+            this.ExportTemplateButton.Bounds = new Rectangle(lx + 280, by, Math.Max(120, leftW - 280 - 150), 48);
+            this.PaintSheetButton.Bounds = new Rectangle(this.ExportTemplateButton.Bounds.Right + 10, by, 140, 48);
 
             // right: preview and fields
             int rx = lx + leftW + 32;
@@ -392,6 +404,78 @@ namespace CustomCrops.UI
                 this.ArtDirty = true;
                 this.SyncImage();
             }, this.Store.BrowserPlaces));
+        }
+
+        /// <summary>Let go of the growth sheet the painter was open on, so another player can change it.</summary>
+        private void ReleaseSheet()
+        {
+            if (this.HeldSheet is not { } thing)
+                return;
+            this.HeldSheet = null;
+            CustomContent.ReleaseLock(this.Store.Manifest, thing);
+        }
+
+        /// <summary>Draw the growing plant here in the game: the sheet it already has, the game crop it copies, or an empty one.</summary>
+        private void PaintSheet()
+        {
+            // painting the sheet it already has: hold that image while the painter is open, like the other editors do
+            if (!string.IsNullOrEmpty(this.Crop.GrowthSheet) && this.GetImage(this.Crop.GrowthSheet) is { } existing)
+            {
+                string thing = $"file:{CropStore.ImageFolderName}/{this.Crop.GrowthSheet}";
+                CustomContent.TakeLock(this.Store.Manifest, thing, $"the growth sheet for '{this.Crop.Name}'", (granted, holder) =>
+                {
+                    if (!granted)
+                    {
+                        this.ShowError($"{holder} is changing that sheet right now.");
+                        return;
+                    }
+                    this.HeldSheet = thing;
+                    CropStore.TryGetGrowthFactor(existing.Width, existing.Height, out int factor, out _);
+                    this.OpenPaintSheet(existing, Math.Max(1, factor));
+                });
+                return;
+            }
+
+            // nothing of their own yet: start from the game crop this one copies, or from an empty sheet
+            string seedId = this.LookCycler.Value;
+            string what = seedId.Length > 0
+                ? $"Paint a copy of the {this.VanillaCrops.FirstOrDefault(v => v.SeedId == seedId).Name ?? "game"} crop's growth sheet. The game's own art is never changed."
+                : "Paint the growing plant from scratch: 8 frames in a row - the seedling, each stage, and the ripe plant.";
+            this.Root.Push(new ChoiceScreen(
+                $"{what}\n\nWhat size do you want to draw at?",
+                ("The game's size (1x)", $"{CropStore.GrowthWidth}x{CropStore.GrowthHeight}: one pixel is one game pixel.", () => this.StartPaint(seedId, 1)),
+                ("Twice the size (2x)", $"{CropStore.GrowthWidth * 2}x{CropStore.GrowthHeight * 2}: room for finer detail.", () => this.StartPaint(seedId, 2)),
+                ("Four times the size (4x)", $"{CropStore.GrowthWidth * 4}x{CropStore.GrowthHeight * 4}: the usual size for HD art.", () => this.StartPaint(seedId, 4))));
+        }
+
+        /// <summary>Open the painter on a copy of a game crop's sheet, or on an empty one.</summary>
+        private void StartPaint(string seedId, int scale)
+        {
+            Pixels start = (seedId.Length > 0 ? CropStore.GetVanillaGrowth(seedId, scale) : null) ?? CropStore.BlankGrowth(scale);
+            this.OpenPaintSheet(start, scale);
+        }
+
+        /// <summary>Open the paint screen on a growth sheet and use what comes back.</summary>
+        /// <param name="image">The pixels to start from.</param>
+        /// <param name="scale">How many times bigger than the game's own sheet those pixels are, for the guides.</param>
+        private void OpenPaintSheet(Pixels image, int scale)
+        {
+            string[] frames = { "seedling", "stage 1", "stage 2", "stage 3", "stage 4", "ripe", "spare", "spare" };
+            this.Root.Push(new PaintScreen(image, $"Paint the growth of '{this.Crop.Name}'", pixels =>
+            {
+                try
+                {
+                    this.Crop.GrowthSheet = CustomContent.SaveImage(this.Store.ImageFolder, $"{this.Crop.Name} growth", pixels);
+                    this.LookCycler.Index = 0; // a sheet of their own replaces the game crop it copied
+                    this.Images.Remove(this.Crop.GrowthSheet);
+                    this.Message = null;
+                    this.SyncButtons();
+                }
+                catch (Exception ex)
+                {
+                    this.ShowError($"Couldn't save the sheet: {ex.Message}");
+                }
+            }, cellWidth: 16 * scale, cellHeight: 32 * scale, partWidth: 16 * scale, partHeight: 32 * scale, partLabels: frames));
         }
 
         private void BrowseSheet()

@@ -229,6 +229,14 @@ namespace CustomCrops
         }
 
         /// <summary>Export a vanilla crop's growth sheet (as a template to paint over).</summary>
+        /// <summary>Get a game crop's growth sheet to paint over, at the given size.</summary>
+        /// <param name="seedId">The game crop's seed ID.</param>
+        /// <param name="scale">How many times bigger than the game's own sheet.</param>
+        public static Pixels? GetVanillaGrowth(string seedId, int scale) => LoadVanillaGrowth(seedId, scale);
+
+        /// <summary>An empty growth sheet to paint on, at the given size.</summary>
+        public static Pixels BlankGrowth(int scale) => new(new Color[GrowthWidth * scale * GrowthHeight * scale], GrowthWidth * scale, GrowthHeight * scale);
+
         public static string ExportVanillaGrowth(string seedId, string name)
         {
             Pixels growth = LoadVanillaGrowth(seedId, 1) ?? throw new InvalidOperationException("couldn't read that crop's growth sheet");
