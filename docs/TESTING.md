@@ -14,6 +14,8 @@ Tested on one setup only: **Linux, Stardew Valley 1.6.15, SMAPI 4.5.2**, 1920×1
 | Export / import packs | Export, then import after deleting the content: files come back and a backup is made first. A crafted malicious zip (`..` paths aimed at a mod's DLL, manifest and config) was refused without changing those files. |
 | Export folder | If the folder can't be written, exports go to the Core mod folder with a warning (tested with a read-only folder) |
 | Paintings | Create, crop (drag corners), frames, sizes, price, shops (price matches, including Pierre), fishing (5% chance measured over 2,000 rolls per spot; "only once" and location limits work), hang on a wall, full-screen viewer with text, delete |
+| Animated paintings | 3-frame animation placed in a room; frames advance in real time. Not tested: many animated paintings at once (each one updates its texture every few frames). |
+| Duplicate button | Copying a painting makes an independent copy with a new name and ID (tested for paintings; crops, furniture and wallpaper use the same code, untested). |
 | Photo frames / slideshows | Two images with captions, switching every 10 in-game minutes, standing on a table, viewer paging |
 | Replaced / removed game paintings | Listed, marked "replaced", shown in the world |
 | Villager portraits | Default image plus one emotion override, correct image per emotion in real dialogue, export original |

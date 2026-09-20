@@ -48,6 +48,7 @@ namespace CustomPaintings.UI
         private readonly Button NewFrameButton;
         private readonly Button EditButton;
         private readonly Button DeleteButton;
+        private readonly Button DuplicateButton;
         private readonly Button GiveButton;
         private readonly Button ReplaceButton;
         private readonly Button RestoreButton;
@@ -81,6 +82,7 @@ namespace CustomPaintings.UI
             this.NewFrameButton = this.Add(new Button("+ New photo frame", () => this.CreateNew(table: true), "A small standing photo frame for tables and floors."));
             this.EditButton = this.Add(new Button("Edit", this.EditSelected));
             this.DeleteButton = this.Add(new Button("Delete", this.DeleteSelected));
+            this.DuplicateButton = this.Add(new Button("Duplicate", this.DuplicateSelected, "Make a copy to tweak, keeping the original."));
             this.GiveButton = this.Add(new Button("Put in inventory", this.GiveSelected, "Adds one to your inventory, for testing."));
             this.ReplaceButton = this.Add(new Button("Replace image", this.EditSelected, "Show your own image instead of this painting."));
             this.RestoreButton = this.Add(new Button("Restore original", this.RestoreSelected));
@@ -146,7 +148,7 @@ namespace CustomPaintings.UI
                 by += button.Visible ? 64 : 0;
             }
             by += 24;
-            foreach (Button button in new[] { this.EditButton, this.ReplaceButton, this.ExportButton, this.GiveButton, this.RestoreButton, this.HideButton, this.DeleteButton })
+            foreach (Button button in new[] { this.EditButton, this.ReplaceButton, this.ExportButton, this.GiveButton, this.DuplicateButton, this.RestoreButton, this.HideButton, this.DeleteButton })
             {
                 button.Bounds = new Rectangle(bx, by, sideW, 56);
                 if (button.Visible)
@@ -247,7 +249,7 @@ namespace CustomPaintings.UI
                 CustomPainting? painting = file.Paintings.FirstOrDefault(p => this.Store.GetItemId(p.Id) == entry.FurnitureId);
                 string kind = entry.Table ? (entry.Height >= 2 ? "Photo frame (tall)" : "Photo frame") : $"{entry.Width}x{entry.Height} painting";
                 if (entry.Slides.Count > 1)
-                    kind += $", slideshow of {entry.Slides.Count}";
+                    kind += entry.AnimationMs > 0 ? $", animated ({entry.Slides.Count} frames)" : $", slideshow of {entry.Slides.Count}";
                 Row row = new()
                 {
                     FurnitureId = entry.FurnitureId,
@@ -355,6 +357,7 @@ namespace CustomPaintings.UI
 
             this.EditButton.Visible = mine && row != null;
             this.DeleteButton.Visible = mine && row != null;
+            this.DuplicateButton.Visible = mine && row != null && !row.AutoAdded;
             this.GiveButton.Visible = row != null && ModEntry.Config.EditorCanGive;
             this.GiveButton.Enabled = Context.IsWorldReady;
             this.GiveButton.Tooltip = Context.IsWorldReady ? "Adds one to your inventory, for testing." : "Load a save first.";
@@ -482,6 +485,36 @@ namespace CustomPaintings.UI
         {
             (int w, int h) = PaintingStore.GetFurnitureSize(raw);
             this.Root.Push(new PaintingEditorScreen(this.Store, replacement, isNew, (w, h), name, _ => this.ShowMessage($"Replaced '{name}'.")));
+        }
+
+        /// <summary>Copy the selected painting, so you can tweak it without losing the original.</summary>
+        private void DuplicateSelected()
+        {
+            if (this.List.Selected is not { } row)
+                return;
+            PaintingsFile file = this.Store.ReadFile();
+            CustomPainting? painting = file.Paintings.FirstOrDefault(p => this.Store.GetItemId(p.Id) == row.FurnitureId);
+            if (painting == null)
+                return;
+
+            CustomPainting copy = Newtonsoft.Json.JsonConvert.DeserializeObject<CustomPainting>(Newtonsoft.Json.JsonConvert.SerializeObject(painting))!;
+            copy.Name = $"{painting.Name ?? "Painting"} copy";
+            string baseId = new string(copy.Name.Select(ch => char.IsLetterOrDigit(ch) ? ch : '_').ToArray()).Trim('_');
+            string id = baseId;
+            for (int i = 2; file.Paintings.Exists(p => p.Id == id); i++)
+                id = $"{baseId}_{i}";
+            copy.Id = id;
+            file.Paintings.Add(copy);
+            try
+            {
+                this.Store.Save(file);
+                this.ShowMessage($"Copied to '{copy.Name}'.");
+                this.Refresh();
+            }
+            catch (Exception ex)
+            {
+                this.ShowMessage($"Couldn't copy: {ex.Message}", error: true);
+            }
         }
 
         private void DeleteSelected()

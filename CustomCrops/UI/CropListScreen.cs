@@ -19,6 +19,7 @@ namespace CustomCrops.UI
         private readonly Button EditButton;
         private readonly Button GiveButton;
         private readonly Button DeleteButton;
+        private readonly Button DuplicateButton;
         private readonly Button CloseButton;
         private readonly Dictionary<string, Texture2D> Icons = new();
         private string? Message;
@@ -36,6 +37,7 @@ namespace CustomCrops.UI
             this.NewButton = this.Add(new Button("+ New crop", this.CreateNew, "Make a new crop: seeds, growing plant and harvest."));
             this.EditButton = this.Add(new Button("Edit", this.EditSelected));
             this.GiveButton = this.Add(new Button("Get seeds", this.GiveSelected, "Adds 10 seeds to your inventory, for testing."));
+            this.DuplicateButton = this.Add(new Button("Duplicate", this.DuplicateSelected, "Make a copy to tweak, keeping the original."));
             this.DeleteButton = this.Add(new Button("Delete", this.DeleteSelected));
             this.CloseButton = this.Add(new Button("Close", () => this.Root.Pop()));
             this.Refresh();
@@ -63,7 +65,7 @@ namespace CustomCrops.UI
             int w = area.Width - pad * 2;
             this.List.Bounds = new Rectangle(x, y, w - sideW - 16, area.Bottom - 96 - y);
             int bx = x + w - sideW, by = y;
-            foreach (Button button in new[] { this.NewButton, this.EditButton, this.GiveButton, this.DeleteButton })
+            foreach (Button button in new[] { this.NewButton, this.EditButton, this.GiveButton, this.DuplicateButton, this.DeleteButton })
             {
                 button.Bounds = new Rectangle(bx, by, sideW, 56);
                 by += button == this.NewButton ? 88 : 64;
@@ -129,6 +131,7 @@ namespace CustomCrops.UI
             this.GiveButton.Visible = selected;
             this.GiveButton.Enabled = Context.IsWorldReady;
             this.GiveButton.Tooltip = Context.IsWorldReady ? "Adds 10 seeds to your inventory, for testing." : "Load a save first.";
+            this.DuplicateButton.Visible = this.List.Selected != null;
             this.DeleteButton.Visible = selected;
         }
 
@@ -153,6 +156,31 @@ namespace CustomCrops.UI
                 Game1.createItemDebris(seeds, Game1.player.getStandingPosition(), Game1.player.FacingDirection);
             Game1.playSound("coin");
             this.ShowMessage($"Added 10 {seeds.DisplayName}.");
+        }
+
+        /// <summary>Copy the selected crop, so you can tweak it without losing the original.</summary>
+        private void DuplicateSelected()
+        {
+            if (this.List.Selected is not { } crop)
+                return;
+            CropsFile file = this.Store.ReadFile();
+            CustomCrop copy = Newtonsoft.Json.JsonConvert.DeserializeObject<CustomCrop>(Newtonsoft.Json.JsonConvert.SerializeObject(crop))!;
+            copy.Name = $"{crop.Name} copy";
+            string baseId = new string(copy.Name.Select(ch => char.IsLetterOrDigit(ch) ? ch : '_').ToArray()).Trim('_');
+            string id = baseId;
+            for (int i = 2; file.Crops.Exists(c => c.Id == id); i++)
+                id = $"{baseId}_{i}";
+            copy.Id = id;
+            file.Crops.Add(copy);
+            try
+            {
+                this.Store.Save(file);
+                this.ShowMessage($"Copied to '{copy.Name}'.");
+            }
+            catch (Exception ex)
+            {
+                this.ShowMessage($"Couldn't copy: {ex.Message}", error: true);
+            }
         }
 
         private void DeleteSelected()

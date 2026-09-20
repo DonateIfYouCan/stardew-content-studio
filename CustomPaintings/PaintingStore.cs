@@ -43,6 +43,9 @@ namespace CustomPaintings
         public List<Source> Sources { get; init; } = new();
         public List<ResolvedSlide> Slides { get; init; } = new();
         public int SlideMinutes { get; init; }
+
+        /// <summary>Milliseconds per image for animated paintings (0 = not animated).</summary>
+        public int AnimationMs { get; init; }
         public int CurrentSlide { get; set; }
 
         /// <summary>The resolution multiplier for drawing in the world (1 = the game's 16 pixels per tile).</summary>
@@ -444,6 +447,9 @@ namespace CustomPaintings
             this.Monitor.Log($"Loaded {this.Added.Count} new, {this.Replaced.Count} replaced and {this.Removed.Count} removed paintings.", LogLevel.Info);
         }
 
+        /// <summary>Whether any painting is animated (so it needs updating every frame instead of every 10 in-game minutes).</summary>
+        public bool HasAnimated => this.Added.Concat(this.Replaced).Any(e => e.AnimationMs > 0 && e.Slides.Count > 1);
+
         /// <summary>Switch slideshow paintings to the image for the current time.</summary>
         /// <param name="force">Whether to set the sprite even if the slide didn't change.</param>
         public void UpdateSlideshows(bool force = false)
@@ -453,7 +459,7 @@ namespace CustomPaintings
                 if (entry.TextureAsset == null || entry.Slides.Count == 0)
                     continue;
 
-                int index = GetSlideIndex(entry.Slides.Count, entry.SlideMinutes);
+                int index = GetSlideIndex(entry.Slides.Count, entry.SlideMinutes, entry.AnimationMs);
                 if (!force && index == entry.CurrentSlide)
                     continue;
                 entry.CurrentSlide = index;
@@ -563,10 +569,12 @@ namespace CustomPaintings
         /*********
         ** Private methods
         *********/
-        private static int GetSlideIndex(int count, int slideMinutes)
+        private static int GetSlideIndex(int count, int slideMinutes, int animationMs)
         {
             if (count <= 1)
                 return 0;
+            if (animationMs > 0)
+                return (int)(Game1.currentGameTime?.TotalGameTime.TotalMilliseconds / Math.Max(50, animationMs) % count ?? 0);
             int days = Game1.Date?.TotalDays ?? 0;
             if (slideMinutes <= 0)
                 return days % count;
@@ -674,6 +682,7 @@ namespace CustomPaintings
                 Sources = painting.Sources,
                 Slides = slides,
                 SlideMinutes = painting.SlideMinutes,
+                AnimationMs = painting.AnimationMs,
                 CurrentSlide = -1,
                 Scale = painting.Resolution > 0 ? ImageProcessor.GetScale(painting.Resolution) : 1,
                 AutoResolution = painting.Resolution <= 0,
@@ -712,6 +721,7 @@ namespace CustomPaintings
                 Sources = replacement.Sources,
                 Slides = slides,
                 SlideMinutes = replacement.SlideMinutes,
+                AnimationMs = replacement.AnimationMs,
                 CurrentSlide = -1,
                 Scale = replacement.Resolution > 0 ? ImageProcessor.GetScale(replacement.Resolution) : 1,
                 AutoResolution = replacement.Resolution <= 0,

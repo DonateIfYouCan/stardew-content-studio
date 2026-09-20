@@ -52,6 +52,12 @@ All images in the screenshots are made for the demo.
 - **Quick mode**: drop images into `Mods/CustomPaintings/paintings/` and they're added automatically.
 - Works on Windows, Linux and macOS (pure SMAPI mod, no platform-specific code).
 
+## Animated paintings
+
+A painting with several images can flip through them quickly instead of slowly: pick one of the *Animate* speeds in the
+editor and it becomes a moving picture (like the game's aquarium paintings). Slideshow speeds (per day, per hour, ...) still
+work as before.
+
 ## Files
 
 | Path | What it is |

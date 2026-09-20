@@ -37,7 +37,8 @@ namespace CustomPaintings.UI
 
         private static readonly (int Minutes, string Label)[] SlideSpeeds =
         {
-            (0, "New image each day"), (10, "Every 10 minutes"), (30, "Every 30 minutes"), (60, "Every hour"), (120, "Every 2 hours"), (180, "Every 3 hours"), (360, "Every 6 hours")
+            (0, "New image each day"), (10, "Every 10 minutes"), (30, "Every 30 minutes"), (60, "Every hour"), (120, "Every 2 hours"), (180, "Every 3 hours"), (360, "Every 6 hours"),
+            (-150, "Animate: fast"), (-300, "Animate: medium"), (-600, "Animate: slow")
         };
 
         private static readonly (float Chance, string Label)[] Chances =
@@ -185,7 +186,14 @@ namespace CustomPaintings.UI
             }, numbersOnly: true, limit: 8));
             this.CatalogueBox = this.Add(new Checkbox("In catalogue", this.Painting?.InCatalogue ?? false, v => { if (this.Painting != null) { this.Painting.InCatalogue = v; this.Layout(this.Area); } },
                 "Sold in the Furniture Catalogue, and can show up in random furniture slots at Robin's and the traveling cart."));
-            this.SpeedCycler = this.Add(new Cycler(SlideSpeeds.Select(s => (s.Minutes.ToString(), s.Label)).ToList(), this.Settings.SlideMinutes.ToString(), v => this.Settings.SlideMinutes = int.Parse(v), "How often a slideshow switches to the next image."));
+            this.SpeedCycler = this.Add(new Cycler(SlideSpeeds.Select(s => (s.Minutes.ToString(), s.Label)).ToList(), this.Settings.AnimationMs > 0 ? (-this.Settings.AnimationMs).ToString() : this.Settings.SlideMinutes.ToString(),
+                v =>
+                {
+                    int value = int.Parse(v);
+                    this.Settings.AnimationMs = value < 0 ? -value : 0; // negative values mean an animation in real time
+                    this.Settings.SlideMinutes = value < 0 ? 0 : value;
+                },
+                "How often it switches to the next image. The 'Animate' options flip through them quickly, like a moving picture."));
 
             // sources
             List<Source> sources = this.Painting?.Sources ?? this.Replacement!.Sources;

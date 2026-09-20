@@ -51,6 +51,7 @@ namespace CustomPaintings
             helper.Events.GameLoop.GameLaunched += (_, _) => Store.Reload();
             helper.Events.GameLoop.UpdateTicked += this.OnUpdateTicked;
             helper.Events.GameLoop.TimeChanged += (_, _) => Store.UpdateSlideshows();
+            helper.Events.GameLoop.UpdateTicked += (_, _) => { if (Store.HasAnimated) Store.UpdateSlideshows(); }; // animated paintings
             helper.Events.GameLoop.DayStarted += (_, _) => Store.UpdateSlideshows();
             helper.Events.Content.AssetRequested += (_, e) => Store.OnAssetRequested(e);
             helper.Events.Input.ButtonPressed += this.OnButtonPressed;

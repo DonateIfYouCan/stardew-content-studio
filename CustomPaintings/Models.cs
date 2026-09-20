@@ -71,6 +71,9 @@ namespace CustomPaintings
         /// <summary>For slideshows: in-game minutes between images (multiples of 10), or 0 to change once per day.</summary>
         public int SlideMinutes { get; set; } = 0;
 
+        /// <summary>For animations: milliseconds per image (real time), instead of in-game minutes. 0 = not animated.</summary>
+        public int AnimationMs { get; set; } = 0;
+
         /// <summary>Guiding text shown in the full-screen view when you interact with the painting.</summary>
         public string? Description { get; set; }
 

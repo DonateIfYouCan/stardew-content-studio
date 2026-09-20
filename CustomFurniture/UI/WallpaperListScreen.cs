@@ -19,6 +19,7 @@ namespace CustomFurniture.UI
         private readonly Button EditButton;
         private readonly Button GiveButton;
         private readonly Button DeleteButton;
+        private readonly Button DuplicateButton;
         private readonly Button CloseButton;
         private readonly Dictionary<string, Texture2D> Thumbnails = new();
         private string? Message;
@@ -36,6 +37,7 @@ namespace CustomFurniture.UI
             this.NewButton = this.Add(new Button("+ New wallpaper or floor", this.CreateNew, "Turn one of your images into wallpaper for walls or a floor tile."));
             this.EditButton = this.Add(new Button("Edit", this.EditSelected));
             this.GiveButton = this.Add(new Button("Put in inventory", this.GiveSelected, "Adds one to your inventory, so you can hang or lay it."));
+            this.DuplicateButton = this.Add(new Button("Duplicate", this.DuplicateSelected, "Make a copy to tweak, keeping the original."));
             this.DeleteButton = this.Add(new Button("Delete", this.DeleteSelected));
             this.CloseButton = this.Add(new Button("Close", () => this.Root.Pop()));
             this.Refresh();
@@ -50,7 +52,7 @@ namespace CustomFurniture.UI
             int x = area.X + pad, y = area.Y + 84, w = area.Width - pad * 2;
             this.List.Bounds = new Rectangle(x, y, w - sideW - 16, area.Bottom - 96 - y);
             int bx = x + w - sideW, by = y;
-            foreach (Button button in new[] { this.NewButton, this.EditButton, this.GiveButton, this.DeleteButton })
+            foreach (Button button in new[] { this.NewButton, this.EditButton, this.GiveButton, this.DuplicateButton, this.DeleteButton })
             {
                 button.Bounds = new Rectangle(bx, by, sideW, 56);
                 by += button == this.NewButton ? 88 : 64;
@@ -110,6 +112,7 @@ namespace CustomFurniture.UI
             this.EditButton.Visible = selected;
             this.GiveButton.Visible = selected;
             this.GiveButton.Enabled = Context.IsWorldReady;
+            this.DuplicateButton.Visible = selected;
             this.DeleteButton.Visible = selected;
         }
 
@@ -138,6 +141,31 @@ namespace CustomFurniture.UI
                 Game1.createItemDebris(created, Game1.player.getStandingPosition(), Game1.player.FacingDirection);
             Game1.playSound("coin");
             this.ShowMessage($"Added '{item.Name}'. Use it indoors on a wall or the floor.");
+        }
+
+        /// <summary>Copy the selected wallpaper or floor, so you can tweak it without losing the original.</summary>
+        private void DuplicateSelected()
+        {
+            if (this.List.Selected is not { } item)
+                return;
+            FurnitureFile file = this.Store.ReadFile();
+            CustomWallpaper copy = Newtonsoft.Json.JsonConvert.DeserializeObject<CustomWallpaper>(Newtonsoft.Json.JsonConvert.SerializeObject(item))!;
+            copy.Name = $"{item.Name} copy";
+            string baseId = new string(copy.Name.Select(ch => char.IsLetterOrDigit(ch) ? ch : '_').ToArray()).Trim('_');
+            string id = baseId;
+            for (int i = 2; file.Wallpapers.Exists(w => w.Id == id); i++)
+                id = $"{baseId}_{i}";
+            copy.Id = id;
+            file.Wallpapers.Add(copy);
+            try
+            {
+                this.Store.Save(file);
+                this.ShowMessage($"Copied to '{copy.Name}'.");
+            }
+            catch (Exception ex)
+            {
+                this.ShowMessage($"Couldn't copy: {ex.Message}", error: true);
+            }
         }
 
         private void DeleteSelected()
