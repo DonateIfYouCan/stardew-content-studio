@@ -68,4 +68,17 @@ Thanks for using these mods! They're free, and every feature works without donat
 
 ## License
 
-[MIT](LICENSE). Stardew Valley and its art belong to ConcernedApe; this license covers only the code and files in this repo.
+[MIT](LICENSE), for everything in this repo that was made for it: the code, the docs, and the example image in
+`CustomPaintings/paintings` (drawn for the demo, not a photo).
+
+Two things the license can't cover:
+
+- Stardew Valley, its code and its art belong to ConcernedApe. The screenshots in `docs/screenshots` show the game, and
+  `characters-hd-comparison.png` shows the game's own sprites enlarged; they're here to show what the mods do. No game
+  files or game code are copied into this repo or into a release.
+- The mods are built against SMAPI, Harmony, Newtonsoft.Json (all MIT) and MonoGame (Ms-PL), with
+  [ModBuildConfig](https://github.com/Pathoschild/SMAPI/tree/develop/src/SMAPI.ModBuildConfig) (MIT). None of them ship
+  with the mods; SMAPI provides them at runtime.
+
+This code shares nothing with Platonymous' older [Custom Furniture](https://www.nexusmods.com/stardewvalley/mods/1254)
+(GPL-3.0) beyond the game APIs both have to call; the mods were renamed to avoid the confusion.
