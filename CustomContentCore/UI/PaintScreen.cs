@@ -71,6 +71,11 @@ namespace CustomContentCore.UI
         private readonly int CellWidth;
         private readonly int CellHeight;
 
+        /// <summary>The size of one part inside a sprite (a facing direction, say), and what those parts are called.</summary>
+        private readonly int PartWidth;
+        private readonly int PartHeight;
+        private readonly string[] PartLabels;
+
         private readonly string Title;
         private readonly Action<Pixels> OnSave;
 
@@ -90,6 +95,8 @@ namespace CustomContentCore.UI
         private Color Colour = Color.Black;
         private int BrushSize = 1;
         private bool ShowGrid = true;
+        private bool ShowGuides = true;
+        private string Background = "checks";
         private bool FillShapes;
         private string Mirror = "off";
 
@@ -156,9 +163,13 @@ namespace CustomContentCore.UI
         private readonly Button WidthButton;
         private readonly Checkbox GridBox;
         private readonly Checkbox FillBox;
+        private readonly Checkbox GuideBox;
+        private readonly Cycler BackgroundCycler;
         private readonly Cycler MirrorCycler;
         private readonly Cycler PaletteCycler;
         private readonly Button ColourButton;
+        private readonly Button SpriteButton;
+        private readonly TextField SpriteField;
         private readonly Button CopyButton;
         private readonly Button PasteButton;
         private readonly Button ClearButton;
@@ -179,13 +190,19 @@ namespace CustomContentCore.UI
         /// <param name="onSave">Called with the new pixels when you save.</param>
         /// <param name="cellWidth">The width of one sprite in the image, for the grid (0 for none).</param>
         /// <param name="cellHeight">The height of one sprite in the image, for the grid (0 for none).</param>
-        public PaintScreen(Pixels image, string title, Action<Pixels> onSave, int cellWidth = 0, int cellHeight = 0)
+        /// <param name="partWidth">The width of one part inside a sprite, like one facing direction (0 for none).</param>
+        /// <param name="partHeight">The height of one part inside a sprite.</param>
+        /// <param name="partLabels">What each part is called, in order, e.g. facing down, right, up.</param>
+        public PaintScreen(Pixels image, string title, Action<Pixels> onSave, int cellWidth = 0, int cellHeight = 0, int partWidth = 0, int partHeight = 0, string[]? partLabels = null)
         {
             this.Width = image.Width;
             this.Height = image.Height;
             this.Canvas = (Color[])image.Data.Clone();
             this.CellWidth = cellWidth;
             this.CellHeight = cellHeight;
+            this.PartWidth = partWidth;
+            this.PartHeight = partHeight;
+            this.PartLabels = partLabels ?? Array.Empty<string>();
             this.Title = title;
             this.OnSave = onSave;
             this.ByUse = GetPalette(this.Canvas);
@@ -224,9 +241,15 @@ namespace CustomContentCore.UI
             this.FitButton = this.Add(new Button("Fit", this.Fit, "Show the whole image."));
             this.WidthButton = this.Add(new Button("Width", this.FitWidth, "Fill the width with the image, which is how it opens."));
             this.GridBox = this.Add(new Checkbox("Grid", true, v => this.ShowGrid = v, "Lines showing where each sprite in the sheet begins, and (zoomed right in) where each pixel is."));
+            this.GuideBox = this.Add(new Checkbox("Guides", true, v => this.ShowGuides = v, "Show what the game expects in this sheet: where each sprite begins and ends, and the parts inside it."));
+            this.BackgroundCycler = this.Add(new Cycler(
+                new() { ("checks", "checks"), ("dark", "dark"), ("light", "light"), ("pink", "pink") },
+                "checks",
+                v => this.Background = v,
+                "What's drawn behind see-through pixels: a checkerboard, or a plain colour to see the art against."));
             this.FillBox = this.Add(new Checkbox("Fill shape", false, v => this.FillShapes = v, "Draw rectangles and ovals filled in instead of as an outline."));
             this.MirrorCycler = this.Add(new Cycler(
-                new() { ("off", "Mirror: off"), ("lr", "Mirror: left-right"), ("ud", "Mirror: up-down"), ("both", "Mirror: both") },
+                new() { ("off", "off"), ("lr", "side to side"), ("ud", "up-down"), ("both", "both ways") },
                 "off",
                 v => this.Mirror = v,
                 "Draw the same strokes mirrored. On a sheet it mirrors within the sprite you're drawing in, not across the whole sheet."));
@@ -241,6 +264,8 @@ namespace CustomContentCore.UI
             this.FlipButton = this.Add(new Button("Flip", () => this.MirrorArea(horizontal: true), "Mirror left to right: the selection, or the whole image when nothing is selected."));
             this.FlipDownButton = this.Add(new Button("Flip down", () => this.MirrorArea(horizontal: false), "Mirror top to bottom: the selection, or the whole image when nothing is selected."));
             this.TurnButton = this.Add(new Button("Turn", this.Turn, "Turn a quarter turn clockwise. The piece being turned has to be square."));
+            this.SpriteField = this.Add(new TextField("", this.GoToSprite, numbersOnly: true, limit: 5));
+            this.SpriteButton = this.Add(new Button("Whole sprite", this.SelectSprite, "Grow the selection to the whole sprite it's in, which is handy for copying one sprite over another."));
             this.ColourButton = this.Add(new Button("Choose colour", this.ChooseColour, "Pick any colour, or type its red, green and blue values. The eyedropper takes a colour out of the image instead."));
             this.SaveButton = this.Add(new Button("Save", this.Save));
             this.CancelButton = this.Add(new Button("Cancel", this.Cancel));
@@ -263,6 +288,7 @@ namespace CustomContentCore.UI
             int top = area.Y + 84;
             int bottom = area.Bottom - 96;
 
+            // tools down the left, with the drawing options under them; the top row keeps the view options
             int toolW = 175, toolH = 44, toolGap = 6;
             int ty = top + 60;
             foreach ((_, Button button) in this.ToolButtons)
@@ -270,12 +296,15 @@ namespace CustomContentCore.UI
                 button.Bounds = new Rectangle(area.X + pad, ty, toolW, toolH);
                 ty += toolH + toolGap;
             }
+            ty += 10;
+            this.SizeCycler.Bounds = new Rectangle(area.X + pad, ty, toolW, 44);
+            this.FillBox.Bounds = new Rectangle(area.X + pad, ty + 52, toolW, 44);
+            this.MirrorCycler.Bounds = new Rectangle(area.X + pad, ty + 130, toolW, 44);
 
-            this.SizeCycler.Bounds = new Rectangle(area.X + pad, top, 200, 48);
-            this.UndoButton.Bounds = new Rectangle(this.SizeCycler.Bounds.Right + 24, top, 120, 48);
-            this.RedoButton.Bounds = new Rectangle(this.UndoButton.Bounds.Right + 8, top, 120, 48);
-            this.FillBox.Bounds = new Rectangle(this.RedoButton.Bounds.Right + 24, top + 2, 150, 44);
-            this.MirrorCycler.Bounds = new Rectangle(this.FillBox.Bounds.Right + 12, top, 300, 48);
+            this.UndoButton.Bounds = new Rectangle(area.X + pad, top, 110, 48);
+            this.RedoButton.Bounds = new Rectangle(this.UndoButton.Bounds.Right + 8, top, 110, 48);
+            this.GuideBox.Bounds = new Rectangle(this.RedoButton.Bounds.Right + 24, top + 2, 130, 44);
+            this.BackgroundCycler.Bounds = new Rectangle(this.GuideBox.Bounds.Right + 110, top, 230, 48);
             this.ZoomInButton.Bounds = new Rectangle(area.Right - pad - 48, top, 48, 48);
             this.ZoomOutButton.Bounds = new Rectangle(this.ZoomInButton.Bounds.X - 8 - 48, top, 48, 48);
             this.FitButton.Bounds = new Rectangle(this.ZoomOutButton.Bounds.X - 8 - 90, top, 90, 48);
@@ -284,18 +313,22 @@ namespace CustomContentCore.UI
 
             int paletteH = 56;
             int canvasX = area.X + pad + toolW + 16;
-            this.CanvasArea = new Rectangle(canvasX, top + 60, area.Right - pad - canvasX, bottom - (top + 60) - paletteH - 12);
+            int actionW = 170;
+            this.CanvasArea = new Rectangle(canvasX, top + 60, area.Right - pad - actionW - 16 - canvasX, bottom - (top + 60) - paletteH - 12);
+
+            // what to do with the selection lives beside the canvas, leaving the row underneath for the colours
+            int ay = this.CanvasArea.Y;
+            foreach (Button button in new[] { this.SpriteButton, this.CopyButton, this.PasteButton, this.ClearButton, this.FlipButton, this.FlipDownButton, this.TurnButton })
+            {
+                button.Bounds = new Rectangle(area.Right - pad - actionW, ay, actionW, 44);
+                ay += 50;
+            }
 
             // the selection buttons share the palette row, so the top row doesn't overflow
             this.ColourButton.Bounds = new Rectangle(this.CanvasArea.X + 52, this.CanvasArea.Bottom + 8, 200, 44);
-            int sx = this.ColourButton.Bounds.Right + 12;
-            foreach (Button button in new[] { this.CopyButton, this.PasteButton, this.ClearButton, this.FlipButton, this.FlipDownButton, this.TurnButton })
-            {
-                button.Bounds = new Rectangle(sx, this.CanvasArea.Bottom + 8, 124, 44);
-                if (button.Visible)
-                    sx += 128;
-            }
-            this.SwatchesX = sx + 12;
+            this.SpriteField.Bounds = new Rectangle(this.ColourButton.Bounds.Right + 90, this.CanvasArea.Bottom + 8, 80, 44);
+            this.SpriteField.Visible = this.CellWidth > 0 && this.CellHeight > 0;
+            this.SwatchesX = (this.SpriteField.Visible ? this.SpriteField.Bounds.Right : this.ColourButton.Bounds.Right) + 24;
             this.PaletteCycler.Bounds = new Rectangle(area.Right - pad - 300, this.CanvasArea.Bottom + 8, 300, 44);
             this.SaveButton.Bounds = new Rectangle(area.Right - pad - 200, area.Bottom - 84, 200, 60);
             this.CancelButton.Bounds = new Rectangle(this.SaveButton.Bounds.X - 16 - 180, area.Bottom - 84, 180, 60);
@@ -314,7 +347,14 @@ namespace CustomContentCore.UI
             Gfx.Panel(b, area);
             Gfx.Text(b, this.Title, new Vector2(area.X + 36, area.Y + 24), null, Gfx.TitleFont);
 
+            string where = this.Describe(mouseX, mouseY);
+            Gfx.Text(b, where, new Vector2(area.Right - 36 - Gfx.Font.MeasureString(where).X, area.Y + 30), Color.DimGray);
+
             this.DrawCanvas(b, mouseX, mouseY);
+            if (this.SpriteField.Visible)
+                Gfx.Text(b, "Sprite", new Vector2(this.SpriteField.Bounds.X - 84, this.SpriteField.Bounds.Y + 10));
+            Gfx.Text(b, "Behind", new Vector2(this.BackgroundCycler.Bounds.X - 92, this.BackgroundCycler.Bounds.Y + 12));
+            Gfx.Text(b, "Mirror", new Vector2(this.MirrorCycler.Bounds.X + 4, this.MirrorCycler.Bounds.Y - 28));
             this.DrawPalette(b, mouseX, mouseY);
             base.Draw(b, mouseX, mouseY);
 
@@ -337,11 +377,21 @@ namespace CustomContentCore.UI
             Rectangle dest = new(inner.X, inner.Y, shownW, shownH);
             Rectangle source = new(this.View.X, this.View.Y, columns, rows);
 
+            if (this.Background != "checks")
+            {
+                Gfx.Rect(b, dest, this.Background switch
+                {
+                    "dark" => new Color(40, 40, 44),
+                    "light" => new Color(238, 238, 234),
+                    _ => new Color(255, 0, 220)
+                });
+            }
+
             // Checkerboard behind see-through pixels. Each square covers a whole number of image pixels (at least two, so it
             // can't be mistaken for the art) and lines up with them, so it doesn't beat against the pixel grid at any zoom.
             int squarePixels = Math.Max(2, (int)Math.Ceiling(10.0 / this.Zoom));
             int square = squarePixels * this.Zoom;
-            for (int cellY = this.View.Y / squarePixels * squarePixels; cellY < this.View.Y + rows; cellY += squarePixels)
+            for (int cellY = this.View.Y / squarePixels * squarePixels; this.Background == "checks" && cellY < this.View.Y + rows; cellY += squarePixels)
             {
                 for (int cellX = this.View.X / squarePixels * squarePixels; cellX < this.View.X + columns; cellX += squarePixels)
                 {
@@ -365,6 +415,23 @@ namespace CustomContentCore.UI
                     Gfx.Rect(b, new Rectangle(dest.X + x * this.Zoom, dest.Y, 1, shownH), line);
                 for (int y = this.CellHeight - this.View.Y % this.CellHeight; y * this.Zoom < shownH; y += this.CellHeight)
                     Gfx.Rect(b, new Rectangle(dest.X, dest.Y + y * this.Zoom, shownW, 1), line);
+            }
+
+            // what the game expects inside one sprite: the facing directions or frames, with their names
+            if (this.ShowGuides && this.PartWidth > 0 && this.PartHeight > 0 && this.Zoom >= 2)
+            {
+                Color guide = new(220, 120, 40, 150);
+                for (int x = this.PartWidth - this.View.X % this.PartWidth; x * this.Zoom < shownW; x += this.PartWidth)
+                {
+                    if (this.CellWidth <= 0 || (this.View.X + x) % this.CellWidth != 0)
+                        Gfx.Rect(b, new Rectangle(dest.X + x * this.Zoom, dest.Y, 1, shownH), guide);
+                }
+                for (int y = this.PartHeight - this.View.Y % this.PartHeight; y * this.Zoom < shownH; y += this.PartHeight)
+                {
+                    if (this.CellHeight <= 0 || (this.View.Y + y) % this.CellHeight != 0)
+                        Gfx.Rect(b, new Rectangle(dest.X, dest.Y + y * this.Zoom, shownW, 1), guide);
+                }
+
             }
 
             // a faint grid on every pixel once they're big enough that the lines don't cover the art
@@ -407,8 +474,12 @@ namespace CustomContentCore.UI
                     }
                 }
                 Rectangle box = new(dest.X + (selected.X - this.View.X) * this.Zoom, dest.Y + (selected.Y - this.View.Y) * this.Zoom, selected.Width * this.Zoom, selected.Height * this.Zoom);
-                Gfx.Outline(b, box, Color.White, 2);
-                Gfx.Outline(b, new Rectangle(box.X - 2, box.Y - 2, box.Width + 4, box.Height + 4), Color.Black, 2);
+                box = Rectangle.Intersect(box, dest); // a sprite taller than the canvas mustn't draw its box over the buttons
+                if (box.Width > 0 && box.Height > 0)
+                {
+                    Gfx.Outline(b, box, Color.White, 2);
+                    Gfx.Outline(b, Rectangle.Intersect(new Rectangle(box.X - 2, box.Y - 2, box.Width + 4, box.Height + 4), dest), Color.Black, 2);
+                }
             }
 
             // outline the pixel under the cursor
@@ -584,6 +655,29 @@ namespace CustomContentCore.UI
         /*********
         ** Drawing on the image
         *********/
+        /// <summary>Where the cursor is in the image: the pixel, and which sprite of the sheet it's in.</summary>
+        private string Describe(int mouseX, int mouseY)
+        {
+            if (this.ToPixel(mouseX, mouseY) is not { } pixel)
+                return $"{this.Width}x{this.Height}";
+
+            if (this.CellWidth <= 0 || this.CellHeight <= 0)
+                return $"x {pixel.X}, y {pixel.Y}";
+
+            int perRow = Math.Max(1, this.Width / this.CellWidth);
+            int cell = pixel.Y / this.CellHeight * perRow + pixel.X / this.CellWidth;
+            string where = $"x {pixel.X}, y {pixel.Y}  -  no. {cell} at {pixel.X % this.CellWidth}, {pixel.Y % this.CellHeight}";
+
+            // and which part of the sprite that is, e.g. the direction it faces
+            if (this.PartHeight > 0 && this.PartLabels.Length > 0)
+            {
+                int part = pixel.Y % this.CellHeight / this.PartHeight;
+                if (part < this.PartLabels.Length)
+                    where += $"  -  {this.PartLabels[part]}";
+            }
+            return where;
+        }
+
         /// <summary>The part of the canvas area the image is drawn in.</summary>
         private Rectangle Inner => new(this.CanvasArea.X + 8, this.CanvasArea.Y + 8, Math.Max(1, this.CanvasArea.Width - 16), Math.Max(1, this.CanvasArea.Height - 16));
 
@@ -775,6 +869,40 @@ namespace CustomContentCore.UI
             this.Floating = null;
             this.Refresh(Rectangle.Intersect(area, new Rectangle(0, 0, this.Width, this.Height)));
             this.CommitStroke();
+        }
+
+        /// <summary>Show and select a sprite by its number, the same number the editors use.</summary>
+        private void GoToSprite(string text)
+        {
+            if (this.CellWidth <= 0 || this.CellHeight <= 0 || !int.TryParse(text, out int number))
+                return;
+
+            int perRow = Math.Max(1, this.Width / this.CellWidth);
+            int rows = Math.Max(1, this.Height / this.CellHeight);
+            number = Math.Clamp(number, 0, perRow * rows - 1);
+            Rectangle cell = new(number % perRow * this.CellWidth, number / perRow * this.CellHeight, this.CellWidth, this.CellHeight);
+            this.Selection = Rectangle.Intersect(cell, new Rectangle(0, 0, this.Width, this.Height));
+
+            // bring it into view, roughly in the middle
+            Rectangle inner = this.Inner;
+            this.View = new Point(
+                cell.X - (inner.Width / this.Zoom - cell.Width) / 2,
+                cell.Y - (inner.Height / this.Zoom - cell.Height) / 2);
+            this.ClampView();
+            this.SyncButtons();
+        }
+
+        /// <summary>Grow the selection to cover the whole sprite (or sprites) it touches.</summary>
+        private void SelectSprite()
+        {
+            if (this.Selection is not { } area || this.CellWidth <= 0 || this.CellHeight <= 0)
+                return;
+            int left = area.X / this.CellWidth * this.CellWidth;
+            int top = area.Y / this.CellHeight * this.CellHeight;
+            int right = (area.Right + this.CellWidth - 1) / this.CellWidth * this.CellWidth;
+            int bottom = (area.Bottom + this.CellHeight - 1) / this.CellHeight * this.CellHeight;
+            this.Selection = Rectangle.Intersect(new Rectangle(left, top, right - left, bottom - top), new Rectangle(0, 0, this.Width, this.Height));
+            Game1.playSound("smallSelect");
         }
 
         /// <summary>Copy the selected pixels.</summary>
@@ -1213,6 +1341,7 @@ namespace CustomContentCore.UI
         {
             this.UndoButton.Enabled = this.Done.Count > 0;
             this.RedoButton.Visible = this.Undone.Count > 0;
+            this.SpriteButton.Visible = this.Selection != null && this.CellWidth > 0 && this.CellHeight > 0;
             this.CopyButton.Visible = this.Selection != null;
             this.ClearButton.Visible = this.Selection != null;
             this.PasteButton.Visible = this.Clipboard != null;

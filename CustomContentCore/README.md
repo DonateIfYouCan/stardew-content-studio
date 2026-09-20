@@ -40,7 +40,13 @@ Editors that work with pixel art have a **Paint** button that opens the image in
 pencil, eraser, eyedropper, fill, line, rectangle, ellipse, replace a colour everywhere, replace it only where you drag,
 and a rectangular selection you can move, copy, paste, clear, flip or turn. Shapes can be outlined or filled, Shift keeps
 lines straight and boxes square, and mirror drawing repeats your strokes inside the sprite you're drawing in. There's
-zoom (to the cursor), a grid for sprite and pixel boundaries, and undo/redo. It edits a copy and saves as a new PNG
+zoom (to the cursor), a grid for sprite and pixel boundaries, and undo/redo.
+
+**Guides** show what the game expects in the sheet you're editing: where each sprite begins and ends, and the parts inside
+it (which facing direction a band of pixels is, for example). The top right always says where the cursor is: the pixel, the
+sprite number, the position within that sprite, and which part it's in. **Sprite** jumps to a sprite by the same number the
+editors use and selects it. **Behind** switches what's drawn under see-through pixels: a checkerboard, or plain dark, light
+or pink to judge the art against. Guides, the grid and the background can each be turned off. It edits a copy and saves as a new PNG
 in the mod's images folder, so the art you started from is never overwritten.
 
 Starting from the game's own art (a farmer sheet, a villager sprite, a piece of furniture) copies it first and asks what

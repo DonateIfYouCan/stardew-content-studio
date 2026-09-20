@@ -412,7 +412,7 @@ namespace CustomCharacters.UI
                 {
                     this.ShowError($"Couldn't save the image: {ex.Message}");
                 }
-            }, layer.CellWidth * factor, layer.CellHeight * factor));
+            }, layer.CellWidth * factor, layer.CellHeight * factor, layer.PartHeight > 0 ? layer.CellWidth * factor : 0, layer.PartHeight * factor, layer.Parts));
         }
 
         private void RemoveSheet()

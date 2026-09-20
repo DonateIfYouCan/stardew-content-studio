@@ -22,8 +22,13 @@ namespace CustomCharacters
     /// <param name="StrideX">How far apart items are across the sheet (0 = the cell width).</param>
     /// <param name="StrideY">How far apart rows of items are (0 = the cell height).</param>
     /// <param name="GridWidth">How wide the part of the sheet holding items is (0 = the whole sheet); the shirts sheet keeps its dye masks in the right half.</param>
-    internal sealed record FarmerLayer(string Id, string Label, bool IsBody, int CellWidth = 16, int CellHeight = 32, string Group = FarmerHd.FarmerGroup, int StrideX = 0, int StrideY = 0, int GridWidth = 0)
+    /// <param name="PartHeight">How tall one part of an item is, like one facing direction (0 = the item is one part).</param>
+    /// <param name="PartLabels">What those parts are, in order, for the guides in the paint screen.</param>
+    internal sealed record FarmerLayer(string Id, string Label, bool IsBody, int CellWidth = 16, int CellHeight = 32, string Group = FarmerHd.FarmerGroup, int StrideX = 0, int StrideY = 0, int GridWidth = 0, int PartHeight = 0, string[]? PartLabels = null)
     {
+        /// <summary>What each part of an item is called, in order.</summary>
+        public string[] Parts => this.PartLabels ?? Array.Empty<string>();
+
         public string AssetName => $"Characters/Farmer/{this.Id}";
 
         /// <summary>The step between items, as the game indexes them.</summary>
@@ -63,12 +68,17 @@ namespace CustomCharacters
             new("farmer_girl_base", "Body (female)", true),
             new("farmer_base_bald", "Body (male, bald)", true),
             new("farmer_girl_base_bald", "Body (female, bald)", true),
-            new("hairstyles", "Hairstyles", false, CellWidth: 16, CellHeight: 96),      // one style, three rows of directions
-            new("hairstyles2", "Hairstyles (more)", false, CellWidth: 16, CellHeight: 96),
-            new("shirts", "Shirts", false, CellWidth: 8, CellHeight: 32, Group: ClothesGroup, GridWidth: 128), // 8x8 per direction; the right half holds the dye masks
+            new("hairstyles", "Hairstyles", false, CellWidth: 16, CellHeight: 96,        // one style, three rows of directions
+                PartHeight: 32, PartLabels: new[] { "facing you", "facing right", "facing away" }),
+            new("hairstyles2", "Hairstyles (more)", false, CellWidth: 16, CellHeight: 96,
+                PartHeight: 32, PartLabels: new[] { "facing you", "facing right", "facing away" }),
+            new("shirts", "Shirts", false, CellWidth: 8, CellHeight: 32, Group: ClothesGroup, GridWidth: 128, // 8x8 per direction
+                PartHeight: 8, PartLabels: new[] { "facing you", "facing right", "facing away", "facing left" }), // the right half holds the dye masks
             new("pants", "Pants", false, CellWidth: 16, CellHeight: 32, Group: ClothesGroup, StrideX: 192, StrideY: 688), // one frame; each pants takes a 192x688 block
-            new("hats", "Hats", false, CellWidth: 20, CellHeight: 80, Group: ClothesGroup),                  // 20x20 per direction
-            new("accessories", "Accessories (beards, glasses...)", false, CellWidth: 16, CellHeight: 32)     // 16x16 facing you, with the side view below it
+            new("hats", "Hats", false, CellWidth: 20, CellHeight: 80, Group: ClothesGroup,                   // 20x20 per direction
+                PartHeight: 20, PartLabels: new[] { "facing you", "facing right", "facing away", "facing left" }),
+            new("accessories", "Accessories (beards, glasses...)", false, CellWidth: 16, CellHeight: 32,     // 16x16 facing you, with the side view below it
+                PartHeight: 16, PartLabels: new[] { "facing you", "from the side" })
         };
 
         /// <summary>The layers you pick when making your character (body, hair, beards and such).</summary>
