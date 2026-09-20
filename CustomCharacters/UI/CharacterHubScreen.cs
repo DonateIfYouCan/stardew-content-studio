@@ -26,40 +26,14 @@ namespace CustomCharacters.UI
             this.Add("Villagers", "Portraits (one per emotion) and sprites for the game's characters.",
                 () => this.Root.Push(new CharacterListScreen(store))); // that screen asks for the characters file itself, per villager
             this.Add("Farmer", "Your character: body, hairstyles, beards and glasses, in HD.",
-                () => this.WhenNobodyElseIsChangingIt(() => this.Root.Push(new FarmerEditorScreen(store, FarmerHd.FarmerGroup, () => this.Message = "Saved the farmer's HD sheets."))), writes: true);
+                () => this.Root.Push(new FarmerEditorScreen(store, FarmerHd.FarmerGroup, () => this.Message = "Saved the farmer's HD sheets.")));
             this.Add("Clothes & hats", "The shirts, pants and hats anyone can put on, in HD.",
-                () => this.WhenNobodyElseIsChangingIt(() => this.Root.Push(new FarmerEditorScreen(store, FarmerHd.ClothesGroup, () => this.Message = "Saved the HD clothes sheets."))), writes: true);
+                () => this.Root.Push(new FarmerEditorScreen(store, FarmerHd.ClothesGroup, () => this.Message = "Saved the HD clothes sheets.")));
             this.CloseButton = base.Add(new Button("Close", () => this.Root.Pop()));
         }
 
-        public override void OnResume()
-        {
-            CustomContent.ReleaseLock(this.Store.Manifest, LockThing); // the editor that was opened is closed again
-        }
-
-        public override void Dispose()
-        {
-            CustomContent.ReleaseLock(this.Store.Manifest, LockThing);
-        }
-
-        /// <summary>What the characters file is called when asking to be the only one changing it.</summary>
-        private const string LockThing = "file:" + CharacterStore.DataFileName;
-
-        /// <summary>Open an editor that writes to the characters file, unless another player in the game is already changing it.</summary>
-        /// <remarks>The lock is held until the editor is closed again, so Player B can't save over Player A halfway through.</remarks>
-        private void WhenNobodyElseIsChangingIt(Action action)
-        {
-            CustomContent.TakeLock(this.Store.Manifest, LockThing, "the characters", (granted, holder) =>
-            {
-                if (granted)
-                    action();
-                else
-                {
-                    this.Message = $"{holder} is changing the characters right now.";
-                    this.MessageColor = Color.DarkRed;
-                }
-            });
-        }
+        // nothing is held here: each editor holds only the villager or the sheet it's working on, so Player A on the
+        // farmer's hair doesn't stop Player B changing a villager's portraits
 
         /// <param name="writes">Whether clicking it leads to a change to the characters file, so it's greyed out while another player is changing it.</param>
         private void Add(string label, string description, Action onClick, bool writes = false)
@@ -85,7 +59,6 @@ namespace CustomCharacters.UI
 
         public override void Draw(SpriteBatch b, int mouseX, int mouseY)
         {
-            this.SyncButtons();
             Gfx.Panel(b, this.Area);
             Gfx.Text(b, "Characters", new Vector2(this.Area.X + 36, this.Area.Y + 24), null, Gfx.TitleFont);
             base.Draw(b, mouseX, mouseY);
@@ -95,15 +68,5 @@ namespace CustomCharacters.UI
                 Gfx.Message(b, this.Message, this.CloseButton.Bounds.X - this.Area.X - 60, new Vector2(this.Area.X + 36, this.Area.Bottom - 70), this.MessageColor);
         }
 
-        /// <summary>Grey out the editors that write while another player in the game is changing the characters file.</summary>
-        private void SyncButtons()
-        {
-            string? busy = CustomContent.WhoIsChanging(this.Store.Manifest, LockThing);
-            foreach ((Button button, string tooltip) in this.WritingButtons)
-            {
-                button.Enabled = busy == null;
-                button.Tooltip = busy != null ? $"{busy} is changing the characters right now." : tooltip;
-            }
-        }
     }
 }

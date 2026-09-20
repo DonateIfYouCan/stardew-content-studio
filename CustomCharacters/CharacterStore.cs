@@ -207,6 +207,139 @@ namespace CustomCharacters
             }
         }
 
+        /*********
+        ** One item at a time (multiplayer)
+        *********/
+        /// <summary>How each kind of item is marked, so a villager's portraits, their sprites and a farmer sheet can't be mistaken for each other.</summary>
+        internal const string PortraitPrefix = "p:", SpritePrefix = "s:", FarmerPrefix = "f:";
+
+        /// <summary>The item ID for a villager's portraits.</summary>
+        internal static string PortraitItemId(string npc) => PortraitPrefix + npc;
+
+        /// <summary>The item ID for a villager's sprite sheets.</summary>
+        internal static string SpriteItemId(string npc) => SpritePrefix + npc;
+
+        /// <summary>The item ID for one of the farmer's sheets.</summary>
+        internal static string FarmerItemId(string sheet) => FarmerPrefix + sheet;
+
+        /// <summary>The things in this content that can be changed one at a time.</summary>
+        public IEnumerable<string> GetItemIds()
+        {
+            CharactersFile file = this.ReadFile();
+            return file.Portraits.Select(p => PortraitItemId(p.Npc))
+                .Concat(file.Sprites.Select(s => SpriteItemId(s.Npc)))
+                .Concat(file.Farmer.Keys.Select(FarmerItemId))
+                .Where(id => id.Length > 2)
+                .ToList();
+        }
+
+        /// <summary>Get one villager's portraits, one villager's sprites or one farmer sheet as JSON.</summary>
+        public string? GetItemJson(string itemId)
+        {
+            CharactersFile file = this.ReadFile();
+            string name = itemId.Length > 2 ? itemId.Substring(2) : "";
+            object? item = null;
+            if (itemId.StartsWith(PortraitPrefix, StringComparison.Ordinal))
+                item = file.Portraits.FirstOrDefault(p => string.Equals(p.Npc, name, StringComparison.OrdinalIgnoreCase));
+            else if (itemId.StartsWith(SpritePrefix, StringComparison.Ordinal))
+                item = file.Sprites.FirstOrDefault(s => string.Equals(s.Npc, name, StringComparison.OrdinalIgnoreCase));
+            else if (itemId.StartsWith(FarmerPrefix, StringComparison.Ordinal) && file.Farmer.TryGetValue(name, out string? sheet))
+                item = sheet;
+
+            return item == null
+                ? null
+                : JsonConvert.SerializeObject(item, new JsonSerializerSettings { Formatting = Formatting.Indented, NullValueHandling = NullValueHandling.Ignore });
+        }
+
+        /// <summary>Write one villager's portraits, one villager's sprites or one farmer sheet into this content.</summary>
+        /// <param name="itemId">Which one; a change can't move to another villager or sheet.</param>
+        /// <param name="json">The item.</param>
+        /// <param name="files">Images that came with it, already checked: the name the data uses, and a file to copy in.</param>
+        public bool ApplyItemJson(string itemId, string json, IDictionary<string, string> files)
+        {
+            string name = itemId.Length > 2 ? itemId.Substring(2) : "";
+            if (name.Length == 0)
+                return false;
+
+            CharactersFile file = this.ReadFile();
+            if (itemId.StartsWith(PortraitPrefix, StringComparison.Ordinal))
+            {
+                PortraitSet? set = JsonConvert.DeserializeObject<PortraitSet>(json);
+                if (set == null)
+                    return false;
+                set.Npc = name;
+                if (set.Default != null)
+                    set.Default.File = this.TakeImage(set.Default.File, files);
+                foreach (ImageRef image in set.Overrides.Values)
+                    image.File = this.TakeImage(image.File, files);
+                int index = file.Portraits.FindIndex(p => string.Equals(p.Npc, name, StringComparison.OrdinalIgnoreCase));
+                if (index >= 0)
+                    file.Portraits[index] = set;
+                else
+                    file.Portraits.Add(set);
+            }
+            else if (itemId.StartsWith(SpritePrefix, StringComparison.Ordinal))
+            {
+                SpriteSheetSet? set = JsonConvert.DeserializeObject<SpriteSheetSet>(json);
+                if (set == null)
+                    return false;
+                set.Npc = name;
+                set.File = this.TakeImage(set.File, files);
+                foreach (string outfit in set.Outfits.Keys.ToArray())
+                    set.Outfits[outfit] = this.TakeImage(set.Outfits[outfit], files);
+                int index = file.Sprites.FindIndex(s => string.Equals(s.Npc, name, StringComparison.OrdinalIgnoreCase));
+                if (index >= 0)
+                    file.Sprites[index] = set;
+                else
+                    file.Sprites.Add(set);
+            }
+            else if (itemId.StartsWith(FarmerPrefix, StringComparison.Ordinal))
+            {
+                string? sheet = JsonConvert.DeserializeObject<string>(json);
+                if (sheet == null)
+                    return false;
+                file.Farmer[name] = this.TakeImage(sheet, files);
+            }
+            else
+                return false;
+
+            this.Save(file);
+            return true;
+        }
+
+        /// <summary>Take one villager's portraits, one villager's sprites or one farmer sheet out of this content.</summary>
+        public bool RemoveItem(string itemId)
+        {
+            string name = itemId.Length > 2 ? itemId.Substring(2) : "";
+            if (name.Length == 0)
+                return false;
+
+            CharactersFile file = this.ReadFile();
+            bool removed = itemId.StartsWith(PortraitPrefix, StringComparison.Ordinal)
+                ? file.Portraits.RemoveAll(p => string.Equals(p.Npc, name, StringComparison.OrdinalIgnoreCase)) > 0
+                : itemId.StartsWith(SpritePrefix, StringComparison.Ordinal)
+                    ? file.Sprites.RemoveAll(s => string.Equals(s.Npc, name, StringComparison.OrdinalIgnoreCase)) > 0
+                    : itemId.StartsWith(FarmerPrefix, StringComparison.Ordinal) && file.Farmer.Remove(name);
+            if (!removed)
+                return false;
+
+            this.Save(file);
+            return true;
+        }
+
+        /// <summary>Reduce an image reference to a plain file name, and copy in the file if one came with the change.</summary>
+        private string TakeImage(string? file, IDictionary<string, string> files)
+        {
+            string name = Path.GetFileName(file ?? "");
+            if (name.Length > 0 && files.TryGetValue(name, out string? sent) && System.IO.File.Exists(sent))
+            {
+                Directory.CreateDirectory(this.ImageFolder);
+                System.IO.File.Copy(sent, Path.Combine(this.ImageFolder, name), overwrite: true);
+            }
+            return name;
+        }
+
+
         public void Save(CharactersFile file)
         {
             CustomContent.EnsureEditable(this.Manifest);

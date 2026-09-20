@@ -40,6 +40,12 @@ namespace CustomCharacters.UI
         /// <remarks>One sheet holds every hairstyle (or every hat, or every shirt), so while Player A paints it nobody else may.</remarks>
         private string? HeldSheet;
 
+        /// <summary>The farmer sheets being held at the moment (one per layer changed here), so they can be let go of again.</summary>
+        private readonly HashSet<string> HeldLayers = new();
+
+        /// <summary>The buttons that change a sheet, with the tooltip each has when nobody else is changing it.</summary>
+        private (Button Button, string? Tooltip)[]? NormalTooltips;
+
         private readonly Cycler LayerCycler;
         private readonly Button PrevItemButton;
         private readonly Button NextItemButton;
@@ -85,9 +91,9 @@ namespace CustomCharacters.UI
             this.NextItemButton = this.Add(new Button("+", () => this.SetItem(this.ItemIndex + 1), "Show the next one."));
             this.TryOnBox = this.Add(new Checkbox("Try it on", false, _ => { }, "Show this one on the preview farmer. Your real farmer isn't changed."));
             this.ExportButton = this.Add(new Button("Export original sheet", this.ExportOriginal, "Save the game's sheet (enlarged, with sharp pixels) to paint over in another program."));
-            this.ChooseButton = this.Add(new Button("Choose HD sheet", this.Browse, "Pick your HD version. It must be the original size times a whole number."));
-            this.PaintButton = this.Add(new Button("Paint", this.Paint, "Draw on the sheet here in the game. Without an HD sheet yet, it starts from the game's art enlarged 4x."));
-            this.RemoveButton = this.Add(new Button("Remove", this.RemoveSheet));
+            this.ChooseButton = this.Add(new Button("Choose HD sheet", () => this.WhenNobodyElseIsChangingThisLayer(this.Layer, this.Browse), "Pick your HD version. It must be the original size times a whole number."));
+            this.PaintButton = this.Add(new Button("Paint", () => this.WhenNobodyElseIsChangingThisLayer(this.Layer, this.Paint), "Draw on the sheet here in the game. Without an HD sheet yet, it starts from the game's art enlarged 4x."));
+            this.RemoveButton = this.Add(new Button("Remove", () => this.WhenNobodyElseIsChangingThisLayer(this.Layer, this.RemoveSheet)));
             this.SaveButton = this.Add(new Button("Save", this.Save));
             this.CancelButton = this.Add(new Button("Cancel", () => this.Root.Pop()));
             this.SyncButtons();
@@ -101,6 +107,7 @@ namespace CustomCharacters.UI
         public override void Dispose()
         {
             this.ReleaseSheet();
+            this.ReleaseLayers(); // the editor is closed, so the sheets it changed are free again
             foreach (Texture2D? texture in this.Originals.Values.Concat(this.HdSheets.Values))
                 texture?.Dispose();
         }
@@ -296,6 +303,15 @@ namespace CustomCharacters.UI
 
         private void SyncButtons()
         {
+            // in a game where everyone uses the Host's set, say who's changing this sheet rather than let two players save over each other
+            this.NormalTooltips ??= new[] { this.ChooseButton, this.PaintButton, this.RemoveButton }.Select(b => (b, b.Tooltip)).ToArray();
+            string? busy = CustomContent.WhoIsChanging(this.Store.Manifest, LayerThing(this.Layer));
+            foreach ((Button button, string? tooltip) in this.NormalTooltips)
+            {
+                button.Enabled = busy == null;
+                button.Tooltip = busy != null ? $"{busy} is changing the {this.Layer.Label.ToLowerInvariant()} sheet right now." : tooltip;
+            }
+
             bool hasOriginal = this.GetOriginal(this.Layer) != null;
             this.ExportButton.Enabled = hasOriginal;
             this.ChooseButton.Enabled = hasOriginal;
@@ -426,6 +442,33 @@ namespace CustomCharacters.UI
             });
         }
 
+        /// <summary>What one farmer sheet (hair, body, hats, ...) is called when asking to be the only one changing it.</summary>
+        private static string LayerThing(FarmerLayer layer) => $"item:{CharacterStore.FarmerItemId(layer.Id)}";
+
+        /// <summary>Change one of the farmer's sheets, unless another player in the game is already changing that one.</summary>
+        /// <remarks>Player A on the hairstyles sheet doesn't stop Player B on hats: each sheet is held on its own.</remarks>
+        private void WhenNobodyElseIsChangingThisLayer(FarmerLayer layer, Action action)
+        {
+            string thing = LayerThing(layer);
+            if (this.HeldLayers.Contains(thing))
+            {
+                action();
+                return;
+            }
+
+            string label = $"the {layer.Label.ToLowerInvariant()} sheet";
+            CustomContent.TakeLock(this.Store.Manifest, thing, label, (granted, holder) =>
+            {
+                if (!granted)
+                {
+                    this.ShowError($"{holder} is changing {label} right now.");
+                    return;
+                }
+                this.HeldLayers.Add(thing);
+                action();
+            });
+        }
+
         /// <summary>What an image in the mod's images folder is called when asking to be the only one changing it.</summary>
         /// <param name="file">The image's path relative to that folder.</param>
         private static string SheetLockThing(string file) => $"file:{CharacterStore.ImageFolderName}/{file}";
@@ -437,6 +480,14 @@ namespace CustomCharacters.UI
                 return;
             this.HeldSheet = null;
             CustomContent.ReleaseLock(this.Store.Manifest, thing);
+        }
+
+        /// <summary>Let go of every farmer sheet this editor was holding, so other players can take their turn at them.</summary>
+        private void ReleaseLayers()
+        {
+            foreach (string thing in this.HeldLayers)
+                CustomContent.ReleaseLock(this.Store.Manifest, thing);
+            this.HeldLayers.Clear();
         }
 
         /// <summary>Open the paint screen and use whatever comes back as this layer's sheet.</summary>

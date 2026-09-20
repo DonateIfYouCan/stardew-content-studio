@@ -40,6 +40,12 @@ namespace CustomPaintings.UI
         private readonly PaintingStore Store;
         private bool ShowGamePaintings;
 
+        /// <summary>The content version the rows were built from, so the list notices when another player's change arrives.</summary>
+        private int BuiltVersion = -1;
+
+        /// <summary>The buttons that change the list itself, with the tooltip each has when nobody else is changing it.</summary>
+        private (Button Button, string? Tooltip)[]? NormalTooltips;
+
         private readonly ScrollList<Row> List;
         private readonly Button MineTab;
         private readonly Button GameTab;
@@ -174,6 +180,9 @@ namespace CustomPaintings.UI
 
         public override void Draw(SpriteBatch b, int mouseX, int mouseY)
         {
+            if (this.BuiltVersion != CustomContent.ContentVersion)
+                this.Refresh(); // another player's change arrived while this list was open
+
             Rectangle area = this.Area;
             Gfx.Panel(b, area);
             Gfx.Text(b, "Paintings", new Vector2(area.X + 36, area.Y + 24), null, Gfx.TitleFont);
@@ -245,6 +254,7 @@ namespace CustomPaintings.UI
         *********/
         private void Refresh()
         {
+            this.BuiltVersion = CustomContent.ContentVersion;
             string? selectedId = this.List.Selected?.FurnitureId;
             this.DisposeThumbnails();
             this.AllRows = this.ShowGamePaintings ? this.BuildGameRows() : this.BuildMyRows();
@@ -381,10 +391,11 @@ namespace CustomPaintings.UI
                 button.Enabled = busy == null;
                 button.Tooltip = busy != null ? $"{busy} is changing '{row?.Name}' right now." : null;
             }
-            foreach (Button button in new[] { this.ReplaceButton, this.RestoreButton, this.HideButton })
+            this.NormalTooltips ??= new[] { this.ReplaceButton, this.RestoreButton, this.HideButton }.Select(b => (b, b.Tooltip)).ToArray();
+            foreach ((Button button, string? tooltip) in this.NormalTooltips)
             {
                 button.Enabled = listBusy == null;
-                button.Tooltip = listBusy != null ? $"{listBusy} is changing the paintings list right now." : button.Tooltip;
+                button.Tooltip = listBusy != null ? $"{listBusy} is changing the paintings list right now." : tooltip;
             }
 
             this.EditButton.Visible = mine && row != null;

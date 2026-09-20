@@ -42,7 +42,7 @@ namespace CustomCharacters.UI
             });
             this.SearchField = this.Add(new TextField("", _ => this.ApplyFilter(), limit: 40));
             this.EditButton = this.Add(new Button("Edit portraits", () => this.WhenNobodyElseIsChangingIt(this.EditSelected), "Replace this villager's portraits with your own images."));
-            this.SpriteButton = this.Add(new Button("Edit sprite", () => this.WhenNobodyElseIsChangingIt(this.EditSprite), "Give this villager an HD body (their sprite in the world)."));
+            this.SpriteButton = this.Add(new Button("Edit sprite", () => this.WhenNobodyElseIsChangingIt(this.EditSprite, sprite: true), "Give this villager an HD body (their sprite in the world)."));
             this.ResetButton = this.Add(new Button("Restore original", () => this.WhenNobodyElseIsChangingIt(this.ResetSelected), "Go back to the game's own portraits and sprite."));
             this.CloseButton = this.Add(new Button("Close", () => this.Root.Pop()));
             this.WritingButtons = new[] { (this.EditButton, this.EditButton.Tooltip), (this.SpriteButton, this.SpriteButton.Tooltip), (this.ResetButton, this.ResetButton.Tooltip) };
@@ -58,19 +58,19 @@ namespace CustomCharacters.UI
             if (index < 0)
                 return false;
             this.List.SelectedIndex = index;
-            this.WhenNobodyElseIsChangingIt(sprite ? this.EditSprite : this.EditSelected);
+            this.WhenNobodyElseIsChangingIt(sprite ? this.EditSprite : this.EditSelected, sprite);
             return true;
         }
 
         public override void OnResume()
         {
-            CustomContent.ReleaseLock(this.Store.Manifest, LockThing); // whatever was opened is closed again
+            this.LetGo(); // whatever was opened is closed again
             this.Refresh();
         }
 
         public override void Dispose()
         {
-            CustomContent.ReleaseLock(this.Store.Manifest, LockThing);
+            this.LetGo();
         }
 
         protected override void OnLayout(Rectangle area)
@@ -167,29 +167,57 @@ namespace CustomCharacters.UI
             this.SpriteButton.Visible = row != null;
             this.ResetButton.Visible = row != null && (this.Store.HasCustom(row.Npc) || this.Store.HasCustomSprite(row.Npc));
 
-            // in a game where everyone uses the Host's set, say who's changing it rather than let Player A write over Player B
-            string? busy = CustomContent.WhoIsChanging(this.Store.Manifest, LockThing);
+            // in a game where everyone uses the Host's set, say who's changing this villager rather than let Player A write over Player B
+            string? portraitBusy = row != null ? CustomContent.WhoIsChanging(this.Store.Manifest, PortraitThing(row.Npc)) : null;
+            string? spriteBusy = row != null ? CustomContent.WhoIsChanging(this.Store.Manifest, SpriteThing(row.Npc)) : null;
             foreach ((Button button, string? tooltip) in this.WritingButtons)
             {
+                string? busy = button == this.SpriteButton ? spriteBusy : portraitBusy;
                 button.Enabled = busy == null;
-                button.Tooltip = busy != null ? $"{busy} is changing the characters right now." : tooltip;
+                button.Tooltip = busy != null ? $"{busy} is changing {(button == this.SpriteButton ? "that sprite" : "those portraits")} right now." : tooltip;
             }
         }
 
-        /// <summary>What the characters file is called when asking to be the only one changing it.</summary>
-        private const string LockThing = "file:" + CharacterStore.DataFileName;
+        /// <summary>The villager's portraits or sprites being held at the moment, so they can be let go of again.</summary>
+        private string? HeldItem;
 
-        /// <summary>Do something that writes to the characters file, unless another player in the game is already changing it.</summary>
-        /// <remarks>The lock is held until this screen is closed or an editor opened from it comes back, so Player B can't save over Player A halfway through.</remarks>
-        private void WhenNobodyElseIsChangingIt(Action action)
+        /// <summary>What one villager's portraits are called when asking to be the only one changing them.</summary>
+        private static string PortraitThing(string npc) => $"item:{CharacterStore.PortraitItemId(npc)}";
+
+        /// <summary>What one villager's sprites are called when asking to be the only one changing them.</summary>
+        private static string SpriteThing(string npc) => $"item:{CharacterStore.SpriteItemId(npc)}";
+
+        /// <summary>Change one villager's portraits or sprites, unless another player in the game is already changing that one.</summary>
+        /// <remarks>Player A on Abigail's portraits doesn't stop Player B on her sprites, let alone on another villager.</remarks>
+        private void WhenNobodyElseIsChangingIt(Action action, bool sprite = false)
         {
-            CustomContent.TakeLock(this.Store.Manifest, LockThing, "the characters", (granted, holder) =>
+            if (this.List.Selected is not { } row)
             {
-                if (granted)
-                    action();
-                else
-                    this.ShowMessage($"{holder} is changing the characters right now.", error: true);
+                action();
+                return;
+            }
+
+            string thing = sprite ? SpriteThing(row.Npc) : PortraitThing(row.Npc);
+            string label = sprite ? $"{row.Npc}'s sprite" : $"{row.Npc}'s portraits";
+            CustomContent.TakeLock(this.Store.Manifest, thing, label, (granted, holder) =>
+            {
+                if (!granted)
+                {
+                    this.ShowMessage($"{holder} is changing {label} right now.", error: true);
+                    return;
+                }
+                this.HeldItem = thing;
+                action();
             });
+        }
+
+        /// <summary>Let go of the villager we were holding, so another player can change them.</summary>
+        private void LetGo()
+        {
+            if (this.HeldItem == null)
+                return;
+            CustomContent.ReleaseLock(this.Store.Manifest, this.HeldItem);
+            this.HeldItem = null;
         }
 
         private void EditSelected()
