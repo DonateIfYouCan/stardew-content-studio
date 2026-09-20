@@ -122,10 +122,10 @@ namespace CustomPaintings.UI
         *********/
         /// <summary>Edit a new or existing painting.</summary>
         /// <summary>The player this change is for, when changing someone else's painting (their ID is 0 for your own).</summary>
-        private (long Id, string Name, string Folder) SuggestTo;
+        private readonly (long Id, string Name, string Folder) SuggestTo;
 
         /// <summary>Their version of the painting when this edit started, so a change they made meanwhile isn't overwritten.</summary>
-        private string SuggestBaseJson = "";
+        private readonly string SuggestBaseJson = "";
 
         /// <summary>Whether this is a change to another player's painting, which they have to apply.</summary>
         private bool Suggesting => this.SuggestTo.Id != 0;
@@ -144,14 +144,14 @@ namespace CustomPaintings.UI
         /// <param name="baseJson">Their version as JSON, so they can tell whether it changed while you were editing.</param>
         /// <param name="onSaved">Called with the message to show once they answered.</param>
         public PaintingEditorScreen(PaintingStore store, CustomPainting painting, (long Id, string Name, string Folder) owner, string baseJson, Action<string> onSaved)
-            : this(store, painting, null, isNew: false, onSaved, (0, 0), "")
+            : this(store, painting, null, isNew: false, onSaved, (0, 0), "", owner, baseJson) { }
+
+        private PaintingEditorScreen(PaintingStore store, CustomPainting? painting, Replacement? replacement, bool isNew, Action<string> onSaved, (int W, int H) replacementSize, string replacementName,
+            (long Id, string Name, string Folder) owner = default, string baseJson = "")
         {
+            // before anything reads an image: while changing another player's painting, the images come from their folder
             this.SuggestTo = owner;
             this.SuggestBaseJson = baseJson;
-        }
-
-        private PaintingEditorScreen(PaintingStore store, CustomPainting? painting, Replacement? replacement, bool isNew, Action<string> onSaved, (int W, int H) replacementSize, string replacementName)
-        {
             this.Store = store;
             this.IsNew = isNew;
             this.OnSaved = onSaved;

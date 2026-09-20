@@ -153,12 +153,13 @@ namespace CustomContentCore.UI
             // fit the sections in the space above the multiplayer/support rows, however many mods are installed
             int w = Math.Min(560, area.Width - 64);
             int x = area.Center.X - w / 2;
-            int top = area.Y + (this.Entries.Count > 4 ? 84 : 120);
-            int bottom = area.Bottom - 84 - 118 - 44; // above the multiplayer heading, leaving room for the last description
+            int note = CoreMod.Sync?.UsingPeerContent == true ? 34 : 0; // the line about other players' content sits under the title
+            int top = area.Y + (this.Entries.Count > 4 ? 84 : 120) + note;
+            int bottom = area.Bottom - 84 - 172 - 44; // above the multiplayer heading, leaving room for the last description
             int count = Math.Max(1, this.Entries.Count);
-            int step = Math.Min(132, Math.Max(64, (bottom - top) / count));
+            int step = Math.Clamp((bottom - top) / count, 48, 132); // in a small window the rows shrink rather than run into the multiplayer options
             this.ShowDescriptions = step >= 104;
-            int buttonH = this.ShowDescriptions ? Math.Min(72, step - 56) : Math.Min(64, step - 8);
+            int buttonH = this.ShowDescriptions ? Math.Min(72, step - 56) : Math.Min(56, step - 8);
             int y = top;
             foreach ((_, Button button) in this.Entries)
             {
@@ -173,9 +174,9 @@ namespace CustomContentCore.UI
             this.DonateButton.Bounds = new Rectangle(this.GitHubButton.Bounds.X - 12 - 260, area.Bottom - 84 - 118, 260, 52);
             // the checkboxes share those rows, so keep them clear of the support buttons
             int boxW = Math.Max(240, Math.Min(520, this.DonateButton.Bounds.X - 24 - (area.X + 32)));
-            this.ShareBox.Bounds = new Rectangle(area.X + 32, area.Bottom - 84 - 118, boxW, 44);
-            this.AcceptBox.Bounds = new Rectangle(area.X + 32, area.Bottom - 84 - 64, boxW, 44);
-            this.ChangeBox.Bounds = new Rectangle(area.X + 32 + boxW + 16, area.Bottom - 84 - 64, boxW, 44);
+            this.ShareBox.Bounds = new Rectangle(area.X + 32, area.Bottom - 84 - 172, boxW, 44);
+            this.AcceptBox.Bounds = new Rectangle(area.X + 32, area.Bottom - 84 - 118, boxW, 44);
+            this.ChangeBox.Bounds = new Rectangle(area.X + 32, area.Bottom - 84 - 64, boxW, 44);
         }
 
         public override void Draw(SpriteBatch b, int mouseX, int mouseY)
@@ -190,7 +191,7 @@ namespace CustomContentCore.UI
             if (noteRoom > 140)
                 Gfx.Text(b, Gfx.Fit("- only accept content in games with people you trust", noteRoom), heading + new Vector2(noteX, 0), Color.DarkRed);
             if (CoreMod.Sync?.UsingPeerContent == true)
-                Gfx.Text(b, "Other players' content is shown next to yours in this game. You can only change your own.", new Vector2(this.Area.X + 36, this.Area.Y + 70), Color.DarkRed);
+                Gfx.Text(b, Gfx.Fit("Other players' content is shown next to yours. You can only change your own, or ask them for a turn.", this.Area.Width - 72), new Vector2(this.Area.X + 36, this.Area.Y + 68), Color.DarkRed);
             Gfx.Text(b, "Support (optional)", new Vector2(this.DonateButton.Bounds.X, this.DonateButton.Bounds.Y - 40), Color.DimGray);
             Gfx.Text(b, Gfx.Fit("Thanks for using these mods!", this.Area.Right - 32 - this.DonateButton.Bounds.X), new Vector2(this.DonateButton.Bounds.X, this.DonateButton.Bounds.Bottom + 8), Color.DimGray);
             if (this.Message != null)
