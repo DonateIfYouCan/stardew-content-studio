@@ -74,6 +74,12 @@ namespace CustomContentCore
         /// <summary>What we're holding ourselves, and when to say we're still on it.</summary>
         private readonly Dictionary<string, DateTime> Mine = new(StringComparer.OrdinalIgnoreCase);
 
+        /// <summary>When we took each of those, so a list sent before we asked doesn't look like the host disagreeing.</summary>
+        private readonly Dictionary<string, DateTime> MineSince = new(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>As host: players whose hold we took back, by key, so their next change is refused until they ask again.</summary>
+        private readonly Dictionary<string, long> TakenBack = new(StringComparer.OrdinalIgnoreCase);
+
         /// <summary>What the host last said is being changed, so a list can show it.</summary>
         private Dictionary<string, string> Others = new(StringComparer.OrdinalIgnoreCase);
 
@@ -125,7 +131,9 @@ namespace CustomContentCore
                     return;
                 }
                 this.Held[key] = (Game1.player.UniqueMultiplayerID, Game1.player.Name, label, DateTime.UtcNow + Lease);
+                this.TakenBack.Remove(key);
                 this.Mine[key] = DateTime.UtcNow + RenewEvery;
+                this.MineSince[key] = DateTime.UtcNow;
                 this.TellEveryone();
                 onReply(true, "");
                 return;
@@ -138,6 +146,7 @@ namespace CustomContentCore
         /// <summary>Let go of something, so someone else can change it.</summary>
         public void Release(string key)
         {
+            this.MineSince.Remove(key);
             if (!this.Mine.Remove(key))
                 return;
 
@@ -175,10 +184,14 @@ namespace CustomContentCore
         /// <summary>As host: take something back from whoever is changing it (their next save is refused).</summary>
         public void ForceRelease(string key)
         {
-            if (!Context.IsMainPlayer || !this.Held.Remove(key))
+            if (!Context.IsMainPlayer || !this.Held.TryGetValue(key, out var held))
                 return;
 
+            this.Held.Remove(key);
+            if (held.Player != Game1.player.UniqueMultiplayerID)
+                this.TakenBack[key] = held.Player; // their next change is refused until they ask again
             this.Mine.Remove(key);
+            this.MineSince.Remove(key);
             this.TellEveryone();
             this.Monitor.Log($"You took back '{key}'; whoever was changing it has to ask again.", LogLevel.Info);
         }
@@ -186,6 +199,8 @@ namespace CustomContentCore
         /// <summary>Whether a player may write to something: they hold it, or nobody does.</summary>
         public bool MayChange(long playerId, string key)
         {
+            if (this.TakenBack.TryGetValue(key, out long tookFrom) && tookFrom == playerId)
+                return false;
             return !this.Held.TryGetValue(key, out var held) || held.Expires <= DateTime.UtcNow || held.Player == playerId;
         }
 
@@ -237,6 +252,7 @@ namespace CustomContentCore
             }
 
             string name = this.NameOf(playerId);
+            this.TakenBack.Remove(key); // they're asking again, so the slate is clean
             this.Held[key] = (playerId, name, Clean(request.Label, 60), DateTime.UtcNow + Lease);
             this.SendTo(playerId, new LockReply { Key = key, Granted = true }, ReplyType);
             this.TellEveryone();
@@ -266,7 +282,10 @@ namespace CustomContentCore
                 return;
 
             if (reply.Granted)
+            {
                 this.Mine[reply.Key] = DateTime.UtcNow + RenewEvery;
+                this.MineSince[reply.Key] = DateTime.UtcNow;
+            }
             callback(reply.Granted, Clean(reply.Holder, 40));
         }
 
@@ -279,6 +298,21 @@ namespace CustomContentCore
                 .Where(l => l.Key.Length > 0)
                 .GroupBy(l => Clean(l.Key, 200), StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(g => g.Key, g => Clean(g.First().Holder, 40), StringComparer.OrdinalIgnoreCase);
+
+            // anything we thought was ours but the host doesn't list is no longer ours: the host took it back, or it ran out
+            foreach ((string key, DateTime since) in this.MineSince.ToArray())
+            {
+                if (this.Others.ContainsKey(key) || DateTime.UtcNow - since < TimeSpan.FromSeconds(15))
+                    continue;
+                bool listedForUs = list.Locks.Any(l => Clean(l.Key, 200).Equals(key, StringComparison.OrdinalIgnoreCase));
+                if (listedForUs)
+                    continue;
+
+                this.Mine.Remove(key);
+                this.MineSince.Remove(key);
+                this.Monitor.Log($"The host took '{key}' back; anything saved for it now is refused until it's asked for again.", LogLevel.Info);
+                Game1.addHUDMessage(new HUDMessage("The host took back what you were changing. Open it again to carry on.") { noIcon = true });
+            }
         }
 
         private void OnUpdateTicked(object? sender, UpdateTickedEventArgs e)
@@ -317,6 +351,8 @@ namespace CustomContentCore
 
             foreach ((string key, var held) in this.Held.Where(l => l.Value.Player == e.Peer.PlayerID).ToArray())
                 this.Held.Remove(key);
+            foreach ((string key, long player) in this.TakenBack.Where(t => t.Value == e.Peer.PlayerID).ToArray())
+                this.TakenBack.Remove(key);
             this.TellEveryone();
         }
 
@@ -339,6 +375,8 @@ namespace CustomContentCore
         {
             this.Held.Clear();
             this.Mine.Clear();
+            this.MineSince.Clear();
+            this.TakenBack.Clear();
             this.Others.Clear();
             this.Waiting.Clear();
         }

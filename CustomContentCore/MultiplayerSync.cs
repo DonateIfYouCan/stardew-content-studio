@@ -1057,15 +1057,25 @@ namespace CustomContentCore
                     continue;
                 string modId = key.Substring(0, slash), rest = key.Substring(slash + 1);
 
-                // a file comes back from the host; an item is put right by the host's next offer
                 if (this.IsSafe(modId, rest))
                 {
                     this.Index.Remove(key);
                     this.Downloaded.Remove(key);
                     again.Add(key);
+                    continue;
                 }
-                else
-                    this.ItemBaseline.Remove($"{modId}|{rest}");
+
+                // a refused item: ask for that mod's data file again, so our copy goes back to the host's
+                this.ItemBaseline.Remove($"{modId}|{rest}");
+                foreach (string path in ContentPacks.GetRegistrations().Where(r => r.Mod.UniqueID == modId).SelectMany(r => r.Paths).Where(ContentPacks.IsDataFile))
+                {
+                    string dataKey = $"{modId}/{path}";
+                    if (!this.IsSafe(modId, path) || again.Contains(dataKey))
+                        continue;
+                    this.Index.Remove(dataKey);
+                    this.Downloaded.Remove(dataKey);
+                    again.Add(dataKey);
+                }
             }
 
             string reason = new string((message.Reason ?? "").Where(ch => !char.IsControl(ch)).Take(80).ToArray());
@@ -1188,6 +1198,7 @@ namespace CustomContentCore
             try
             {
                 reload();
+                ContentPacks.NotifyReloaded(); // an open list can tell its rows are out of date
             }
             catch (Exception ex)
             {
