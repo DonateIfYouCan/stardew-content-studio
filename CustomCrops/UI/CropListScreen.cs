@@ -94,8 +94,14 @@ namespace CustomCrops.UI
             this.CloseButton.Bounds = new Rectangle(area.Right - pad - 180, area.Bottom - 84, 180, 60);
         }
 
+        /// <summary>The content version the rows were built from, so the list notices when another player's change arrives.</summary>
+        private int BuiltVersion = -1;
+
         public override void Draw(SpriteBatch b, int mouseX, int mouseY)
         {
+            if (this.BuiltVersion != CustomContent.ContentVersion)
+                this.Refresh(); // another player's change arrived while this list was open
+
             Gfx.Panel(b, this.Area);
             Gfx.Text(b, "Custom crops", new Vector2(this.Area.X + 36, this.Area.Y + 24), null, Gfx.TitleFont);
             base.Draw(b, mouseX, mouseY);
@@ -148,6 +154,7 @@ namespace CustomCrops.UI
 
         private void Refresh()
         {
+            this.BuiltVersion = CustomContent.ContentVersion;
             string? selected = this.List.Selected?.Id;
             this.ClearIcons();
             this.List.Items = this.Store.File.Crops.ToList();

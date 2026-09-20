@@ -87,8 +87,14 @@ namespace CustomCharacters.UI
             this.CloseButton.Bounds = new Rectangle(area.Right - pad - 180, area.Bottom - 84, 180, 60);
         }
 
+        /// <summary>The content version the rows were built from, so the list notices when another player's change arrives.</summary>
+        private int BuiltVersion = -1;
+
         public override void Draw(SpriteBatch b, int mouseX, int mouseY)
         {
+            if (this.BuiltVersion != CustomContent.ContentVersion)
+                this.Refresh(); // another player's change arrived while this list was open
+
             Gfx.Panel(b, this.Area);
             Gfx.Text(b, "Villagers", new Vector2(this.Area.X + 36, this.Area.Y + 24), null, Gfx.TitleFont);
             Gfx.Text(b, "Search", new Vector2(this.Area.X + 32, this.SearchField.Bounds.Y + 10));
@@ -125,6 +131,7 @@ namespace CustomCharacters.UI
 
         private void Refresh()
         {
+            this.BuiltVersion = CustomContent.ContentVersion;
             string? selected = this.List.Selected?.Npc;
             this.AllRows = GetVillagers().ToList();
             this.ApplyFilter();

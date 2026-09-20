@@ -46,3 +46,23 @@ Tested on one setup only: **Linux, Stardew Valley 1.6.15, SMAPI 4.5.2**, 1920×1
   portraits, farmer sheets or `Data/Furniture`). If another mod resizes a sheet, ours is skipped for that sheet with a warning.
 - **Long-term play**: saving and loading over many in-game days, and older saves.
 - **Performance** with many or very large images.
+
+## Checks that run without the game
+
+`dotnet test` runs a small set of fast checks in `Tests/`, meant to catch the things that have quietly broken here before:
+
+| Check | What it would have caught |
+| --- | --- |
+| Received paths and files | A path climbing out of the content folder, JSON with `$type` or comments, a program pretending to be a PNG, data hidden after an image |
+| Items sent one at a time | A mod registered without `ContentEditing`, so it sends its whole data file and one player holds everything |
+| Screens make what they declare | A button declared but never created - the editor then fails to open at all (happened twice with the support buttons) |
+| Screens let go of what they hold | A screen that takes a lock and never releases it, leaving an item stuck until the lease runs out |
+| Lists notice a change | A list that doesn't rebuild when another player's change arrives (this check found four screens that had lost it) |
+
+Run them before pushing:
+
+```sh
+dotnet test
+```
+
+They don't need Stardew Valley running, but they do need the game installed: the test project loads the game's `MonoGame.Framework.dll` for the colour type.

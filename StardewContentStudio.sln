@@ -13,6 +13,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CustomCrops", "CustomCrops\
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CustomFurniture", "CustomFurniture\CustomFurniture.csproj", "{FA7B82FE-F975-4448-A573-84241374918C}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tests", "Tests\Tests.csproj", "{DCA76875-93B7-4E83-A0DB-D4304CED24D7}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -42,5 +44,9 @@ Global
 		{FA7B82FE-F975-4448-A573-84241374918C}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{FA7B82FE-F975-4448-A573-84241374918C}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{FA7B82FE-F975-4448-A573-84241374918C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DCA76875-93B7-4E83-A0DB-D4304CED24D7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DCA76875-93B7-4E83-A0DB-D4304CED24D7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DCA76875-93B7-4E83-A0DB-D4304CED24D7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DCA76875-93B7-4E83-A0DB-D4304CED24D7}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

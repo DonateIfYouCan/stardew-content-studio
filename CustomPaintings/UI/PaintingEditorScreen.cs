@@ -96,6 +96,7 @@ namespace CustomPaintings.UI
         private readonly Checkbox SourceOnceBox;
         private readonly Button RemoveSourceButton;
         private readonly Button AddImageButton;
+        private readonly Button PaintImageButton;
         private readonly Button ChangeImageButton;
         private readonly Button RemoveImageButton;
         private readonly Button MoveLeftButton;
@@ -220,6 +221,7 @@ namespace CustomPaintings.UI
             this.ChangeImageButton = this.Add(new Button("Change", () => this.BrowseImage(replace: true), "Replace the selected image."));
             this.RemoveImageButton = this.Add(new Button("Remove", this.RemoveSlide, "Remove the selected image."));
             this.MoveLeftButton = this.Add(new Button("Move left", this.MoveSlideLeft, "Show the selected image earlier in the slideshow."));
+            this.PaintImageButton = this.Add(new Button("Paint", this.PaintImage, "Draw on the selected image here in the game, or start a new one from scratch."));
             this.FitButton = this.Add(new Button("Fit image", this.FitCrop, "Reset the crop to the largest area that fits."));
 
             this.SaveButton = this.Add(new Button("Save", this.Save));
@@ -271,6 +273,7 @@ namespace CustomPaintings.UI
             this.ChangeImageButton.Bounds = new Rectangle(this.SlideStrip.Right + 8, this.SlideStrip.Y + 50, (buttonsW - 6) / 2, 44);
             this.RemoveImageButton.Bounds = new Rectangle(this.ChangeImageButton.Bounds.Right + 6, this.SlideStrip.Y + 50, (buttonsW - 6) / 2, 44);
             this.MoveLeftButton.Bounds = new Rectangle(area.X + pad + leftW - 200 - 12 - 130, top, 130, 44);
+            this.PaintImageButton.Bounds = new Rectangle(this.SlideStrip.Right + 8, this.SlideStrip.Y + 100, buttonsW, 44);
             _ = bx;
 
             // right: preview + form (short fields share a row so everything fits)
@@ -856,6 +859,56 @@ namespace CustomPaintings.UI
                     options.Add((id, id));
             return options;
         }
+
+        /// <summary>Draw on the picture here in the game: the one that's picked, or a new one at a size you choose.</summary>
+        private void PaintImage()
+        {
+            if (this.CurrentSlide is { } slide && this.GetImage(slide.File) is { } loaded)
+            {
+                this.OpenPaintOnImage(loaded.Full, replace: true);
+                return;
+            }
+
+            this.Root.Push(new ChoiceScreen(
+                "Paint a picture from scratch. Bigger means more detail; the painting is drawn at whatever size you give it.\n\nWhat size do you want to draw at?",
+                ("Small (64x64)", "One tile's worth of pixels.", () => this.OpenPaintOnImage(Blank(64, 64), replace: false)),
+                ("Medium (128x128)", "Room for detail in a 2x2 painting.", () => this.OpenPaintOnImage(Blank(128, 128), replace: false)),
+                ("Large (256x256)", "The usual size for a detailed picture.", () => this.OpenPaintOnImage(Blank(256, 256), replace: false))));
+        }
+
+        /// <summary>Open the paint screen and use what comes back as this painting's picture.</summary>
+        /// <param name="image">The pixels to start from.</param>
+        /// <param name="replace">Whether to replace the picked image rather than add one.</param>
+        private void OpenPaintOnImage(Pixels image, bool replace)
+        {
+            this.Root.Push(new PaintScreen(image, $"Paint '{this.Painting?.Name ?? this.ReplacementName}'", pixels =>
+            {
+                try
+                {
+                    string file = CustomContent.SaveImage(this.Store.ImageFolder, $"{this.Painting?.Name ?? "painting"} painted", pixels);
+                    this.ImportedThisSession.Add(file);
+                    if (replace && this.CurrentSlide is { } slide)
+                    {
+                        slide.File = file;
+                        slide.Crop = null;
+                    }
+                    else
+                    {
+                        this.Slides.Add(new Slide { File = file });
+                        this.SlideIndex = this.Slides.Count - 1;
+                    }
+                    this.Images.Remove(file);
+                    this.SyncSlideControls();
+                }
+                catch (Exception ex)
+                {
+                    this.ShowMessage($"Couldn't save the image: {ex.Message}");
+                }
+            }));
+        }
+
+        /// <summary>An empty picture to start painting on.</summary>
+        private static Pixels Blank(int width, int height) => new(new Color[width * height], width, height);
 
         private void BrowseImage(bool replace)
         {
