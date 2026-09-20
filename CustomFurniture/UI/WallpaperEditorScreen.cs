@@ -254,11 +254,11 @@ namespace CustomFurniture.UI
                 // painting over an image file already in the mod folder, so hold that file until the painter closes;
                 // the blank tiles below are nobody's file yet, so there's nothing to hold.
                 string thing = FurnitureStore.GetImageLockThing(this.Item.Image!);
-                CustomContent.TakeLock(this.Store.Manifest, thing, $"the image for '{this.Item.Name}'", (granted, holder) =>
+                CustomContent.TakeLock(this.Store.Manifest, thing, $"the image for '{this.Item.Name}'", (granted, why) =>
                 {
                     if (!granted)
                     {
-                        this.ShowError($"{holder} is changing that image right now.");
+                        this.ShowError(why);
                         return;
                     }
                     this.PaintedImageLock = thing;

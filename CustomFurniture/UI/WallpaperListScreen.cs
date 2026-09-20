@@ -92,11 +92,11 @@ namespace CustomFurniture.UI
                 return;
             }
 
-            CustomContent.TakeLock(this.Store.Manifest, ItemThing(item.Id), item.Name, (granted, holder) =>
+            CustomContent.TakeLock(this.Store.Manifest, ItemThing(item.Id), item.Name, (granted, why) =>
             {
                 if (!granted)
                 {
-                    this.ShowMessage($"{holder} is changing '{item.Name}' right now.", error: true);
+                    this.ShowMessage(why, error: true);
                     return;
                 }
                 this.HeldItem = ItemThing(item.Id);
@@ -107,12 +107,12 @@ namespace CustomFurniture.UI
         /// <summary>Change the whole file rather than one item (nothing does this yet; kept so the two lists agree).</summary>
         private void WhenNobodyElseIsChangingTheList(Action action)
         {
-            CustomContent.TakeLock(this.Store.Manifest, LockThing, "the furniture", (granted, holder) =>
+            CustomContent.TakeLock(this.Store.Manifest, LockThing, "the furniture", (granted, why) =>
             {
                 if (granted)
                     action();
                 else
-                    this.ShowMessage($"{holder} is changing the furniture right now.", error: true);
+                    this.ShowMessage(why, error: true);
             });
         }
 

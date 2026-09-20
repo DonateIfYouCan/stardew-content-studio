@@ -33,6 +33,9 @@ namespace CustomContentCore
             public string Key { get; set; } = "";
             public bool Granted { get; set; }
             public string Holder { get; set; } = "";
+
+            /// <summary>Why not, in words to show the player.</summary>
+            public string Reason { get; set; } = "";
         }
 
         /// <summary>Player → host: I'm still on it / I'm done.</summary>
@@ -86,6 +89,9 @@ namespace CustomContentCore
         /// <summary>Waiting for the host's answer, by key.</summary>
         private readonly Dictionary<string, Action<bool, string>> Waiting = new(StringComparer.OrdinalIgnoreCase);
 
+        /// <summary>What each thing we're waiting on is called, for the message shown if the answer is no.</summary>
+        private readonly Dictionary<string, string> WaitingLabels = new(StringComparer.OrdinalIgnoreCase);
+
 
         /*********
         ** Public methods
@@ -108,7 +114,7 @@ namespace CustomContentCore
         /// <summary>Ask to be the one changing something, so nobody else changes it at the same time.</summary>
         /// <param name="key">What's being changed, e.g. a mod's item or one of its files.</param>
         /// <param name="label">What to call it when telling someone else it's taken.</param>
-        /// <param name="onReply">Called with whether it's yours and, if not, who has it. Called straight away outside a shared game.</param>
+        /// <param name="onReply">Called with whether it's yours and, if not, why not in words to show. Called straight away outside a shared game.</param>
         public void Take(string key, string label, Action<bool, string> onReply)
         {
             if (!this.InSharedGame)
@@ -127,7 +133,7 @@ namespace CustomContentCore
                 // the host decides, so there's nobody to ask
                 if (this.Held.TryGetValue(key, out var held) && held.Expires > DateTime.UtcNow && held.Player != Game1.player.UniqueMultiplayerID)
                 {
-                    onReply(false, held.Holder);
+                    onReply(false, $"{held.Holder} is changing {label} right now.");
                     return;
                 }
                 this.Held[key] = (Game1.player.UniqueMultiplayerID, Game1.player.Name, label, DateTime.UtcNow + Lease);
@@ -139,6 +145,7 @@ namespace CustomContentCore
                 return;
             }
 
+            this.WaitingLabels[key] = label;
             this.Waiting[key] = onReply;
             this.SendToHost(new LockRequest { Key = key, Label = label }, RequestType);
         }
@@ -239,9 +246,13 @@ namespace CustomContentCore
         private void OnRequest(long playerId, LockRequest request)
         {
             string key = Clean(request.Key, 200);
-            if (key.Length == 0 || !CoreMod.Config.LetOthersChangeMyContent)
+            if (key.Length == 0)
+                return;
+
+            // adding something, or changing what they added, is theirs to do; the rest needs 'Let players change my content'
+            if (CoreMod.Sync?.MayPlayerChange(playerId, key) == false)
             {
-                this.SendTo(playerId, new LockReply { Key = request.Key, Granted = false, Holder = Game1.player.Name }, ReplyType);
+                this.SendTo(playerId, new LockReply { Key = key, Granted = false, Reason = "the host only lets players change what they added themselves" }, ReplyType);
                 return;
             }
 
@@ -280,13 +291,20 @@ namespace CustomContentCore
                 return;
             if (!this.Waiting.Remove(reply.Key, out Action<bool, string>? callback))
                 return;
+            this.WaitingLabels.Remove(reply.Key, out string? label);
 
             if (reply.Granted)
             {
                 this.Mine[reply.Key] = DateTime.UtcNow + RenewEvery;
                 this.MineSince[reply.Key] = DateTime.UtcNow;
+                callback(true, "");
+                return;
             }
-            callback(reply.Granted, Clean(reply.Holder, 40));
+
+            string why = Clean(reply.Reason, 120);
+            callback(false, why.Length > 0
+                ? char.ToUpper(why[0]) + why.Substring(1) + "."
+                : $"{Clean(reply.Holder, 40)} is changing {label ?? "that"} right now.");
         }
 
         private void OnList(long playerId, LockList list)
@@ -379,6 +397,7 @@ namespace CustomContentCore
             this.TakenBack.Clear();
             this.Others.Clear();
             this.Waiting.Clear();
+            this.WaitingLabels.Clear();
         }
 
         private void SendToHost<T>(T message, string type)

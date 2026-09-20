@@ -92,11 +92,11 @@ namespace CustomFurniture.UI
                 return;
             }
 
-            CustomContent.TakeLock(this.Store.Manifest, ItemThing(item.Id), item.Name, (granted, holder) =>
+            CustomContent.TakeLock(this.Store.Manifest, ItemThing(item.Id), item.Name, (granted, why) =>
             {
                 if (!granted)
                 {
-                    this.ShowMessage($"{holder} is changing '{item.Name}' right now.", error: true);
+                    this.ShowMessage(why, error: true);
                     return;
                 }
                 this.HeldItem = ItemThing(item.Id);

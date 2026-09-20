@@ -431,11 +431,11 @@ namespace CustomCharacters.UI
         {
             string thing = SheetLockThing(file);
             string label = $"the {layer.Label.ToLowerInvariant()} sheet";
-            CustomContent.TakeLock(this.Store.Manifest, thing, label, (granted, holder) =>
+            CustomContent.TakeLock(this.Store.Manifest, thing, label, (granted, why) =>
             {
                 if (!granted)
                 {
-                    this.ShowError($"{holder} is changing {label} right now.");
+                    this.ShowError(why);
                     return;
                 }
                 this.HeldSheet = thing;
@@ -458,11 +458,11 @@ namespace CustomCharacters.UI
             }
 
             string label = $"the {layer.Label.ToLowerInvariant()} sheet";
-            CustomContent.TakeLock(this.Store.Manifest, thing, label, (granted, holder) =>
+            CustomContent.TakeLock(this.Store.Manifest, thing, label, (granted, why) =>
             {
                 if (!granted)
                 {
-                    this.ShowError($"{holder} is changing {label} right now.");
+                    this.ShowError(why);
                     return;
                 }
                 this.HeldLayers.Add(thing);

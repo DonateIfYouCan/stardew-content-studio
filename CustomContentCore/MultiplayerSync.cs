@@ -827,6 +827,27 @@ namespace CustomContentCore
             }
         }
 
+        /// <summary>As host: whether a player may change something of ours - anything they added, or anything at all if we allow it.</summary>
+        /// <param name="playerId">The player asking.</param>
+        /// <param name="lockKey">What they want to change, as "&lt;mod&gt;|item:&lt;id&gt;" or "&lt;mod&gt;|file:&lt;path&gt;".</param>
+        public bool MayPlayerChange(long playerId, string lockKey)
+        {
+            if (CoreMod.Config.LetOthersChangeMyContent)
+                return true;
+
+            int bar = lockKey.IndexOf('|');
+            if (bar <= 0)
+                return false;
+            string modId = lockKey.Substring(0, bar), rest = lockKey.Substring(bar + 1);
+            if (!rest.StartsWith("item:", StringComparison.Ordinal))
+                return false; // a whole file is the host's own business unless they open it up
+
+            string id = rest.Substring("item:".Length);
+            if (ContentPacks.GetEditing(modId)?.GetItemJson(id) == null)
+                return true; // nothing of ours by that name, so they're adding it
+            return this.AddedBy.TryGetValue($"{modId}|{id}", out long adder) && adder == playerId;
+        }
+
         /// <summary>As host: a player offers changes to our content.</summary>
         private void OnChangeOffer(long playerId, ChangeOfferMessage offer)
         {

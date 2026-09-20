@@ -344,11 +344,11 @@ namespace CustomCharacters.UI
             if (image != null && this.GetImage(image.File) is { } mine)
             {
                 string thing = $"file:{CharacterStore.ImageFolderName}/{image.File}";
-                CustomContent.TakeLock(this.Store.Manifest, thing, $"{this.Set.Npc}'s portrait", (granted, holder) =>
+                CustomContent.TakeLock(this.Store.Manifest, thing, $"{this.Set.Npc}'s portrait", (granted, why) =>
                 {
                     if (!granted)
                     {
-                        this.ShowError($"{holder} is changing that image right now.");
+                        this.ShowError(why);
                         return;
                     }
                     this.HeldImage = thing;

@@ -435,11 +435,11 @@ namespace CustomCrops.UI
             if (!string.IsNullOrEmpty(this.Crop.GrowthSheet) && this.GetImage(this.Crop.GrowthSheet) is { } existing)
             {
                 string thing = $"file:{CropStore.ImageFolderName}/{this.Crop.GrowthSheet}";
-                CustomContent.TakeLock(this.Store.Manifest, thing, $"the growth sheet for '{this.Crop.Name}'", (granted, holder) =>
+                CustomContent.TakeLock(this.Store.Manifest, thing, $"the growth sheet for '{this.Crop.Name}'", (granted, why) =>
                 {
                     if (!granted)
                     {
-                        this.ShowError($"{holder} is changing that sheet right now.");
+                        this.ShowError(why);
                         return;
                     }
                     this.HeldSheet = thing;

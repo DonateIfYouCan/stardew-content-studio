@@ -461,11 +461,11 @@ namespace CustomPaintings.UI
                 return;
             }
 
-            CustomContent.TakeLock(this.Store.Manifest, ItemThing(id), row.Name, (granted, holder) =>
+            CustomContent.TakeLock(this.Store.Manifest, ItemThing(id), row.Name, (granted, why) =>
             {
                 if (!granted)
                 {
-                    this.ShowMessage($"{holder} is changing '{row.Name}' right now.", error: true);
+                    this.ShowMessage(why, error: true);
                     return;
                 }
                 this.HeldItem = ItemThing(id);
@@ -482,11 +482,11 @@ namespace CustomPaintings.UI
         /// </remarks>
         private void WhenNobodyElseIsChangingTheList(Action action, bool keepHolding = false)
         {
-            CustomContent.TakeLock(this.Store.Manifest, ListLockThing, "the paintings list", (granted, holder) =>
+            CustomContent.TakeLock(this.Store.Manifest, ListLockThing, "the paintings list", (granted, why) =>
             {
                 if (!granted)
                 {
-                    this.ShowMessage($"{holder} is changing the paintings list right now.", error: true);
+                    this.ShowMessage(why, error: true);
                     return;
                 }
 

@@ -206,11 +206,11 @@ namespace CustomCharacters.UI
 
             string thing = sprite ? SpriteThing(row.Npc) : PortraitThing(row.Npc);
             string label = sprite ? $"{row.Npc}'s sprite" : $"{row.Npc}'s portraits";
-            CustomContent.TakeLock(this.Store.Manifest, thing, label, (granted, holder) =>
+            CustomContent.TakeLock(this.Store.Manifest, thing, label, (granted, why) =>
             {
                 if (!granted)
                 {
-                    this.ShowMessage($"{holder} is changing {label} right now.", error: true);
+                    this.ShowMessage(why, error: true);
                     return;
                 }
                 this.HeldItem = thing;

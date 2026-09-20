@@ -156,7 +156,7 @@ namespace CustomContentCore.UI
             {
                 string note = CoreMod.Sync.CanChangeHostContent
                     ? "You're using the host's content. What you save here is sent to them and kept in their game."
-                    : "You're using the host's content, and they don't let players change it.";
+                    : "You're using the host's content. You can add to it and change what you added; the rest is the host's.";
                 Gfx.Text(b, Gfx.Fit(note, this.Area.Width - 72), new Vector2(this.Area.X + 36, this.Area.Y + 68), Color.DarkRed);
             }
             Gfx.Text(b, "Support (optional)", new Vector2(this.DonateButton.Bounds.X, this.DonateButton.Bounds.Y - 40), Color.DimGray);

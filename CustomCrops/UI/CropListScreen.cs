@@ -206,11 +206,11 @@ namespace CustomCrops.UI
                 return;
             }
 
-            CustomContent.TakeLock(this.Store.Manifest, ItemThing(crop.Id), crop.Name, (granted, holder) =>
+            CustomContent.TakeLock(this.Store.Manifest, ItemThing(crop.Id), crop.Name, (granted, why) =>
             {
                 if (!granted)
                 {
-                    this.ShowMessage($"{holder} is changing '{crop.Name}' right now.", error: true);
+                    this.ShowMessage(why, error: true);
                     return;
                 }
                 this.HeldItem = ItemThing(crop.Id);

@@ -262,11 +262,11 @@ namespace CustomCharacters.UI
                 // a sheet the mod already has: hold that file while the painter is open, so Player B can't paint over Player A's work
                 string thing = $"file:{CharacterStore.ImageFolderName}/{file}";
                 string label = $"{this.DisplayName}'s sprite sheet";
-                CustomContent.TakeLock(this.Store.Manifest, thing, label, (granted, holder) =>
+                CustomContent.TakeLock(this.Store.Manifest, thing, label, (granted, why) =>
                 {
                     if (!granted)
                     {
-                        this.ShowError($"{holder} is changing {label} right now.");
+                        this.ShowError(why);
                         return;
                     }
                     this.HeldSheet = thing;
