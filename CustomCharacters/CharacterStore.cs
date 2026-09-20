@@ -285,7 +285,17 @@ namespace CustomCharacters
 
             // farmer (needs the game's content, which isn't ready before the game launched)
             if (Game1.content != null && Game1.graphics?.GraphicsDevice != null)
+            {
+                HashSet<string> farmerSheets = new(this.Farmer.ReplacedAssets, StringComparer.OrdinalIgnoreCase);
                 this.FarmerSheetCount = this.Farmer.Reload(this.File, this.ResolveImage);
+                farmerSheets.UnionWith(this.Farmer.ReplacedAssets); // the ones that were replaced before too, so removing a sheet brings the game's art back
+                if (farmerSheets.Count > 0)
+                {
+                    this.Helper.GameContent.InvalidateCache(asset => farmerSheets.Contains(asset.Name.BaseName));
+                    FarmerHd.RefreshGameSheets();
+                    this.Farmer.RefreshAll();
+                }
+            }
 
             this.Monitor.Log($"Loaded custom portraits for {this.Sets.Count} villager(s), sprites for {this.Sheets.Count}, and {this.FarmerSheetCount} farmer sheet(s).", LogLevel.Info);
         }
@@ -293,6 +303,27 @@ namespace CustomCharacters
         /// <summary>Replace portrait and sprite sheets for villagers with custom ones.</summary>
         public void OnAssetRequested(AssetRequestedEventArgs e)
         {
+            if (e.Name.StartsWith("Characters/Farmer/"))
+            {
+                if (this.Farmer.GetReplacement(e.NameWithoutLocale) is { } farmerSheet)
+                {
+                    e.Edit(asset =>
+                    {
+                        IAssetDataForImage image = asset.AsImage();
+                        if (image.Data.Width != farmerSheet.Width || image.Data.Height != farmerSheet.Height)
+                        {
+                            this.Monitor.LogOnce($"The game's {e.Name} sheet is {image.Data.Width}x{image.Data.Height} but yours was made for {farmerSheet.Width}x{farmerSheet.Height} (another mod may have changed it); skipped.", LogLevel.Warn);
+                            return;
+                        }
+                        Texture2D replacement = new(Game1.graphics.GraphicsDevice, farmerSheet.Width, farmerSheet.Height);
+                        replacement.SetData(ImageProcessor.Premultiply(farmerSheet.Data));
+                        image.PatchImage(replacement, patchMode: PatchMode.Replace);
+                        replacement.Dispose();
+                    }, AssetEditPriority.Late);
+                }
+                return;
+            }
+
             if (e.Name.StartsWith("Characters/"))
             {
                 string sheetName = e.Name.BaseName.Substring("Characters/".Length);

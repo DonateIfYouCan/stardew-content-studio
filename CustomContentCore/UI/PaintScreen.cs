@@ -126,6 +126,10 @@ namespace CustomContentCore.UI
         /// <summary>What the last move of the brush touched, including its mirrored copies, so only that is redrawn.</summary>
         private Rectangle StepArea;
 
+        /// <summary>While dragging the image around: where the drag started, and where the view was then.</summary>
+        private Point? DragFrom;
+        private Point DragView;
+
         /// <summary>While dragging a line or rectangle: where it started and where the cursor is now.</summary>
         private Point? ShapeStart;
         private Point ShapeEnd;
@@ -358,7 +362,7 @@ namespace CustomContentCore.UI
             this.DrawPalette(b, mouseX, mouseY);
             base.Draw(b, mouseX, mouseY);
 
-            string help = this.Message ?? $"{this.Width}x{this.Height}, {this.Zoom}x zoom. Drag to draw, right-click to pick a colour, wheel to zoom, arrow keys to move. B pencil, E eraser, I pick, F fill, L line, R rectangle, S select, Z undo.";
+            string help = this.Message ?? $"{this.Width}x{this.Height}, {this.Zoom}x zoom. Drag to draw, right-click to pick a colour, wheel to zoom, arrow keys or space+drag to move. B pencil, E eraser, I pick, F fill, L line, R rectangle, S select, Z undo.";
             Gfx.Message(b, help, this.CancelButton.Bounds.X - area.X - 60, new Vector2(area.X + 36, area.Bottom - 70), this.Message != null ? Color.DarkGreen : Color.DimGray);
         }
 
@@ -515,6 +519,12 @@ namespace CustomContentCore.UI
         *********/
         public override void LeftClick(int x, int y)
         {
+            if (Panning && this.CanvasArea.Contains(x, y))
+            {
+                this.DragFrom = new Point(x, y);
+                this.DragView = this.View;
+                return;
+            }
             if (this.CanvasArea.Contains(x, y))
             {
                 this.StartStroke(x, y);
@@ -527,6 +537,14 @@ namespace CustomContentCore.UI
 
         public override void LeftHeld(int x, int y)
         {
+            if (this.DragFrom is { } start)
+            {
+                this.View = new Point(
+                    this.DragView.X - (x - start.X) / this.Zoom,
+                    this.DragView.Y - (y - start.Y) / this.Zoom);
+                this.ClampView();
+                return;
+            }
             if (this.DraggingSelection && this.ShapeStart is { } from)
             {
                 if (this.ToPixel(x, y) is { } to)
@@ -559,6 +577,11 @@ namespace CustomContentCore.UI
 
         public override void ReleaseLeft(int x, int y)
         {
+            if (this.DragFrom != null)
+            {
+                this.DragFrom = null;
+                return;
+            }
             if (this.DraggingSelection)
             {
                 this.DraggingSelection = false;
@@ -1020,6 +1043,9 @@ namespace CustomContentCore.UI
 
         /// <summary>Whether Shift is held, which keeps lines straight and boxes square.</summary>
         private static bool Constrained => Keyboard.GetState().IsKeyDown(Keys.LeftShift) || Keyboard.GetState().IsKeyDown(Keys.RightShift);
+
+        /// <summary>Whether space is held, which drags the image around instead of drawing (as in most drawing programs).</summary>
+        private static bool Panning => Keyboard.GetState().IsKeyDown(Keys.Space);
 
         /// <summary>The pixels a line, rectangle or ellipse covers, from where the drag started to where it is now.</summary>
         private IEnumerable<Point> ShapePixels(Point start, Point rawEnd)

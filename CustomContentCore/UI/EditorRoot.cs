@@ -111,6 +111,16 @@ namespace CustomContentCore.UI
 
         private Screen Top => this.Stack[^1];
 
+        /// <summary>Whether the editor has been closed for good.</summary>
+        public bool IsClosed => this.Closed;
+
+        /// <summary>Place the screens again, e.g. after coming back from the game.</summary>
+        public void Relayout()
+        {
+            if (this.Stack.Count > 0)
+                this.Top.Layout(GetArea());
+        }
+
         public static Rectangle GetArea()
         {
             int w = Math.Min(Game1.uiViewport.Width - 32, 1500);

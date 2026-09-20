@@ -116,6 +116,9 @@ namespace CustomCharacters
             /// <summary>For shared sheets: the HD texture.</summary>
             public Texture2D? Texture;
 
+            /// <summary>The sheet at the game's own size, which replaces the game's art so it shows even where nothing draws in HD.</summary>
+            public Pixels? Low;
+
             /// <summary>For body sheets: the HD pixels (straight alpha), and which key color each pixel matches (-1 for none), by key colors.</summary>
             public Pixels? Pixels;
             public (Color[] Keys, Color[] Source, sbyte[] Map)? KeyMap;
@@ -184,6 +187,16 @@ namespace CustomCharacters
             return this.Loaded.Count;
         }
 
+        /// <summary>Make every farmer rebuild their body, so a replaced body sheet is picked up.</summary>
+        public void RefreshAll()
+        {
+            foreach (FarmerRenderer renderer in this.GetRenderers())
+            {
+                SpriteDirty(renderer) = true;
+                this.UpdateBody(renderer);
+            }
+        }
+
         /// <summary>Re-attach the shared HD sheets, e.g. after the game (re)loaded a texture.</summary>
         public void OnAssetReady(IAssetName name)
         {
@@ -193,6 +206,34 @@ namespace CustomCharacters
                     this.RegisterShared(loaded);
             }
         }
+
+        /// <summary>
+        /// Point the game's own sheet fields at the freshly loaded textures. The renderer keeps them in static fields it
+        /// only fills once, so replacing a sheet doesn't show until they're set again.
+        /// </summary>
+        public static void RefreshGameSheets()
+        {
+            FarmerRenderer.hairStylesTexture = Game1.content.Load<Texture2D>("Characters\\Farmer\\hairstyles");
+            FarmerRenderer.shirtsTexture = Game1.content.Load<Texture2D>("Characters\\Farmer\\shirts");
+            FarmerRenderer.hatsTexture = Game1.content.Load<Texture2D>("Characters\\Farmer\\hats");
+            FarmerRenderer.accessoriesTexture = Game1.content.Load<Texture2D>("Characters\\Farmer\\accessories");
+            FarmerRenderer.pantsTexture = Game1.content.Load<Texture2D>("Characters\\Farmer\\pants");
+        }
+
+        /// <summary>The sheet to put in place of the game's own art, at the game's size.</summary>
+        /// <param name="assetName">The asset being loaded, e.g. <c>Characters/Farmer/hairstyles</c>.</param>
+        public Pixels? GetReplacement(IAssetName assetName)
+        {
+            foreach (LoadedLayer loaded in this.Loaded.Values)
+            {
+                if (assetName.IsEquivalentTo(loaded.Layer.AssetName))
+                    return loaded.Low;
+            }
+            return null;
+        }
+
+        /// <summary>The sheets that are replaced right now, so they can be reloaded when that changes.</summary>
+        public IEnumerable<string> ReplacedAssets => this.Loaded.Values.Select(l => l.Layer.AssetName).ToArray();
 
         /// <summary>Check an HD sheet's size against the game's sheet.</summary>
         public static bool TryGetFactor(FarmerLayer layer, int width, int height, out int factor, [NotNullWhen(false)] out string? error)
@@ -254,9 +295,13 @@ namespace CustomCharacters
                 return null;
             }
 
+            // the game's own sheet is replaced with this at its normal size, so the art shows everywhere; HD is drawn over it
+            Texture2D live = Game1.content.Load<Texture2D>(layer.AssetName);
+            Pixels low = factor == 1 ? pixels : ImageProcessor.Resize(pixels, null, live.Width, live.Height);
+
             return layer.IsBody
-                ? new LoadedLayer { Layer = layer, Factor = factor, Pixels = pixels }
-                : new LoadedLayer { Layer = layer, Factor = factor, Texture = pixels.ToTexture() };
+                ? new LoadedLayer { Layer = layer, Factor = factor, Pixels = pixels, Low = low }
+                : new LoadedLayer { Layer = layer, Factor = factor, Texture = pixels.ToTexture(), Low = low };
         }
 
         /// <summary>Draw a shared sheet (hair, shirts...) from its HD version. The game's texture object stays the same when it's reloaded, so this is registered on that object.</summary>
