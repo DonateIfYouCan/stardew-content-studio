@@ -19,10 +19,44 @@ namespace CustomContentCore.UI
         ** Fields
         *********/
         /// <summary>The tools you can draw with.</summary>
-        private enum Tool { Pencil, Eraser, Picker, Fill }
+        private enum Tool { Pencil, Eraser, Picker, Fill, Line, Rectangle, ReplaceAll, ReplaceBrush, Select }
 
-        /// <summary>One stroke, so it can be undone: the area that changed, and the pixels before and after.</summary>
-        private sealed record Stroke(Rectangle Area, Color[] Before, Color[] After);
+        /// <summary>Something that changed the image and can be undone.</summary>
+        private interface IStroke
+        {
+            /// <summary>The part of the image it touched, for redrawing.</summary>
+            Rectangle Area { get; }
+
+            /// <summary>Roughly how much memory it holds.</summary>
+            long Bytes { get; }
+
+            /// <summary>Put the image back (<paramref name="undo"/>) or forward again.</summary>
+            void Apply(Color[] canvas, int width, bool undo);
+        }
+
+        /// <summary>A stroke stored as the rectangle it covered, before and after.</summary>
+        private sealed record AreaStroke(Rectangle Area, Color[] Before, Color[] After) : IStroke
+        {
+            public long Bytes => (long)this.Area.Width * this.Area.Height * 8;
+
+            public void Apply(Color[] canvas, int width, bool undo)
+            {
+                Paste(canvas, undo ? this.Before : this.After, this.Area, width);
+            }
+        }
+
+        /// <summary>One colour swapped for another across the image, stored as the pixels it hit.</summary>
+        private sealed record ColourStroke(Rectangle Area, int[] Pixels, Color Before, Color After) : IStroke
+        {
+            public long Bytes => (long)this.Pixels.Length * 4;
+
+            public void Apply(Color[] canvas, int width, bool undo)
+            {
+                Color colour = undo ? this.Before : this.After;
+                foreach (int index in this.Pixels)
+                    canvas[index] = colour;
+            }
+        }
 
         /// <summary>How many strokes can be undone. Each one only keeps the pixels it touched.</summary>
         private const int MaxUndo = 40;
@@ -40,8 +74,8 @@ namespace CustomContentCore.UI
         private readonly string Title;
         private readonly Action<Pixels> OnSave;
 
-        private readonly List<Stroke> Undone = new();
-        private readonly List<Stroke> Done = new();
+        private readonly List<IStroke> Undone = new();
+        private readonly List<IStroke> Done = new();
 
         private Texture2D Texture = null!;
         private Rectangle CanvasArea;
@@ -72,10 +106,37 @@ namespace CustomContentCore.UI
         /// <summary>Colours picked by hand, newest first, so they stay within reach while painting.</summary>
         private readonly List<Color> Recent = new();
 
+        /// <summary>Where the colour swatches start, which moves when the selection buttons appear.</summary>
+        private int SwatchesX;
+
         /// <summary>While drawing: where the last painted pixel was, the colour each touched pixel had before, and the area covered.</summary>
         private Point? LastPixel;
         private Dictionary<int, Color>? StrokeOriginals;
         private Rectangle StrokeArea;
+
+        /// <summary>While dragging a line or rectangle: where it started and where the cursor is now.</summary>
+        private Point? ShapeStart;
+        private Point ShapeEnd;
+
+        /// <summary>The colour the replace brush is swapping out, taken where the drag started.</summary>
+        private Color ReplaceTarget;
+
+        /// <summary>The selected rectangle, if any, and what's being done with it.</summary>
+        private Rectangle? Selection;
+        private bool DraggingSelection;
+        private bool MovingSelection;
+        private Point MoveGrabbedAt;
+        private Rectangle MoveStartedAs;
+
+        /// <summary>The pixels lifted for a move (the hole left behind is filled with see-through).</summary>
+        private Color[]? Floating;
+
+        /// <summary>What was copied, ready to paste.</summary>
+        private Color[]? Clipboard;
+        private Point ClipboardSize;
+
+        /// <summary>Whether the view has been placed for the image yet.</summary>
+        private bool Placed;
 
         /// <summary>Roughly how much memory the undo history may use, so painting on a huge sheet can't fill it up.</summary>
         private const long MaxUndoBytes = 48L * 1024 * 1024;
@@ -87,9 +148,14 @@ namespace CustomContentCore.UI
         private readonly Button ZoomInButton;
         private readonly Button ZoomOutButton;
         private readonly Button FitButton;
+        private readonly Button WidthButton;
         private readonly Checkbox GridBox;
         private readonly Cycler PaletteCycler;
         private readonly Button ColourButton;
+        private readonly Button CopyButton;
+        private readonly Button PasteButton;
+        private readonly Button ClearButton;
+        private readonly Button FlipButton;
         private readonly Button SaveButton;
         private readonly Button CancelButton;
 
@@ -120,10 +186,25 @@ namespace CustomContentCore.UI
             this.Texture = image.ToTexture();
 
             this.ToolCycler = this.Add(new Cycler(
-                new() { ("pencil", "Pencil"), ("eraser", "Eraser"), ("picker", "Pick colour"), ("fill", "Fill") },
+                new()
+                {
+                    ("pencil", "Pencil"), ("eraser", "Eraser"), ("picker", "Eyedropper"), ("fill", "Fill"),
+                    ("line", "Line"), ("rectangle", "Rectangle"), ("replaceall", "Replace colour"), ("replacebrush", "Replace brush"), ("select", "Select")
+                },
                 "pencil",
-                v => this.Current = v switch { "eraser" => Tool.Eraser, "picker" => Tool.Picker, "fill" => Tool.Fill, _ => Tool.Pencil },
-                "Pencil draws, eraser makes pixels see-through, 'pick colour' takes the colour under the cursor, fill replaces a whole area of one colour."));
+                v => this.Current = v switch
+                {
+                    "eraser" => Tool.Eraser,
+                    "picker" => Tool.Picker,
+                    "fill" => Tool.Fill,
+                    "line" => Tool.Line,
+                    "rectangle" => Tool.Rectangle,
+                    "replaceall" => Tool.ReplaceAll,
+                    "replacebrush" => Tool.ReplaceBrush,
+                    "select" => Tool.Select,
+                    _ => Tool.Pencil
+                },
+                "Pencil draws and the eraser makes pixels see-through. Fill replaces one connected area; 'replace colour' changes that colour everywhere in the image; the 'replace brush' only changes it where you drag. Select marks a rectangle you can move, copy, flip or clear. Right-click always picks the colour under the cursor."));
             this.SizeCycler = this.Add(new Cycler(
                 new() { ("1", "1 pixel"), ("2", "2x2"), ("3", "3x3"), ("4", "4x4") },
                 "1",
@@ -134,12 +215,17 @@ namespace CustomContentCore.UI
             this.ZoomOutButton = this.Add(new Button("-", () => this.SetZoom(this.Zoom - 1, this.CanvasArea.Center), "Zoom out."));
             this.ZoomInButton = this.Add(new Button("+", () => this.SetZoom(this.Zoom + 1, this.CanvasArea.Center), "Zoom in. The mouse wheel works too."));
             this.FitButton = this.Add(new Button("Fit", this.Fit, "Show the whole image."));
+            this.WidthButton = this.Add(new Button("Width", this.FitWidth, "Fill the width with the image, which is how it opens."));
             this.GridBox = this.Add(new Checkbox("Grid", true, v => this.ShowGrid = v, "Show where each sprite in the sheet begins."));
             this.PaletteCycler = this.Add(new Cycler(
                 new() { ("used", "Most used"), ("hue", "By colour") },
                 "used",
                 v => this.Palette = v == "hue" ? this.ByHue : this.ByUse,
                 "The colours taken from this image: in the order the image uses them most, or grouped by colour."));
+            this.CopyButton = this.Add(new Button("Copy", this.CopySelection, "Copy what's selected."));
+            this.PasteButton = this.Add(new Button("Paste", this.PasteClipboard, "Put what you copied in the top left of the selection (or of the view)."));
+            this.ClearButton = this.Add(new Button("Clear", this.ClearSelection, "Make everything in the selection see-through."));
+            this.FlipButton = this.Add(new Button("Flip", this.FlipSelection, "Mirror the selection left to right."));
             this.ColourButton = this.Add(new Button("Choose colour", this.ChooseColour, "Pick any colour, or type its red, green and blue values. The eyedropper takes a colour out of the image instead."));
             this.SaveButton = this.Add(new Button("Save", this.Save));
             this.CancelButton = this.Add(new Button("Cancel", this.Cancel));
@@ -168,18 +254,31 @@ namespace CustomContentCore.UI
             this.ZoomInButton.Bounds = new Rectangle(area.Right - pad - 48, top, 48, 48);
             this.ZoomOutButton.Bounds = new Rectangle(this.ZoomInButton.Bounds.X - 8 - 48, top, 48, 48);
             this.FitButton.Bounds = new Rectangle(this.ZoomOutButton.Bounds.X - 8 - 90, top, 90, 48);
-            this.GridBox.Bounds = new Rectangle(this.FitButton.Bounds.X - 12 - 120, top + 2, 120, 44);
+            this.WidthButton.Bounds = new Rectangle(this.FitButton.Bounds.X - 8 - 110, top, 110, 48);
+            this.GridBox.Bounds = new Rectangle(this.WidthButton.Bounds.X - 12 - 110, top + 2, 110, 44);
 
             int paletteH = 56;
             this.CanvasArea = new Rectangle(area.X + pad, top + 60, area.Width - pad * 2, bottom - (top + 60) - paletteH - 12);
 
+            // the selection buttons share the palette row, so the top row doesn't overflow
             this.ColourButton.Bounds = new Rectangle(this.CanvasArea.X + 52, this.CanvasArea.Bottom + 8, 200, 44);
+            int sx = this.ColourButton.Bounds.Right + 12;
+            foreach (Button button in new[] { this.CopyButton, this.PasteButton, this.ClearButton, this.FlipButton })
+            {
+                button.Bounds = new Rectangle(sx, this.CanvasArea.Bottom + 8, 100, 44);
+                if (button.Visible)
+                    sx += 104;
+            }
+            this.SwatchesX = sx + 12;
             this.PaletteCycler.Bounds = new Rectangle(area.Right - pad - 300, this.CanvasArea.Bottom + 8, 300, 44);
             this.SaveButton.Bounds = new Rectangle(area.Right - pad - 200, area.Bottom - 84, 200, 60);
             this.CancelButton.Bounds = new Rectangle(this.SaveButton.Bounds.X - 16 - 180, area.Bottom - 84, 180, 60);
 
-            if (this.Zoom < 1)
-                this.Fit();
+            if (!this.Placed)
+            {
+                this.Placed = true;
+                this.FitWidth();
+            }
             this.ClampView();
         }
 
@@ -193,7 +292,7 @@ namespace CustomContentCore.UI
             this.DrawPalette(b, mouseX, mouseY);
             base.Draw(b, mouseX, mouseY);
 
-            string help = this.Message ?? $"{this.Width}x{this.Height}, {this.Zoom}x zoom. Drag to draw, mouse wheel to zoom, arrow keys to move around. B pencil, E eraser, I pick, F fill, Z undo.";
+            string help = this.Message ?? $"{this.Width}x{this.Height}, {this.Zoom}x zoom. Drag to draw, right-click to pick a colour, wheel to zoom, arrow keys to move. B pencil, E eraser, I pick, F fill, L line, R rectangle, S select, Z undo.";
             Gfx.Message(b, help, this.CancelButton.Bounds.X - area.X - 60, new Vector2(area.X + 36, area.Bottom - 70), this.Message != null ? Color.DarkGreen : Color.DimGray);
         }
 
@@ -201,23 +300,26 @@ namespace CustomContentCore.UI
         private void DrawCanvas(SpriteBatch b, int mouseX, int mouseY)
         {
             Gfx.Inset(b, this.CanvasArea, new Color(60, 56, 52));
-            Rectangle inner = new(this.CanvasArea.X + 8, this.CanvasArea.Y + 8, this.CanvasArea.Width - 16, this.CanvasArea.Height - 16);
+            Rectangle inner = this.Inner;
 
-            int shownW = Math.Min(inner.Width, (this.Width - this.View.X) * this.Zoom);
-            int shownH = Math.Min(inner.Height, (this.Height - this.View.Y) * this.Zoom);
-            if (shownW <= 0 || shownH <= 0)
+            // show whole pixels only: if the area doesn't divide by the zoom, the last part-pixel is left off rather than squashed
+            int columns = Math.Min(inner.Width / this.Zoom, this.Width - this.View.X);
+            int rows = Math.Min(inner.Height / this.Zoom, this.Height - this.View.Y);
+            if (columns <= 0 || rows <= 0)
                 return;
+            int shownW = columns * this.Zoom, shownH = rows * this.Zoom;
             Rectangle dest = new(inner.X, inner.Y, shownW, shownH);
-            Rectangle source = new(this.View.X, this.View.Y, (shownW + this.Zoom - 1) / this.Zoom, (shownH + this.Zoom - 1) / this.Zoom);
+            Rectangle source = new(this.View.X, this.View.Y, columns, rows);
 
-            // checkerboard, so see-through pixels are obvious
-            int square = Math.Max(4, this.Zoom);
+            // checkerboard, so see-through pixels are obvious. Its squares are a fixed size on screen, not one image
+            // pixel each, so it can't be mistaken for the art.
+            const int square = 8;
             for (int y = dest.Y; y < dest.Bottom; y += square)
             {
                 for (int x = dest.X; x < dest.Right; x += square)
                 {
                     bool dark = ((x - dest.X) / square + (y - dest.Y) / square) % 2 == 0;
-                    Gfx.Rect(b, new Rectangle(x, y, Math.Min(square, dest.Right - x), Math.Min(square, dest.Bottom - y)), dark ? new Color(120, 120, 120) : new Color(150, 150, 150));
+                    Gfx.Rect(b, new Rectangle(x, y, Math.Min(square, dest.Right - x), Math.Min(square, dest.Bottom - y)), dark ? new Color(118, 118, 118) : new Color(148, 148, 148));
                 }
             }
 
@@ -231,6 +333,50 @@ namespace CustomContentCore.UI
                     Gfx.Rect(b, new Rectangle(dest.X + x * this.Zoom, dest.Y, 1, shownH), line);
                 for (int y = this.CellHeight - this.View.Y % this.CellHeight; y * this.Zoom < shownH; y += this.CellHeight)
                     Gfx.Rect(b, new Rectangle(dest.X, dest.Y + y * this.Zoom, shownW, 1), line);
+            }
+
+            // a faint grid on every pixel once they're big enough to aim at
+            if (this.Zoom >= 8)
+            {
+                Color line = new(0, 0, 0, 40);
+                for (int x = this.Zoom; x < shownW; x += this.Zoom)
+                    Gfx.Rect(b, new Rectangle(dest.X + x, dest.Y, 1, shownH), line);
+                for (int y = this.Zoom; y < shownH; y += this.Zoom)
+                    Gfx.Rect(b, new Rectangle(dest.X, dest.Y + y, shownW, 1), line);
+            }
+
+            // where the line or rectangle being dragged will land
+            if (this.ShapeStart is { } shapeStart)
+            {
+                foreach (Point dot in this.ShapePixels(shapeStart, this.ShapeEnd))
+                {
+                    int sx = dest.X + (dot.X - this.View.X) * this.Zoom, sy = dest.Y + (dot.Y - this.View.Y) * this.Zoom;
+                    if (sx >= dest.X && sy >= dest.Y && sx < dest.Right && sy < dest.Bottom)
+                        Gfx.Rect(b, new Rectangle(sx, sy, this.Zoom, this.Zoom), this.Colour);
+                }
+            }
+
+            // the selection, and the pixels being dragged with it
+            if (this.Selection is { } selected)
+            {
+                if (this.Floating is { } floating)
+                {
+                    for (int y = 0; y < selected.Height; y++)
+                    {
+                        for (int x = 0; x < selected.Width; x++)
+                        {
+                            Color colour = floating[y * selected.Width + x];
+                            if (colour.A == 0)
+                                continue;
+                            int sx = dest.X + (selected.X + x - this.View.X) * this.Zoom, sy = dest.Y + (selected.Y + y - this.View.Y) * this.Zoom;
+                            if (sx >= dest.X && sy >= dest.Y && sx < dest.Right && sy < dest.Bottom)
+                                Gfx.Rect(b, new Rectangle(sx, sy, this.Zoom, this.Zoom), colour);
+                        }
+                    }
+                }
+                Rectangle box = new(dest.X + (selected.X - this.View.X) * this.Zoom, dest.Y + (selected.Y - this.View.Y) * this.Zoom, selected.Width * this.Zoom, selected.Height * this.Zoom);
+                Gfx.Outline(b, box, Color.White, 2);
+                Gfx.Outline(b, new Rectangle(box.X - 2, box.Y - 2, box.Width + 4, box.Height + 4), Color.Black, 2);
             }
 
             // outline the pixel under the cursor
@@ -248,7 +394,7 @@ namespace CustomContentCore.UI
             int x = this.CanvasArea.X, y = this.CanvasArea.Bottom + 10;
             Gfx.Rect(b, new Rectangle(x, y, size, size), this.Colour);
             Gfx.Outline(b, new Rectangle(x, y, size, size), Color.Black, 2);
-            x = this.ColourButton.Bounds.Right + 16;
+            x = this.SwatchesX;
             foreach (Color colour in this.Swatches)
             {
                 Rectangle box = new(x, y, size, size);
@@ -278,13 +424,72 @@ namespace CustomContentCore.UI
 
         public override void LeftHeld(int x, int y)
         {
+            if (this.DraggingSelection && this.ShapeStart is { } from)
+            {
+                if (this.ToPixel(x, y) is { } to)
+                    this.Selection = Rectangle.Intersect(
+                        new Rectangle(Math.Min(from.X, to.X), Math.Min(from.Y, to.Y), Math.Abs(to.X - from.X) + 1, Math.Abs(to.Y - from.Y) + 1),
+                        new Rectangle(0, 0, this.Width, this.Height));
+                return;
+            }
+            if (this.MovingSelection && this.Selection is { } moving)
+            {
+                if (this.ToPixel(x, y) is { } at)
+                {
+                    Rectangle moved = this.MoveStartedAs;
+                    moved.X = Math.Clamp(this.MoveStartedAs.X + at.X - this.MoveGrabbedAt.X, -moved.Width + 1, this.Width - 1);
+                    moved.Y = Math.Clamp(this.MoveStartedAs.Y + at.Y - this.MoveGrabbedAt.Y, -moved.Height + 1, this.Height - 1);
+                    this.Selection = moved;
+                    _ = moving;
+                }
+                return;
+            }
+            if (this.ShapeStart != null)
+            {
+                if (this.ToPixel(x, y) is { } pixel)
+                    this.ShapeEnd = pixel;
+                return;
+            }
             if (this.StrokeOriginals != null)
                 this.PaintAt(x, y);
         }
 
         public override void ReleaseLeft(int x, int y)
         {
+            if (this.DraggingSelection)
+            {
+                this.DraggingSelection = false;
+                this.ShapeStart = null;
+                if (this.Selection is { Width: <= 1, Height: <= 1 })
+                    this.Selection = null; // a plain click clears the selection
+                this.SyncButtons();
+                return;
+            }
+            if (this.MovingSelection)
+            {
+                this.MovingSelection = false;
+                this.DropSelection();
+                return;
+            }
+            if (this.ShapeStart is { } start)
+            {
+                this.StrokeOriginals = new Dictionary<int, Color>();
+                this.StrokeArea = Rectangle.Empty;
+                foreach (Point pixel in this.ShapePixels(start, this.ShapeEnd))
+                    this.PaintDot(pixel.X, pixel.Y, this.Colour);
+                this.Refresh(this.StrokeArea);
+                this.ShapeStart = null;
+            }
             this.CommitStroke();
+        }
+
+        /// <summary>Handle a right-click: always take the colour under the cursor, whichever tool is chosen.</summary>
+        public override void RightClick(int x, int y)
+        {
+            if (this.ToPixel(x, y) is not { } pixel)
+                return;
+            this.Colour = this.Canvas[pixel.Y * this.Width + pixel.X];
+            Game1.playSound("smallSelect");
         }
 
         public override void Scroll(int x, int y, int direction)
@@ -305,6 +510,12 @@ namespace CustomContentCore.UI
                 case Keys.E: this.ToolCycler.Index = 1; this.Current = Tool.Eraser; return true;
                 case Keys.I: this.ToolCycler.Index = 2; this.Current = Tool.Picker; return true;
                 case Keys.F: this.ToolCycler.Index = 3; this.Current = Tool.Fill; return true;
+                case Keys.L: this.ToolCycler.Index = 4; this.Current = Tool.Line; return true;
+                case Keys.R: this.ToolCycler.Index = 5; this.Current = Tool.Rectangle; return true;
+                case Keys.S: this.ToolCycler.Index = 8; this.Current = Tool.Select; return true;
+                case Keys.C: this.CopySelection(); return true;
+                case Keys.V: this.PasteClipboard(); return true;
+                case Keys.Delete: this.ClearSelection(); return true;
                 case Keys.Z: this.Undo(); return true;
                 case Keys.Y: this.Redo(); return true;
                 case Keys.Left: this.View.X -= 8; this.ClampView(); return true;
@@ -319,7 +530,7 @@ namespace CustomContentCore.UI
         private bool ClickPalette(int x, int y)
         {
             int size = 40, gap = 6;
-            int px = this.ColourButton.Bounds.Right + 16, py = this.CanvasArea.Bottom + 10;
+            int px = this.SwatchesX, py = this.CanvasArea.Bottom + 10;
             if (y < py || y > py + size)
                 return false;
             foreach (Color colour in this.Swatches)
@@ -341,10 +552,13 @@ namespace CustomContentCore.UI
         /*********
         ** Drawing on the image
         *********/
+        /// <summary>The part of the canvas area the image is drawn in.</summary>
+        private Rectangle Inner => new(this.CanvasArea.X + 8, this.CanvasArea.Y + 8, Math.Max(1, this.CanvasArea.Width - 16), Math.Max(1, this.CanvasArea.Height - 16));
+
         /// <summary>The image pixel under a screen point, if the cursor is over the image.</summary>
         private Point? ToPixel(int x, int y)
         {
-            Rectangle inner = new(this.CanvasArea.X + 8, this.CanvasArea.Y + 8, this.CanvasArea.Width - 16, this.CanvasArea.Height - 16);
+            Rectangle inner = this.Inner;
             if (!inner.Contains(x, y))
                 return null;
             int px = this.View.X + (x - inner.X) / this.Zoom;
@@ -364,6 +578,33 @@ namespace CustomContentCore.UI
                 return;
             }
 
+            if (this.Current == Tool.Select)
+            {
+                if (this.Selection is { } current && current.Contains(pixel))
+                {
+                    this.MovingSelection = true;
+                    this.MoveGrabbedAt = pixel;
+                    this.MoveStartedAs = current;
+                    this.LiftSelection();
+                }
+                else
+                {
+                    this.DraggingSelection = true;
+                    this.ShapeStart = pixel;
+                    this.ShapeEnd = pixel;
+                    this.Selection = new Rectangle(pixel.X, pixel.Y, 1, 1);
+                }
+                return;
+            }
+
+            // a line or rectangle is only drawn when you let go, so you can see where it will land first
+            if (this.Current is Tool.Line or Tool.Rectangle)
+            {
+                this.ShapeStart = pixel;
+                this.ShapeEnd = pixel;
+                return;
+            }
+
             this.StrokeOriginals = new Dictionary<int, Color>();
             this.StrokeArea = Rectangle.Empty;
             this.LastPixel = null;
@@ -375,6 +616,13 @@ namespace CustomContentCore.UI
                 this.CommitStroke();
                 return;
             }
+            if (this.Current == Tool.ReplaceAll)
+            {
+                this.ReplaceEverywhere(this.Canvas[pixel.Y * this.Width + pixel.X]);
+                return;
+            }
+            if (this.Current == Tool.ReplaceBrush)
+                this.ReplaceTarget = this.Canvas[pixel.Y * this.Width + pixel.X];
             this.PaintAt(x, y);
         }
 
@@ -409,11 +657,200 @@ namespace CustomContentCore.UI
                     int px = x + dx, py = y + dy;
                     if (px < 0 || py < 0 || px >= this.Width || py >= this.Height)
                         continue;
+                    if (this.Current == Tool.ReplaceBrush && this.Canvas[py * this.Width + px] != this.ReplaceTarget)
+                        continue;
                     this.Remember(py * this.Width + px);
                     this.Canvas[py * this.Width + px] = colour;
                     this.Grow(px, py);
                 }
             }
+        }
+
+        /// <summary>Take the selected pixels out of the image, leaving see-through behind, so they can be dragged around.</summary>
+        private void LiftSelection()
+        {
+            if (this.Selection is not { } area || this.Floating != null)
+                return;
+            this.StrokeOriginals = new Dictionary<int, Color>();
+            this.StrokeArea = Rectangle.Empty;
+            this.Floating = Cut(this.Canvas, area, this.Width);
+            for (int y = 0; y < area.Height; y++)
+            {
+                for (int x = 0; x < area.Width; x++)
+                {
+                    int index = (area.Y + y) * this.Width + area.X + x;
+                    this.Remember(index);
+                    this.Canvas[index] = Color.Transparent;
+                    this.Grow(area.X + x, area.Y + y);
+                }
+            }
+            this.Refresh(area);
+        }
+
+        /// <summary>Put the pixels being dragged down where the selection now is.</summary>
+        private void DropSelection()
+        {
+            if (this.Floating is not { } pixels || this.Selection is not { } area)
+                return;
+            for (int y = 0; y < area.Height; y++)
+            {
+                for (int x = 0; x < area.Width; x++)
+                {
+                    int px = area.X + x, py = area.Y + y;
+                    if (px < 0 || py < 0 || px >= this.Width || py >= this.Height)
+                        continue;
+                    Color colour = pixels[y * area.Width + x];
+                    if (colour.A == 0)
+                        continue;
+                    int index = py * this.Width + px;
+                    this.Remember(index);
+                    this.Canvas[index] = colour;
+                    this.Grow(px, py);
+                }
+            }
+            this.Floating = null;
+            this.Refresh(Rectangle.Intersect(area, new Rectangle(0, 0, this.Width, this.Height)));
+            this.CommitStroke();
+        }
+
+        /// <summary>Copy the selected pixels.</summary>
+        private void CopySelection()
+        {
+            if (this.Selection is not { } area)
+                return;
+            this.Clipboard = Cut(this.Canvas, area, this.Width);
+            this.ClipboardSize = new Point(area.Width, area.Height);
+            this.Message = $"Copied {area.Width}x{area.Height} pixels.";
+            this.SyncButtons();
+        }
+
+        /// <summary>Paste what was copied at the selection's top left, or at the top left of the view.</summary>
+        private void PasteClipboard()
+        {
+            if (this.Clipboard is not { } pixels)
+                return;
+            Point at = this.Selection is { } area ? new Point(area.X, area.Y) : this.View;
+            this.StrokeOriginals = new Dictionary<int, Color>();
+            this.StrokeArea = Rectangle.Empty;
+            for (int y = 0; y < this.ClipboardSize.Y; y++)
+            {
+                for (int x = 0; x < this.ClipboardSize.X; x++)
+                {
+                    int px = at.X + x, py = at.Y + y;
+                    if (px < 0 || py < 0 || px >= this.Width || py >= this.Height)
+                        continue;
+                    int index = py * this.Width + px;
+                    this.Remember(index);
+                    this.Canvas[index] = pixels[y * this.ClipboardSize.X + x];
+                    this.Grow(px, py);
+                }
+            }
+            this.Refresh(this.StrokeArea);
+            this.CommitStroke();
+            this.Selection = new Rectangle(at.X, at.Y, this.ClipboardSize.X, this.ClipboardSize.Y);
+            this.Message = "Pasted.";
+        }
+
+        /// <summary>Make everything in the selection see-through.</summary>
+        private void ClearSelection()
+        {
+            if (this.Selection is not { } area)
+                return;
+            this.StrokeOriginals = new Dictionary<int, Color>();
+            this.StrokeArea = Rectangle.Empty;
+            for (int y = 0; y < area.Height; y++)
+            {
+                for (int x = 0; x < area.Width; x++)
+                {
+                    int index = (area.Y + y) * this.Width + area.X + x;
+                    this.Remember(index);
+                    this.Canvas[index] = Color.Transparent;
+                    this.Grow(area.X + x, area.Y + y);
+                }
+            }
+            this.Refresh(area);
+            this.CommitStroke();
+        }
+
+        /// <summary>Mirror the selection left to right.</summary>
+        private void FlipSelection()
+        {
+            if (this.Selection is not { } area)
+                return;
+            Color[] copy = Cut(this.Canvas, area, this.Width);
+            this.StrokeOriginals = new Dictionary<int, Color>();
+            this.StrokeArea = Rectangle.Empty;
+            for (int y = 0; y < area.Height; y++)
+            {
+                for (int x = 0; x < area.Width; x++)
+                {
+                    int index = (area.Y + y) * this.Width + area.X + x;
+                    this.Remember(index);
+                    this.Canvas[index] = copy[y * area.Width + (area.Width - 1 - x)];
+                    this.Grow(area.X + x, area.Y + y);
+                }
+            }
+            this.Refresh(area);
+            this.CommitStroke();
+        }
+
+        /// <summary>The pixels a line or rectangle covers, from where the drag started to where it is now.</summary>
+        private IEnumerable<Point> ShapePixels(Point start, Point end)
+        {
+            if (this.Current == Tool.Rectangle)
+            {
+                int left = Math.Min(start.X, end.X), right = Math.Max(start.X, end.X);
+                int top = Math.Min(start.Y, end.Y), bottom = Math.Max(start.Y, end.Y);
+                for (int x = left; x <= right; x++)
+                {
+                    yield return new Point(x, top);
+                    yield return new Point(x, bottom);
+                }
+                for (int y = top; y <= bottom; y++)
+                {
+                    yield return new Point(left, y);
+                    yield return new Point(right, y);
+                }
+                yield break;
+            }
+
+            int steps = Math.Max(Math.Abs(end.X - start.X), Math.Abs(end.Y - start.Y));
+            for (int i = 0; i <= steps; i++)
+            {
+                yield return steps == 0
+                    ? start
+                    : new Point(start.X + (end.X - start.X) * i / steps, start.Y + (end.Y - start.Y) * i / steps);
+            }
+        }
+
+        /// <summary>Swap one colour for another everywhere in the image.</summary>
+        private void ReplaceEverywhere(Color target)
+        {
+            if (target == this.Colour)
+                return;
+            List<int> changed = new();
+            Rectangle area = Rectangle.Empty;
+            for (int i = 0; i < this.Canvas.Length; i++)
+            {
+                if (this.Canvas[i] != target)
+                    continue;
+                this.Canvas[i] = this.Colour;
+                changed.Add(i);
+                int x = i % this.Width, y = i / this.Width;
+                area = area.IsEmpty ? new Rectangle(x, y, 1, 1) : Rectangle.Union(area, new Rectangle(x, y, 1, 1));
+            }
+            this.StrokeOriginals = null;
+            if (changed.Count == 0)
+            {
+                this.Message = "No pixels of that colour.";
+                return;
+            }
+            this.Done.Add(new ColourStroke(area, changed.ToArray(), target, this.Colour));
+            this.TrimHistory();
+            this.Undone.Clear();
+            this.Refresh(area);
+            this.Message = $"Replaced {changed.Count:n0} {(target.A == 0 ? "see-through " : "")}pixel{(changed.Count == 1 ? "" : "s")}. Undo puts them back.";
+            this.SyncButtons();
         }
 
         /// <summary>Replace the connected area of one colour, like a paint bucket.</summary>
@@ -471,7 +908,7 @@ namespace CustomContentCore.UI
                     if (x >= 0 && y >= 0 && x < this.StrokeArea.Width && y < this.StrokeArea.Height)
                         before[y * this.StrokeArea.Width + x] = colour;
                 }
-                this.Done.Add(new Stroke(this.StrokeArea, before, Cut(this.Canvas, this.StrokeArea, this.Width)));
+                this.Done.Add(new AreaStroke(this.StrokeArea, before, Cut(this.Canvas, this.StrokeArea, this.Width)));
                 this.TrimHistory();
                 this.Undone.Clear();
             }
@@ -485,11 +922,10 @@ namespace CustomContentCore.UI
         /// <summary>Drop the oldest strokes when the history gets too big (one fill on a large sheet can be many megabytes).</summary>
         private void TrimHistory()
         {
-            long bytes = this.Done.Sum(s => (long)s.Area.Width * s.Area.Height * 8);
+            long bytes = this.Done.Sum(s => s.Bytes);
             while (this.Done.Count > 1 && (this.Done.Count > MaxUndo || bytes > MaxUndoBytes))
             {
-                Stroke oldest = this.Done[0];
-                bytes -= (long)oldest.Area.Width * oldest.Area.Height * 8;
+                bytes -= this.Done[0].Bytes;
                 this.Done.RemoveAt(0);
             }
         }
@@ -498,10 +934,10 @@ namespace CustomContentCore.UI
         {
             if (this.Done.Count == 0)
                 return;
-            Stroke stroke = this.Done[^1];
+            IStroke stroke = this.Done[^1];
             this.Done.RemoveAt(this.Done.Count - 1);
             this.Undone.Add(stroke);
-            Paste(this.Canvas, stroke.Before, stroke.Area, this.Width);
+            stroke.Apply(this.Canvas, this.Width, undo: true);
             this.Refresh(stroke.Area);
             this.SyncButtons();
         }
@@ -510,10 +946,10 @@ namespace CustomContentCore.UI
         {
             if (this.Undone.Count == 0)
                 return;
-            Stroke stroke = this.Undone[^1];
+            IStroke stroke = this.Undone[^1];
             this.Undone.RemoveAt(this.Undone.Count - 1);
             this.Done.Add(stroke);
-            Paste(this.Canvas, stroke.After, stroke.Area, this.Width);
+            stroke.Apply(this.Canvas, this.Width, undo: false);
             this.Refresh(stroke.Area);
             this.SyncButtons();
         }
@@ -547,23 +983,32 @@ namespace CustomContentCore.UI
                 return;
 
             // keep the pixel under the cursor where it is
-            Rectangle inner = new(this.CanvasArea.X + 8, this.CanvasArea.Y + 8, this.CanvasArea.Width - 16, this.CanvasArea.Height - 16);
+            Rectangle inner = this.Inner;
             double px = this.View.X + (around.X - inner.X) / (double)old;
             double py = this.View.Y + (around.Y - inner.Y) / (double)old;
             this.View = new Point((int)Math.Round(px - (around.X - inner.X) / (double)this.Zoom), (int)Math.Round(py - (around.Y - inner.Y) / (double)this.Zoom));
             this.ClampView();
         }
 
+        /// <summary>Zoom so the image fills the width, which is the most useful view for pixel art.</summary>
+        private void FitWidth()
+        {
+            Rectangle inner = this.Inner;
+            this.Zoom = Math.Clamp(inner.Width / Math.Max(1, this.Width), 1, 24);
+            this.View = Point.Zero;
+            this.ClampView();
+        }
+
         private void Fit()
         {
-            Rectangle inner = new(this.CanvasArea.X + 8, this.CanvasArea.Y + 8, Math.Max(1, this.CanvasArea.Width - 16), Math.Max(1, this.CanvasArea.Height - 16));
+            Rectangle inner = this.Inner;
             this.Zoom = Math.Max(1, Math.Min(inner.Width / Math.Max(1, this.Width), inner.Height / Math.Max(1, this.Height)));
             this.View = Point.Zero;
         }
 
         private void ClampView()
         {
-            Rectangle inner = new(this.CanvasArea.X + 8, this.CanvasArea.Y + 8, Math.Max(1, this.CanvasArea.Width - 16), Math.Max(1, this.CanvasArea.Height - 16));
+            Rectangle inner = this.Inner;
             int maxX = Math.Max(0, this.Width - inner.Width / Math.Max(1, this.Zoom));
             int maxY = Math.Max(0, this.Height - inner.Height / Math.Max(1, this.Zoom));
             this.View = new Point(Math.Clamp(this.View.X, 0, maxX), Math.Clamp(this.View.Y, 0, maxY));
@@ -593,6 +1038,12 @@ namespace CustomContentCore.UI
         {
             this.UndoButton.Enabled = this.Done.Count > 0;
             this.RedoButton.Visible = this.Undone.Count > 0;
+            this.CopyButton.Visible = this.Selection != null;
+            this.ClearButton.Visible = this.Selection != null;
+            this.FlipButton.Visible = this.Selection != null;
+            this.PasteButton.Visible = this.Clipboard != null;
+            if (this.Area.Width > 0)
+                this.Layout(this.Area); // the palette row shifts as those buttons come and go
         }
 
         private void Save()

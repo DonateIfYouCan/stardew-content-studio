@@ -60,6 +60,9 @@ namespace CustomContentCore.UI
         public virtual void LeftHeld(int x, int y) { }
         public virtual void ReleaseLeft(int x, int y) { }
 
+        /// <summary>Handle a right-click.</summary>
+        public virtual void RightClick(int x, int y) { }
+
         public virtual void Scroll(int x, int y, int direction)
         {
             foreach (Widget widget in this.Widgets)
@@ -187,7 +190,11 @@ namespace CustomContentCore.UI
                 this.Top.ReleaseLeft(x, y);
         }
 
-        public override void receiveRightClick(int x, int y, bool playSound = true) { }
+        public override void receiveRightClick(int x, int y, bool playSound = true)
+        {
+            if (this.Stack.Count > 0)
+                this.Top.RightClick(x, y);
+        }
 
         public override void receiveScrollWheelAction(int direction)
         {
