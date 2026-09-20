@@ -42,6 +42,7 @@ namespace CustomCrops.UI
         private readonly CropWidget Cropper;
         private readonly Button ChooseImageButton;
         private readonly Button FitButton;
+        private readonly Checkbox LockShapeBox;
         private readonly Button AutoPacketButton;
         private readonly Cycler LookCycler;
         private readonly Button ChooseSheetButton;
@@ -91,7 +92,9 @@ namespace CustomCrops.UI
             this.ImageCycler = this.Add(new Cycler(new() { ("harvest", "Harvest item"), ("seed", "Seed packet") }, "harvest", v => { this.EditingSeed = v == "seed"; this.SyncImage(); }));
             this.Cropper = this.Add(new CropWidget { OnChanged = this.OnCropChanged });
             this.ChooseImageButton = this.Add(new Button("Choose image", this.BrowseImage, "Pick an image from your computer."));
-            this.FitButton = this.Add(new Button("Fit image", () => { this.Cropper.Fit(); this.ArtDirty = true; }));
+            this.FitButton = this.Add(new Button("Fit image", this.FitAndLock));
+            this.LockShapeBox = this.Add(new Checkbox("Lock shape", true, on => { this.Cropper.FreeShape = !on; if (on) this.Cropper.SetAspect(1); this.ArtDirty = true; },
+                "Keep the box square while you drag its corners. Unlock it to take any part of the picture and have it squeezed into the icon."));
             this.AutoPacketButton = this.Add(new Button("Use auto packet", () => { c.SeedImage = null; this.ArtDirty = true; this.SyncImage(); }, "Make the seed packet from the harvest icon."));
 
             List<(string, string)> looks = this.VanillaCrops.Select(v => (v.SeedId, $"Looks like: {v.Name}")).ToList();
@@ -175,6 +178,7 @@ namespace CustomCrops.UI
             int by = this.Cropper.Bounds.Bottom + 10;
             this.ChooseImageButton.Bounds = new Rectangle(lx, by, 210, 48);
             this.FitButton.Bounds = new Rectangle(lx + 220, by, 150, 48);
+            this.LockShapeBox.Bounds = new Rectangle(lx + 380, by + 2, 180, 44);
             this.AutoPacketButton.Bounds = new Rectangle(lx + 220, by, 220, 48);
             by += 72;
             this.LookCycler.Bounds = new Rectangle(lx, by, leftW, 48);
@@ -259,6 +263,15 @@ namespace CustomCrops.UI
 
             string help = "Days: one number per growth stage, like 1,2,2,3. Regrows: days until it produces again (leave empty to harvest once).";
             Gfx.Message(b, this.Message ?? help, this.CancelButton.Bounds.X - area.X - 60, new Vector2(area.X + 36, area.Bottom - 70), this.Message != null ? this.MessageColor : Color.DimGray);
+        }
+
+        /// <summary>Use the biggest piece of the image with the right shape, and put the shape lock back on.</summary>
+        private void FitAndLock()
+        {
+            this.Cropper.FreeShape = false;
+            this.LockShapeBox.Checked = true;
+            this.Cropper.Fit();
+            this.ArtDirty = true;
         }
 
         private void DrawPreview(SpriteBatch b)
@@ -468,6 +481,7 @@ namespace CustomCrops.UI
                     this.Crop.GrowthSheet = CustomContent.SaveImage(this.Store.ImageFolder, $"{this.Crop.Name} growth", pixels);
                     this.LookCycler.Index = 0; // a sheet of their own replaces the game crop it copied
                     this.Images.Remove(this.Crop.GrowthSheet);
+                    this.ArtDirty = true; // the cycler was already on 'own sheet', so nothing else would redraw it
                     this.Message = null;
                     this.SyncButtons();
                 }

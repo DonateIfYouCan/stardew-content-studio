@@ -29,7 +29,7 @@
 
   <!-- the game's own references aren't copied next to a build, but the tests have to load this one to run -->
   <Target Name="CopyGameAssemblies" AfterTargets="Build">
-    <Copy SourceFiles="$(GamePath)/MonoGame.Framework.dll" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(GamePath)/MonoGame.Framework.dll;$(GamePath)/smapi-internal/SMAPI.Toolkit.CoreInterfaces.dll" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
   </Target>
 
 </Project>

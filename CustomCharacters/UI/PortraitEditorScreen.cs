@@ -44,6 +44,7 @@ namespace CustomCharacters.UI
         private readonly CropWidget Cropper;
         private readonly Button ChooseButton;
         private readonly Button FitButton;
+        private readonly Checkbox LockShapeBox;
         private readonly Button OwnImageButton;
         private readonly Button OwnCropButton;
         private readonly Button RemoveOverrideButton;
@@ -76,7 +77,9 @@ namespace CustomCharacters.UI
 
             this.Cropper = this.Add(new CropWidget { OnChanged = this.OnCropChanged });
             this.ChooseButton = this.Add(new Button("Choose image", () => this.BrowseImage(), "Pick an image from your computer."));
-            this.FitButton = this.Add(new Button("Fit image", () => this.Cropper.Fit(), "Use the largest square that fits."));
+            this.FitButton = this.Add(new Button("Fit image", this.FitAndLock, "Use the largest square that fits."));
+            this.LockShapeBox = this.Add(new Checkbox("Lock shape", true, on => { this.Cropper.FreeShape = !on; if (on) this.Cropper.SetAspect(1); },
+                "Keep the box square while you drag its corners. Unlock it to take any part of the picture and have it squeezed into the portrait."));
             this.OwnImageButton = this.Add(new Button("Use a different image", () => this.BrowseImage(), "Give this emotion its own image."));
             this.OwnCropButton = this.Add(new Button("Same image, own crop", this.CreateCropOverride, "Use the default image, but frame this emotion differently."));
             this.RemoveOverrideButton = this.Add(new Button("Use default image", this.RemoveOverride, "Remove this emotion's own image."));
@@ -123,6 +126,7 @@ namespace CustomCharacters.UI
             int by = this.Cropper.Bounds.Bottom + 12;
             this.ChooseButton.Bounds = new Rectangle(area.X + pad, by, 230, 48);
             this.FitButton.Bounds = new Rectangle(this.ChooseButton.Bounds.Right + 10, by, 160, 48);
+            this.LockShapeBox.Bounds = new Rectangle(this.PaintButton.Bounds.Right + 12, by + 2, 180, 44);
             this.OwnImageButton.Bounds = new Rectangle(area.X + pad, by, 290, 48);
             this.OwnCropButton.Bounds = new Rectangle(this.OwnImageButton.Bounds.Right + 10, by, 290, 48);
             this.RemoveOverrideButton.Bounds = new Rectangle(area.X + pad + leftW - 250, by, 250, 48);
@@ -261,6 +265,15 @@ namespace CustomCharacters.UI
         /// <summary>The image reference being edited for the selected slot (null if the slot just uses the default).</summary>
         private ImageRef? EditedImage => this.Selected == DefaultSlot ? this.Set.Default : this.Set.Overrides.GetValueOrDefault(this.Selected);
 
+        /// <summary>Use the biggest piece of the image with the right shape, and put the shape lock back on.</summary>
+        private void FitAndLock()
+        {
+            this.Cropper.FreeShape = false;
+            this.LockShapeBox.Checked = true;
+            this.Cropper.Fit();
+            
+        }
+
         private void SelectSlot(int slot)
         {
             this.Selected = slot;
@@ -375,6 +388,7 @@ namespace CustomCharacters.UI
                         this.Set.Overrides[slot] = painted;
                     this.ClearPreviews();
                     this.SelectSlot(slot);
+                    this.Save(); // one step: what's painted is kept, without a second save on the way out
                 }
                 catch (Exception ex)
                 {
