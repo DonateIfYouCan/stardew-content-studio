@@ -152,7 +152,7 @@ namespace CustomContentCore
             return path;
         }
 
-        /// <summary>Describe a pack's contents, like "Custom Paintings, Custom Crops (12 files)".</summary>
+        /// <summary>Describe a pack's contents, like "Content Studio: Paintings, Content Studio: Crops (12 files)".</summary>
         public static string Describe(string zipPath)
         {
             using ZipArchive zip = ZipFile.OpenRead(zipPath);

@@ -7,11 +7,11 @@ in-game editor (press `K`), in HD where you want it.
 
 | Mod | What it does |
 |---|---|
-| [Custom Content Core](CustomContentCore) | The in-game editor, file browser, image tools, HD drawing, export/import of content packs, optional multiplayer sharing. **Required by the others.** |
-| [Custom Paintings](CustomPaintings) | Add, replace or hide paintings; photo frames and slideshows; full-screen viewer; sell them in shops or catch them fishing. |
-| [Custom Characters](CustomCharacters) | Villager portraits (per emotion) and sprites, and the farmer's body, hair and clothes, in HD. |
-| [Custom Crops](CustomCrops) | Your own crops: seeds, growth stages and harvest. |
-| [Custom Furniture](CustomFurniture) | Furniture based on a game piece: lamps that turn on, fireplaces, beds, animated decor and more. Also wallpaper and floors from your images. |
+| [Content Studio: Core](CustomContentCore) | The in-game editor, file browser, image tools, HD drawing, export/import of content packs, optional multiplayer sharing. **Required by the others.** |
+| [Content Studio: Paintings](CustomPaintings) | Add, replace or hide paintings; photo frames and slideshows; full-screen viewer; sell them in shops or catch them fishing. |
+| [Content Studio: Characters](CustomCharacters) | Villager portraits (per emotion) and sprites, and the farmer's body, hair and clothes, in HD. |
+| [Content Studio: Crops](CustomCrops) | Your own crops: seeds, growth stages and harvest. |
+| [Content Studio: Furniture](CustomFurniture) | Furniture based on a game piece: lamps that turn on, fireplaces, beds, animated decor and more. Also wallpaper and floors from your images. |
 
 Each mod's folder has its own README with details and screenshots.
 
@@ -38,7 +38,7 @@ All images in the screenshots were made for the demo.
 ## Installing
 
 1. Install [SMAPI](https://smapi.io).
-2. Build the mods (below). They're copied into the game's `Mods` folder automatically. Install Custom Content Core plus the
+2. Build the mods (below). They're copied into the game's `Mods` folder automatically. Install Content Studio: Core plus the
    mods you want.
 3. Start the game through SMAPI and press `K`.
 

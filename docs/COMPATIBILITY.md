@@ -17,7 +17,7 @@
 
 ## Requirements
 
-- All mods need **Custom Content Core**.
+- All mods need **Content Studio: Core**.
 - Players in multiplayer only see your custom content if they have the same mods installed and turned on
   *Accept content from hosts*. Without the mods, custom items show as Error Items.
 

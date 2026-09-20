@@ -26,7 +26,7 @@ namespace CustomCharacters
             Config = helper.ReadConfig<ModConfig>();
             Store = new CharacterStore(helper, this.Monitor, this.ModManifest);
 
-            // plug into Custom Content Core
+            // plug into Content Studio: Core
             CustomContent.RegisterEditor(this.ModManifest, "Characters", "Villagers, your farmer, and clothes & hats, in HD", () => new CharacterHubScreen(Store));
             ContentPacks.Register(this.ModManifest, helper.DirectoryPath, new[] { CharacterStore.DataFileName, CharacterStore.ImageFolderName }, Store.Reload, Store.GetSharedFiles);
 

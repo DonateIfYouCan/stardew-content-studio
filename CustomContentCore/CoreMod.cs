@@ -112,7 +112,7 @@ namespace CustomContentCore
                 var sections = CustomContent.GetEditors();
                 if (sections.Count == 0)
                 {
-                    Log("No editors are installed. Install a mod that uses Custom Content Core, like Custom Paintings.", LogLevel.Info);
+                    Log("No editors are installed. Install a mod that uses Content Studio: Core, like Content Studio: Paintings.", LogLevel.Info);
                     return false;
                 }
                 first = sections.Count == 1 ? sections[0].CreateScreen() : new HubScreen();

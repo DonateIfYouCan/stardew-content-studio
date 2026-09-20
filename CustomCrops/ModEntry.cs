@@ -23,7 +23,7 @@ namespace CustomCrops
         {
             Store = new CropStore(helper, this.Monitor, this.ModManifest);
 
-            // plug into Custom Content Core
+            // plug into Content Studio: Core
             CustomContent.RegisterEditor(this.ModManifest, "Crops", "Your own crops: seeds, growing plant and harvest", () => new CropListScreen(Store));
             ContentPacks.Register(this.ModManifest, helper.DirectoryPath, new[] { CropStore.DataFileName, CropStore.ImageFolderName }, Store.Reload, Store.GetSharedFiles);
 

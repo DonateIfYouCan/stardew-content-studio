@@ -23,7 +23,7 @@ namespace CustomFurniture
         {
             Store = new FurnitureStore(helper, this.Monitor, this.ModManifest);
 
-            // plug into Custom Content Core
+            // plug into Content Studio: Core
             CustomContent.RegisterEditor(this.ModManifest, "Furniture", "Lamps, fireplaces, beds, animated decor and more", () => new FurnitureListScreen(Store));
             CustomContent.RegisterEditor(this.ModManifest, "Wallpaper & floors", "Wallpaper and floor tiles from your own images", () => new WallpaperListScreen(Store));
             ContentPacks.Register(this.ModManifest, helper.DirectoryPath, new[] { FurnitureStore.DataFileName, FurnitureStore.ImageFolderName }, Store.Reload, Store.GetSharedFiles);

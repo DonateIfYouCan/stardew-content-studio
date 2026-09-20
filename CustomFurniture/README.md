@@ -1,9 +1,9 @@
-# Custom Furniture
+# Content Studio: Furniture
 
 A [SMAPI](https://smapi.io) mod for Stardew Valley 1.6 to make your own furniture, wallpaper and floors from your images, in HD: lamps that turn on at night,
 fireplaces with fire, beds you can sleep in, animated decor, tables, rugs and more.
 
-**Requires [Custom Content Core](../CustomContentCore)**, in this repo.
+**Requires [Content Studio: Core](../CustomContentCore)**, in this repo.
 
 **Status:** tested by hand on Linux only (Stardew Valley 1.6.15, SMAPI 4.5.2); Windows and macOS are untested. See [test coverage](../docs/TESTING.md) and [compatibility](../docs/COMPATIBILITY.md).
 
@@ -23,7 +23,7 @@ All images in the screenshots are made for the demo.
 ## Installing
 
 1. Install [SMAPI](https://smapi.io).
-2. Put **Custom Content Core** and this mod in the game's `Mods` folder (build them, see *Building*).
+2. Put **Content Studio: Core** and this mod in the game's `Mods` folder (build them, see *Building*).
 3. Start the game through SMAPI and press `K` to open the editor.
 
 ## Wallpaper & floors

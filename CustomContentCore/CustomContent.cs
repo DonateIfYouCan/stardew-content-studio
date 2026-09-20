@@ -8,7 +8,7 @@ using StardewModdingAPI;
 
 namespace CustomContentCore
 {
-    /// <summary>The API other mods use to plug into Custom Content Core.</summary>
+    /// <summary>The API other mods use to plug into Content Studio: Core.</summary>
     /// <remarks>
     /// Mods using this should list Core as a dependency in their manifest and reference its DLL (not copied into their own folder).
     /// Register in your mod's <c>Entry</c> method.

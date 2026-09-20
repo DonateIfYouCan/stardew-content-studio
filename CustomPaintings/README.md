@@ -1,8 +1,8 @@
-# Custom Paintings
+# Content Studio: Paintings
 
 A [SMAPI](https://smapi.io) mod for Stardew Valley 1.6 that turns your own PNG/JPEG images into paintings, photo frames and slideshows, with an in-game editor.
 
-**Requires [Custom Content Core](../CustomContentCore)** (shared editor, image tools and HD drawing), in this repo.
+**Requires [Content Studio: Core](../CustomContentCore)** (shared editor, image tools and HD drawing), in this repo.
 
 **Status:** tested by hand on Linux only (Stardew Valley 1.6.15, SMAPI 4.5.2); Windows and macOS are untested. See [test coverage](../docs/TESTING.md) and [compatibility](../docs/COMPATIBILITY.md).
 
@@ -34,7 +34,7 @@ All images in the screenshots are made for the demo.
 ## Installing
 
 1. Install [SMAPI](https://smapi.io).
-2. Put **Custom Content Core** and this mod in the game's `Mods` folder (build them, see *Building*).
+2. Put **Content Studio: Core** and this mod in the game's `Mods` folder (build them, see *Building*).
 3. Start the game through SMAPI and press `K` to open the editor.
 
 ## Features
@@ -66,7 +66,7 @@ work as before.
 | `paintings/` | Images added automatically (if enabled). |
 | `paintings/imported/` | Images picked in the editor. |
 | `frames/` | Custom frames: a PNG whose width and height are divisible by 3 (a 9-slice: corners, edges, center ignored). E.g. a 9x9 image gives a 3px frame. |
-| `config.json` | `EditorCanGive` (show the "Put in inventory" button). The editor key and file browser start folder are set in Custom Content Core's `config.json`. |
+| `config.json` | `EditorCanGive` (show the "Put in inventory" button). The editor key and file browser start folder are set in Content Studio: Core's `config.json`. |
 
 ## Console commands
 

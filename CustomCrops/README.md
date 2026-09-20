@@ -1,8 +1,8 @@
-# Custom Crops
+# Content Studio: Crops
 
 A [SMAPI](https://smapi.io) mod for Stardew Valley 1.6 that adds your own crops (seeds, growing plant and harvest) with an in-game editor, in HD.
 
-**Requires [Custom Content Core](../CustomContentCore)**, in this repo.
+**Requires [Content Studio: Core](../CustomContentCore)**, in this repo.
 
 **Status:** tested by hand on Linux only (Stardew Valley 1.6.15, SMAPI 4.5.2); Windows and macOS are untested. See [test coverage](../docs/TESTING.md) and [compatibility](../docs/COMPATIBILITY.md).
 
@@ -19,7 +19,7 @@ All images in the screenshots are made for the demo.
 ## Installing
 
 1. Install [SMAPI](https://smapi.io).
-2. Put **Custom Content Core** and this mod in the game's `Mods` folder (build them, see *Building*).
+2. Put **Content Studio: Core** and this mod in the game's `Mods` folder (build them, see *Building*).
 3. Start the game through SMAPI and press `K` to open the editor.
 
 ## Features

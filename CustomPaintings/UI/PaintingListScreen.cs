@@ -163,7 +163,7 @@ namespace CustomPaintings.UI
         {
             Rectangle area = this.Area;
             Gfx.Panel(b, area);
-            Gfx.Text(b, "Custom Paintings", new Vector2(area.X + 36, area.Y + 24), null, Gfx.TitleFont);
+            Gfx.Text(b, "Paintings", new Vector2(area.X + 36, area.Y + 24), null, Gfx.TitleFont);
             Gfx.Text(b, "Search", new Vector2(this.SearchField.Bounds.X - 90, this.SearchField.Bounds.Y + 10));
 
             this.MineTab.Toggled = !this.ShowGamePaintings;

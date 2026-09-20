@@ -1,4 +1,4 @@
-# Custom Content Core
+# Content Studio: Core
 
 Shared library mod for the Custom Content family of [SMAPI](https://smapi.io) mods for Stardew Valley 1.6.
 
