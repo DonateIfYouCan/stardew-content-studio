@@ -126,7 +126,7 @@ namespace CustomCharacters.UI
             Gfx.Inset(b, this.ZoomArea, new Color(120, 170, 90));
             if (original != null)
             {
-                Rectangle source = new(0, 0, Math.Min(original.Width, 32), Math.Min(original.Height, 32));
+                Rectangle source = new(0, 0, Math.Min(original.Width, this.Layer.CellWidth), Math.Min(original.Height, this.Layer.CellHeight));
                 int cellW = hd != null ? (this.ZoomArea.Width - 48) / 2 : this.ZoomArea.Width - 32;
                 int scale = Math.Max(1, Math.Min(cellW / source.Width, (this.ZoomArea.Height - 80) / source.Height));
                 Rectangle dest = new(this.ZoomArea.X + 16, this.ZoomArea.Y + 16, source.Width * scale, source.Height * scale);
@@ -147,7 +147,7 @@ namespace CustomCharacters.UI
                 Gfx.Text(b, Gfx.Fit("As saved", this.FarmerArea.Width - 24), new Vector2(this.FarmerArea.X + 12, this.FarmerArea.Bottom - 44), Color.DimGray);
             }
             else
-                Gfx.TextCentered(b, "Load a save to see your farmer.", this.FarmerArea, Color.DimGray);
+                Gfx.Text(b, Game1.parseText("Load a save to see your farmer.", Gfx.Font, this.FarmerArea.Width - 24), new Vector2(this.FarmerArea.X + 12, this.FarmerArea.Y + 16), Color.DimGray);
 
             base.Draw(b, mouseX, mouseY);
 

@@ -16,7 +16,9 @@ namespace CustomCharacters
     /// <param name="Id">The asset name under <c>Characters/Farmer</c>, used as the key in <c>characters.json</c>.</param>
     /// <param name="Label">The name shown in the editor.</param>
     /// <param name="IsBody">Whether it's a body sheet, which the game recolors per farmer (skin, eyes, shoes, sleeves).</param>
-    internal sealed record FarmerLayer(string Id, string Label, bool IsBody)
+    /// <param name="CellWidth">The width of one item in the sheet (for close-up previews).</param>
+    /// <param name="CellHeight">The height of one item, including its facing directions.</param>
+    internal sealed record FarmerLayer(string Id, string Label, bool IsBody, int CellWidth = 16, int CellHeight = 32)
     {
         public string AssetName => $"Characters/Farmer/{this.Id}";
     }
@@ -38,12 +40,12 @@ namespace CustomCharacters
             new("farmer_girl_base", "Body (female)", true),
             new("farmer_base_bald", "Body (male, bald)", true),
             new("farmer_girl_base_bald", "Body (female, bald)", true),
-            new("hairstyles", "Hairstyles", false),
-            new("hairstyles2", "Hairstyles (more)", false),
-            new("shirts", "Shirts", false),
-            new("pants", "Pants", false),
-            new("hats", "Hats", false),
-            new("accessories", "Accessories (beards, glasses...)", false)
+            new("hairstyles", "Hairstyles", false, CellWidth: 16, CellHeight: 96),      // one style, three rows of directions
+            new("hairstyles2", "Hairstyles (more)", false, CellWidth: 16, CellHeight: 96),
+            new("shirts", "Shirts", false, CellWidth: 8, CellHeight: 32),               // 8x8 per direction
+            new("pants", "Pants", false, CellWidth: 16, CellHeight: 32),                // one frame of the first pants
+            new("hats", "Hats", false, CellWidth: 20, CellHeight: 80),                  // 20x20 per direction
+            new("accessories", "Accessories (beards, glasses...)", false, CellWidth: 16, CellHeight: 16)
         };
 
         /// <summary>The pixel indexes (in the body sheet's first row) whose colors the game swaps: sleeves, skin, shoes, eyes.</summary>
