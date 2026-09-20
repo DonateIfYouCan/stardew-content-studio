@@ -57,8 +57,17 @@ namespace CustomContentCore.UI
         private int BrushSize = 1;
         private bool ShowGrid = true;
 
-        /// <summary>The colours offered below the canvas: the ones already in the image, most used first.</summary>
-        private readonly Color[] Palette;
+        /// <summary>How many of the image's colours the palette offers.</summary>
+        private const int PaletteSize = 18;
+
+        /// <summary>The colours offered below the canvas, most used first.</summary>
+        private readonly Color[] ByUse;
+
+        /// <summary>The same colours sorted by hue, for when you're looking for a shade.</summary>
+        private readonly Color[] ByHue;
+
+        /// <summary>The palette as it's shown now.</summary>
+        private Color[] Palette;
 
         /// <summary>While drawing: where the last painted pixel was, the colour each touched pixel had before, and the area covered.</summary>
         private Point? LastPixel;
@@ -76,6 +85,7 @@ namespace CustomContentCore.UI
         private readonly Button ZoomOutButton;
         private readonly Button FitButton;
         private readonly Checkbox GridBox;
+        private readonly Cycler PaletteCycler;
         private readonly Button SaveButton;
         private readonly Button CancelButton;
 
@@ -99,7 +109,9 @@ namespace CustomContentCore.UI
             this.CellHeight = cellHeight;
             this.Title = title;
             this.OnSave = onSave;
-            this.Palette = GetPalette(this.Canvas);
+            this.ByUse = GetPalette(this.Canvas);
+            this.ByHue = ByColour(this.ByUse);
+            this.Palette = this.ByUse;
             this.Colour = this.Palette.FirstOrDefault(c => c.A > 0, Color.Black);
             this.Texture = image.ToTexture();
 
@@ -119,6 +131,11 @@ namespace CustomContentCore.UI
             this.ZoomInButton = this.Add(new Button("+", () => this.SetZoom(this.Zoom + 1, this.CanvasArea.Center), "Zoom in. The mouse wheel works too."));
             this.FitButton = this.Add(new Button("Fit", this.Fit, "Show the whole image."));
             this.GridBox = this.Add(new Checkbox("Grid", true, v => this.ShowGrid = v, "Show where each sprite in the sheet begins."));
+            this.PaletteCycler = this.Add(new Cycler(
+                new() { ("used", "Most used"), ("hue", "By colour") },
+                "used",
+                v => this.Palette = v == "hue" ? this.ByHue : this.ByUse,
+                "The colours taken from this image: in the order the image uses them most, or grouped by colour."));
             this.SaveButton = this.Add(new Button("Save", this.Save));
             this.CancelButton = this.Add(new Button("Cancel", this.Cancel));
             this.SyncButtons();
@@ -151,6 +168,7 @@ namespace CustomContentCore.UI
             int paletteH = 56;
             this.CanvasArea = new Rectangle(area.X + pad, top + 60, area.Width - pad * 2, bottom - (top + 60) - paletteH - 12);
 
+            this.PaletteCycler.Bounds = new Rectangle(area.Right - pad - 300, this.CanvasArea.Bottom + 8, 300, 44);
             this.SaveButton.Bounds = new Rectangle(area.Right - pad - 200, area.Bottom - 84, 200, 60);
             this.CancelButton.Bounds = new Rectangle(this.SaveButton.Bounds.X - 16 - 180, area.Bottom - 84, 180, 60);
 
@@ -231,7 +249,7 @@ namespace CustomContentCore.UI
                 Gfx.Rect(b, box, colour);
                 Gfx.Outline(b, box, colour == this.Colour ? Color.White : new Color(60, 56, 52), colour == this.Colour ? 3 : 1);
                 x += size + gap;
-                if (x + size > this.CanvasArea.Right)
+                if (x + size > this.PaletteCycler.Bounds.X - 16)
                     break;
             }
         }
@@ -307,6 +325,8 @@ namespace CustomContentCore.UI
                     return true;
                 }
                 px += size + gap;
+                if (px + size > this.PaletteCycler.Bounds.X - 16)
+                    break;
             }
             return false;
         }
@@ -570,11 +590,17 @@ namespace CustomContentCore.UI
             this.Root.Push(new ConfirmScreen("Throw away your changes to this image?", "Throw away", () => this.Root.Pop()));
         }
 
-        /// <summary>The colours already in the image, most used first, so you can paint with the art's own palette.</summary>
+        /// <summary>
+        /// The colours already in the image, most used first, so you can paint with the art's own palette. Big sheets are
+        /// sampled rather than counted pixel by pixel: with millions of pixels every colour worth showing turns up in the
+        /// sample anyway, and it keeps opening the screen instant.
+        /// </summary>
         private static Color[] GetPalette(Color[] pixels)
         {
+            const int maxSamples = 400_000;
+            int step = Math.Max(1, pixels.Length / maxSamples);
             Dictionary<Color, int> counts = new();
-            for (int i = 0; i < pixels.Length; i++)
+            for (int i = 0; i < pixels.Length; i += step)
             {
                 Color colour = pixels[i];
                 if (colour.A == 0)
@@ -582,13 +608,38 @@ namespace CustomContentCore.UI
                 counts.TryGetValue(colour, out int count);
                 counts[colour] = count + 1;
             }
-            List<Color> palette = counts.OrderByDescending(p => p.Value).Take(18).Select(p => p.Key).ToList();
+            List<Color> palette = counts.OrderByDescending(p => p.Value).Take(PaletteSize).Select(p => p.Key).ToList();
             foreach (Color extra in new[] { Color.Black, Color.White })
             {
                 if (!palette.Contains(extra))
                     palette.Add(extra);
             }
             return palette.ToArray();
+        }
+
+        /// <summary>Sort the palette by colour instead of by how much it's used, which makes shades easier to find.</summary>
+        private static Color[] ByColour(IEnumerable<Color> palette)
+        {
+            return palette
+                .OrderBy(c =>
+                {
+                    float max = Math.Max(c.R, Math.Max(c.G, c.B)) / 255f, min = Math.Min(c.R, Math.Min(c.G, c.B)) / 255f;
+                    return max - min < 0.04f ? -1f : Hue(c); // greys first, then colours by hue
+                })
+                .ThenBy(c => (c.R + c.G + c.B) / 3)
+                .ToArray();
+        }
+
+        /// <summary>The hue of a colour, 0-360.</summary>
+        private static float Hue(Color c)
+        {
+            float r = c.R / 255f, g = c.G / 255f, b = c.B / 255f;
+            float max = Math.Max(r, Math.Max(g, b)), min = Math.Min(r, Math.Min(g, b)), d = max - min;
+            if (d <= 0)
+                return 0;
+            float hue = max == r ? (g - b) / d % 6 : max == g ? (b - r) / d + 2 : (r - g) / d + 4;
+            hue *= 60;
+            return hue < 0 ? hue + 360 : hue;
         }
 
         /// <summary>Copy one area out of an image.</summary>

@@ -42,6 +42,7 @@ namespace CustomCharacters.UI
         private readonly Cycler OutfitCycler;
         private readonly Button ExportButton;
         private readonly Button ChooseButton;
+        private readonly Button PaintButton;
         private readonly Button RemoveButton;
         private readonly Button SaveButton;
         private readonly Button CancelButton;
@@ -70,6 +71,7 @@ namespace CustomCharacters.UI
                 "Villagers wear different outfits in some seasons and places. Your main sheet is used for all of them unless an outfit has its own."));
             this.ExportButton = this.Add(new Button("Export original sheet", this.ExportOriginal, "Save the game's sheet for this outfit (enlarged, with sharp pixels) to paint over in another program."));
             this.ChooseButton = this.Add(new Button("Choose HD sheet", this.Browse, "Pick your HD version. It must be the original size times a whole number."));
+            this.PaintButton = this.Add(new Button("Paint", this.Paint, "Draw on the sheet here in the game. Starting from the game's sheet copies it; the game's art is never changed."));
             this.RemoveButton = this.Add(new Button("Remove", this.RemoveSheet));
             this.SaveButton = this.Add(new Button("Save", this.Save));
             this.CancelButton = this.Add(new Button("Cancel", () => this.Root.Pop()));
@@ -97,8 +99,9 @@ namespace CustomCharacters.UI
             this.SheetArea = new Rectangle(area.X + pad, top + 36, sheetW, bottom - top - 36 - 64);
             this.ExportButton.Bounds = new Rectangle(area.X + pad, this.SheetArea.Bottom + 12, Math.Min(300, sheetW), 48);
             this.PreviewArea = new Rectangle(this.SheetArea.Right + 32, top + 36, area.Right - pad - this.SheetArea.Right - 32, bottom - top - 36 - 64);
-            this.ChooseButton.Bounds = new Rectangle(this.PreviewArea.X, this.PreviewArea.Bottom + 12, 320, 48);
-            this.RemoveButton.Bounds = new Rectangle(this.ChooseButton.Bounds.Right + 10, this.PreviewArea.Bottom + 12, 260, 48);
+            this.ChooseButton.Bounds = new Rectangle(this.PreviewArea.X, this.PreviewArea.Bottom + 12, 300, 48);
+            this.PaintButton.Bounds = new Rectangle(this.ChooseButton.Bounds.Right + 10, this.PreviewArea.Bottom + 12, 120, 48);
+            this.RemoveButton.Bounds = new Rectangle(this.PaintButton.Bounds.Right + 10, this.PreviewArea.Bottom + 12, 240, 48);
             this.SaveButton.Bounds = new Rectangle(area.Right - pad - 200, area.Bottom - 84, 200, 60);
             this.CancelButton.Bounds = new Rectangle(this.SaveButton.Bounds.X - 16 - 180, area.Bottom - 84, 180, 60);
         }
@@ -237,6 +240,52 @@ namespace CustomCharacters.UI
             {
                 this.ShowError($"Couldn't export: {ex.Message}");
             }
+        }
+
+        /// <summary>Open the paint screen: on your sheet if you have one, else on a copy of the game's sheet at the size you pick.</summary>
+        private void Paint()
+        {
+            string outfit = this.Outfit;
+            string? file = outfit.Length == 0 ? this.Set.File : this.Set.Outfits.GetValueOrDefault(outfit);
+            if (file != null && this.Store.DecodeForEditor(file) is { } mine)
+            {
+                this.OpenPaint(outfit, mine);
+                return;
+            }
+
+            if (this.GetOriginal(outfit) is not { } original)
+            {
+                this.ShowError("There's nothing to paint on yet.");
+                return;
+            }
+            this.Root.Push(new ChoiceScreen(
+                $"Paint a copy of the game's sheet ({original.Width}x{original.Height}). The game's own art is never changed.\n\nWhat size do you want to draw at?",
+                ("The game's size (1x)", $"{original.Width}x{original.Height}: one pixel is one game pixel.", () => this.OpenPaint(outfit, ImageProcessor.FromTexture(original))),
+                ("Twice the size (2x)", $"{original.Width * 2}x{original.Height * 2}: room for finer detail.", () => this.OpenPaint(outfit, ImageProcessor.Enlarge(ImageProcessor.FromTexture(original), 2))),
+                ("Four times the size (4x)", $"{original.Width * 4}x{original.Height * 4}: the usual size for HD art.", () => this.OpenPaint(outfit, ImageProcessor.Enlarge(ImageProcessor.FromTexture(original), 4)))));
+        }
+
+        /// <summary>Open the paint screen and use whatever comes back as this outfit's sheet.</summary>
+        private void OpenPaint(string outfit, Pixels image)
+        {
+            this.Root.Push(new PaintScreen(image, $"Paint {this.DisplayName}'s sprite", pixels =>
+            {
+                try
+                {
+                    string saved = CustomContent.SaveImage(this.Store.ImageFolder, $"{this.Npc}{(outfit.Length == 0 ? "" : " " + outfit)} painted", pixels);
+                    if (outfit.Length == 0)
+                        this.Set.File = saved;
+                    else
+                        this.Set.Outfits[outfit] = saved;
+                    this.Message = "Painted. Check the walking preview, then save.";
+                    this.MessageColor = Color.DarkGreen;
+                    this.SyncButtons();
+                }
+                catch (Exception ex)
+                {
+                    this.ShowError($"Couldn't save the image: {ex.Message}");
+                }
+            }, 16, 32));
         }
 
         private void Browse()

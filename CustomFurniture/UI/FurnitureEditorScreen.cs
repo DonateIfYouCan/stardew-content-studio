@@ -30,6 +30,7 @@ namespace CustomFurniture.UI
         private readonly Button BaseButton;
         private readonly Button ExportButton;
         private readonly Button ChooseButton;
+        private readonly Button PaintButton;
         private readonly TextField FramesField;
         private readonly TextField SpeedField;
         private readonly TextField NameField;
@@ -55,6 +56,7 @@ namespace CustomFurniture.UI
             this.BaseButton = this.Add(new Button("Choose base furniture", () => this.Root.Push(new TemplatePickerScreen(store, this.SetTemplate)), "Pick the game furniture yours is based on."));
             this.ExportButton = this.Add(new Button("Export template", this.ExportTemplate, "Save the base furniture's sprite (all frames) as a PNG to paint over."));
             this.ChooseButton = this.Add(new Button("Choose your sheet", this.BrowseSheet, "Your sprite: the same layout as the template, at any whole-number multiple of its size."));
+            this.PaintButton = this.Add(new Button("Paint", this.Paint, "Draw the sprite here in the game. Starting from the base furniture copies it; the game's art is never changed."));
             this.FramesField = this.Add(new TextField(f.AnimationFrames.ToString(), v => { f.AnimationFrames = int.TryParse(v, out int n) ? Math.Clamp(n, 1, 64) : 1; this.ValidateSheet(); }, numbersOnly: true, limit: 2));
             this.SpeedField = this.Add(new TextField(f.FrameMilliseconds.ToString(), v => f.FrameMilliseconds = int.TryParse(v, out int n) ? Math.Clamp(n, 16, 5000) : 150, numbersOnly: true, limit: 4));
             this.NameField = this.Add(new TextField(f.Name, v => f.Name = v.Trim(), limit: 80));
@@ -88,6 +90,7 @@ namespace CustomFurniture.UI
             this.BaseButton.Bounds = new Rectangle(area.X + pad, top, 300, 52);
             this.ExportButton.Bounds = new Rectangle(area.X + pad, this.PreviewArea.Bottom + 12, 230, 48);
             this.ChooseButton.Bounds = new Rectangle(area.X + pad + 240, this.PreviewArea.Bottom + 12, 250, 48);
+            this.PaintButton.Bounds = new Rectangle(this.ChooseButton.Bounds.Right + 10, this.PreviewArea.Bottom + 12, 120, 48);
 
             int rx = area.X + pad + leftW + 32, rw = area.Right - pad - rx, y = top, labelW = 170;
             void Row(string label, Widget widget, int height = 48)
@@ -254,6 +257,50 @@ namespace CustomFurniture.UI
                 this.LoadSheet(this.Item.Sheet);
                 this.SyncButtons();
             }, this.Store.BrowserPlaces));
+        }
+
+        /// <summary>Open the paint screen: on your sheet if you chose one, else on a copy of the base furniture's frames at the size you pick.</summary>
+        private void Paint()
+        {
+            if (this.Sheet is { } mine)
+            {
+                this.OpenPaint(mine);
+                return;
+            }
+            if (this.Template == null)
+            {
+                this.ShowError("Choose the base furniture first.");
+                return;
+            }
+            if (FurnitureStore.LoadTemplateFrames(this.Template) is not { } frames)
+            {
+                this.ShowError("Couldn't read the base furniture's sprite.");
+                return;
+            }
+            this.Root.Push(new ChoiceScreen(
+                $"Paint a copy of {this.Template.Name}'s sprite ({frames.Width}x{frames.Height}, all frames side by side). The game's own art is never changed.\n\nWhat size do you want to draw at?",
+                ("The game's size (1x)", $"{frames.Width}x{frames.Height}: one pixel is one game pixel.", () => this.OpenPaint(frames)),
+                ("Twice the size (2x)", $"{frames.Width * 2}x{frames.Height * 2}: room for finer detail.", () => this.OpenPaint(ImageProcessor.Enlarge(frames, 2))),
+                ("Four times the size (4x)", $"{frames.Width * 4}x{frames.Height * 4}: the usual size for HD art.", () => this.OpenPaint(ImageProcessor.Enlarge(frames, 4)))));
+        }
+
+        /// <summary>Open the paint screen and use whatever comes back as this furniture's sheet.</summary>
+        private void OpenPaint(Pixels image)
+        {
+            int factor = this.Template != null ? Math.Max(1, image.Height / Math.Max(1, this.Template.Source.Height)) : 1;
+            this.Root.Push(new PaintScreen(image, $"Paint {this.Item.Name}", pixels =>
+            {
+                try
+                {
+                    this.Item.Sheet = CustomContent.SaveImage(this.Store.ImageFolder, $"{this.Item.Name} painted", pixels);
+                    this.LoadSheet(this.Item.Sheet);
+                    this.SyncButtons();
+                }
+                catch (Exception ex)
+                {
+                    this.ShowError($"Couldn't save the image: {ex.Message}");
+                }
+            }, this.Template != null ? this.Template.Source.Width * factor : 0, this.Template != null ? this.Template.Source.Height * factor : 0));
         }
 
         private void ShowError(string message)

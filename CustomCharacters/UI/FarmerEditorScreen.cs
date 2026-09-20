@@ -364,25 +364,39 @@ namespace CustomCharacters.UI
             }, this.Store.BrowserPlaces));
         }
 
-        /// <summary>Open the paint screen on this sheet: your HD version if you have one, else the game's sheet enlarged so there's room to draw.</summary>
+        /// <summary>Open the paint screen on this sheet: your HD version if you have one, else the game's own sheet at the size you pick.</summary>
         private void Paint()
         {
             FarmerLayer layer = this.Layer;
             (Texture2D? hd, int factor, _) = this.GetSheet(layer);
-            Pixels? image = null;
-            if (hd != null && this.Files.TryGetValue(layer.Id, out string? file))
-                image = this.Store.DecodeForEditor(file);
-            else if (this.GetOriginal(layer) is { } original)
+
+            // editing a sheet you already have: paint it at the size it already is
+            if (hd != null && this.Files.TryGetValue(layer.Id, out string? file) && this.Store.DecodeForEditor(file) is { } mine)
             {
-                factor = ImageExport.DefaultScale;
-                image = ImageProcessor.Enlarge(ImageProcessor.FromTexture(original), factor);
+                this.OpenPaint(layer, mine, factor);
+                return;
             }
-            if (image == null)
+
+            if (this.GetOriginal(layer) is not { } original)
             {
                 this.ShowError("There's nothing to paint on yet.");
                 return;
             }
 
+            // starting from the game's sheet: it's copied, never changed, and you choose the size you draw at
+            this.Root.Push(new ChoiceScreen(
+                $"Paint a copy of the game's {layer.Label} sheet ({original.Width}x{original.Height}). The game's own art is never changed.\n\nWhat size do you want to draw at?",
+                ("The game's size (1x)", $"{original.Width}x{original.Height}: one pixel is one game pixel.", () => this.OpenPaint(layer, ImageProcessor.FromTexture(original), 1)),
+                ("Twice the size (2x)", $"{original.Width * 2}x{original.Height * 2}: room for finer detail.", () => this.OpenPaint(layer, ImageProcessor.Enlarge(ImageProcessor.FromTexture(original), 2), 2)),
+                ("Four times the size (4x)", $"{original.Width * 4}x{original.Height * 4}: the usual size for HD art.", () => this.OpenPaint(layer, ImageProcessor.Enlarge(ImageProcessor.FromTexture(original), 4), 4))));
+        }
+
+        /// <summary>Open the paint screen and use whatever comes back as this layer's sheet.</summary>
+        /// <param name="layer">The sheet being painted.</param>
+        /// <param name="image">The pixels to start from.</param>
+        /// <param name="factor">How many times bigger than the game's sheet those pixels are, for the grid.</param>
+        private void OpenPaint(FarmerLayer layer, Pixels image, int factor)
+        {
             this.Root.Push(new PaintScreen(image, $"Paint {layer.Label}", pixels =>
             {
                 try

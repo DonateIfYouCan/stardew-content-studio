@@ -193,10 +193,32 @@ namespace CustomFurniture.UI
             }, this.Store.BrowserPlaces));
         }
 
-        /// <summary>Open the paint screen on the chosen image, or on a blank tile if there's nothing chosen yet.</summary>
+        /// <summary>Open the paint screen: on your image if you chose one, else on a blank tile at the size you pick.</summary>
         private void Paint()
         {
-            Pixels image = this.Source ?? new Pixels(new Color[64 * (this.Item.IsFloor ? 64 : 192)], 64, this.Item.IsFloor ? 64 : 192);
+            if (this.Source is { } chosen)
+            {
+                this.OpenPaint(chosen);
+                return;
+            }
+
+            int w = this.Item.IsFloor ? WallpaperSets.FloorSize : WallpaperSets.WallpaperWidth;
+            int h = this.Item.IsFloor ? WallpaperSets.FloorSize : WallpaperSets.WallpaperHeight;
+            this.Root.Push(new ChoiceScreen(
+                $"Paint a new {(this.Item.IsFloor ? "floor tile" : "wallpaper strip")} from scratch. The game draws it at {w}x{h}.\n\nWhat size do you want to draw at?",
+                ("The game's size (1x)", $"{w}x{h}: one pixel is one game pixel.", () => this.OpenPaint(Blank(w, h))),
+                ("Twice the size (2x)", $"{w * 2}x{h * 2}: room for finer detail.", () => this.OpenPaint(Blank(w * 2, h * 2))),
+                ("Four times the size (4x)", $"{w * 4}x{h * 4}: the usual size for HD art.", () => this.OpenPaint(Blank(w * 4, h * 4)))));
+        }
+
+        private static Pixels Blank(int width, int height)
+        {
+            return new Pixels(new Color[width * height], width, height);
+        }
+
+        /// <summary>Open the paint screen and use whatever comes back as this wallpaper's image.</summary>
+        private void OpenPaint(Pixels image)
+        {
             this.Root.Push(new PaintScreen(image, this.Item.IsFloor ? "Paint the floor tile" : "Paint the wallpaper", pixels =>
             {
                 try

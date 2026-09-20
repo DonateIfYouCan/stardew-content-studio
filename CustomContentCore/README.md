@@ -38,8 +38,12 @@ All images in the screenshots are made for the demo.
 
 Editors that work with pixel art have a **Paint** button that opens the image in the game: pencil, eraser, colour picker
 and fill, with zoom, a grid showing where each sprite in a sheet begins, and undo. It edits a copy and saves as a new PNG
-in the mod's images folder, so the art you started from is never overwritten. With no HD sheet chosen yet, it starts from
-the game's own sheet enlarged 4x, so you can draw over it without leaving the game.
+in the mod's images folder, so the art you started from is never overwritten.
+
+Starting from the game's own art (a farmer sheet, a villager sprite, a piece of furniture) copies it first and asks what
+size to draw at: **the game's size (1x)**, 2x, or 4x. 1x is one pixel per game pixel, which is what most pixel art wants;
+the bigger sizes are for HD art. The colours below the canvas are the ones the image already uses, ordered by how much
+it uses them or grouped by colour.
 
 Keys: `B` pencil, `E` eraser, `I` pick colour, `F` fill, `Z` undo, `Y` redo, arrow keys to move around, mouse wheel to zoom.
 
