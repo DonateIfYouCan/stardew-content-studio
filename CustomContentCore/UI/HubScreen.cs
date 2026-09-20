@@ -150,6 +150,8 @@ namespace CustomContentCore.UI
             Gfx.Panel(b, this.Area);
             Gfx.Text(b, "What do you want to edit?", new Vector2(this.Area.X + 36, this.Area.Y + 24), null, Gfx.TitleFont);
             base.Draw(b, mouseX, mouseY);
+            if (CustomContent.SmallWindowWarning is { } tooSmall)
+                Gfx.Text(b, Gfx.Fit(tooSmall, this.Area.Width - 72), new Vector2(this.Area.X + 36, this.Area.Bottom - 150), Color.DarkRed);
             if (CoreMod.Sync?.UsingHostContent == true)
             {
                 string note = CoreMod.Sync.CanChangeHostContent

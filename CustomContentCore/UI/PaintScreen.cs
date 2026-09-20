@@ -171,6 +171,9 @@ namespace CustomContentCore.UI
         /// <summary>Whether the view has been placed for the image yet.</summary>
         private bool Placed;
 
+        /// <summary>Whether the colour cycler had to move under the row above, because the window is too narrow for one row.</summary>
+        private bool TintOnSecondRow;
+
         /// <summary>Roughly how much memory the undo history may use, so painting on a huge sheet can't fill it up.</summary>
         private const long MaxUndoBytes = 48L * 1024 * 1024;
 
@@ -286,7 +289,7 @@ namespace CustomContentCore.UI
                 "What's drawn behind see-through pixels: a checkerboard, or a plain colour to see the art against."));
             this.FillBox = this.Add(new Checkbox("Fill shape", false, v => this.FillShapes = v, "Draw rectangles and ovals filled in instead of as an outline."));
             this.MirrorCycler = this.Add(new Cycler(
-                new() { ("off", "off"), ("lr", "side to side"), ("ud", "up-down"), ("both", "both ways") },
+                new() { ("off", "Mirror: off"), ("lr", "Mirror: sides"), ("ud", "Mirror: up-down"), ("both", "Mirror: both") },
                 "off",
                 v => this.Mirror = v,
                 "Draw the same strokes mirrored. On a sheet it mirrors within the sprite you're drawing in, not across the whole sheet."));
@@ -328,46 +331,66 @@ namespace CustomContentCore.UI
             int top = area.Y + 84;
             int bottom = area.Bottom - 96;
 
-            // tools down the left, with the drawing options under them; the top row keeps the view options
             int toolW = 175, toolH = 42, toolGap = 5;
-            int ty = top + 60;
-            foreach ((_, Button button) in this.ToolButtons)
-            {
-                button.Bounds = new Rectangle(area.X + pad, ty, toolW, toolH);
-                ty += toolH + toolGap;
-            }
 
-
-            this.UndoButton.Bounds = new Rectangle(area.X + pad, top, 110, 48);
-            this.RedoButton.Bounds = new Rectangle(this.UndoButton.Bounds.Right + 8, top, 110, 48);
-            this.GuideBox.Bounds = new Rectangle(this.RedoButton.Bounds.Right + 24, top + 2, 130, 44);
-            this.BackgroundCycler.Bounds = new Rectangle(this.GuideBox.Bounds.Right + 106, top, 200, 48);
-            this.TintCycler.Bounds = new Rectangle(this.BackgroundCycler.Bounds.Right + 100, top, 210, 48);
+            // the top row has to fit in a small window too, so the view options are placed from the right and what's left
+            // is shared out on the left; the two cyclers give up their width first, and the tint drops to a second row last
             this.ZoomInButton.Bounds = new Rectangle(area.Right - pad - 48, top, 48, 48);
             this.ZoomOutButton.Bounds = new Rectangle(this.ZoomInButton.Bounds.X - 8 - 48, top, 48, 48);
             this.FitButton.Bounds = new Rectangle(this.ZoomOutButton.Bounds.X - 8 - 90, top, 90, 48);
             this.WidthButton.Bounds = new Rectangle(this.FitButton.Bounds.X - 8 - 110, top, 110, 48);
             this.GridBox.Bounds = new Rectangle(this.WidthButton.Bounds.X - 12 - 110, top + 2, 110, 44);
 
+            this.UndoButton.Bounds = new Rectangle(area.X + pad, top, 110, 48);
+            this.RedoButton.Bounds = new Rectangle(this.UndoButton.Bounds.Right + 8, top, 110, 48);
+            this.GuideBox.Bounds = new Rectangle(this.RedoButton.Bounds.Right + 24, top + 2, 130, 44);
+
+            int room = this.GridBox.Bounds.X - 16 - (this.GuideBox.Bounds.Right + 8);
+            int labels = 106 + 72; // the words drawn to the left of each cycler
+            int cyclers = Math.Min(410, Math.Max(200, room - labels));
+            int backgroundW = cyclers * 200 / 410, tintW = cyclers - backgroundW;
+            bool tintFitsOnTop = room >= labels + 300;
+
+            this.BackgroundCycler.Bounds = new Rectangle(this.GuideBox.Bounds.Right + 106, top, backgroundW, 48);
+            this.TintCycler.Bounds = tintFitsOnTop
+                ? new Rectangle(this.BackgroundCycler.Bounds.Right + 72, top, tintW, 48)
+                : new Rectangle(area.X + pad + 72, top + 52, Math.Min(210, this.GuideBox.Bounds.Right - area.X - pad - 72), 44);
+            this.TintOnSecondRow = !tintFitsOnTop;
+
+            // tools down the left, under the top bar (which is two rows deep in a narrow window)
+            int contentTop = top + (tintFitsOnTop ? 60 : 108);
+            int ty = contentTop;
+            foreach ((_, Button button) in this.ToolButtons)
+            {
+                button.Bounds = new Rectangle(area.X + pad, ty, toolW, toolH);
+                ty += toolH + toolGap;
+            }
+
             int paletteH = 56;
             int canvasX = area.X + pad + toolW + 16;
             int actionW = 170;
-            this.CanvasArea = new Rectangle(canvasX, top + 60, area.Right - pad - actionW - 16 - canvasX, bottom - (top + 60) - paletteH - 12);
+            this.CanvasArea = new Rectangle(canvasX, contentTop, area.Right - pad - actionW - 16 - canvasX, bottom - contentTop - paletteH - 12);
 
-            // what to do with the selection lives beside the canvas, leaving the row underneath for the colours
+            // what to do with the selection lives beside the canvas, with how the tools behave under it. In a short window the
+            // rows tighten up rather than running over the Save button below, which used to make saving impossible.
+            Button[] actions = { this.SpriteButton, this.CopyButton, this.PasteButton, this.ClearButton, this.FlipButton, this.FlipDownButton, this.TurnButton };
+            int rows = actions.Length + 4; // the four rows underneath: size, shape, fill, mirror
+            int columnBottom = area.Bottom - 96 - 8;
+            int step = Math.Clamp((columnBottom - this.CanvasArea.Y - 40) / rows, 30, 50);
+            int rowH = Math.Max(26, step - 6);
+
             int ay = this.CanvasArea.Y;
-            foreach (Button button in new[] { this.SpriteButton, this.CopyButton, this.PasteButton, this.ClearButton, this.FlipButton, this.FlipDownButton, this.TurnButton })
+            foreach (Button button in actions)
             {
-                button.Bounds = new Rectangle(area.Right - pad - actionW, ay, actionW, 44);
-                ay += 50;
+                button.Bounds = new Rectangle(area.Right - pad - actionW, ay, actionW, rowH);
+                ay += step;
             }
 
-            // how the tools behave, under the buttons that act on the selection
-            ay += 16;
-            this.SizeCycler.Bounds = new Rectangle(area.Right - pad - actionW, ay, actionW, 44);
-            this.ShapeCycler.Bounds = new Rectangle(area.Right - pad - actionW, ay + 50, actionW, 44);
-            this.FillBox.Bounds = new Rectangle(area.Right - pad - actionW, ay + 100, actionW, 44);
-            this.MirrorCycler.Bounds = new Rectangle(area.Right - pad - actionW, ay + 176, actionW, 44);
+            ay += 12;
+            this.SizeCycler.Bounds = new Rectangle(area.Right - pad - actionW, ay, actionW, rowH);
+            this.ShapeCycler.Bounds = new Rectangle(area.Right - pad - actionW, ay + step, actionW, rowH);
+            this.FillBox.Bounds = new Rectangle(area.Right - pad - actionW, ay + step * 2, actionW, rowH);
+            this.MirrorCycler.Bounds = new Rectangle(area.Right - pad - actionW, ay + step * 3, actionW, rowH);
 
             // the selection buttons share the palette row, so the top row doesn't overflow
             this.ColourButton.Bounds = new Rectangle(this.CanvasArea.X + 52, this.CanvasArea.Bottom + 8, 200, 44);
@@ -401,13 +424,14 @@ namespace CustomContentCore.UI
             if (this.SpriteField.Visible)
                 Gfx.Text(b, "Sprite", new Vector2(this.SpriteField.Bounds.X - 84, this.SpriteField.Bounds.Y + 10));
             Gfx.Text(b, "Behind", new Vector2(this.BackgroundCycler.Bounds.X - 92, this.BackgroundCycler.Bounds.Y + 12));
-            Gfx.Text(b, "Colour", new Vector2(this.TintCycler.Bounds.X - 72, this.TintCycler.Bounds.Y + 12));
-            Gfx.Text(b, "Mirror", new Vector2(this.MirrorCycler.Bounds.X + 4, this.MirrorCycler.Bounds.Y - 28));
+            Gfx.Text(b, "Colour", new Vector2(this.TintCycler.Bounds.X - 68, this.TintCycler.Bounds.Y + 12));
             this.DrawPalette(b, mouseX, mouseY);
             base.Draw(b, mouseX, mouseY);
 
-            string help = this.Message ?? $"{this.Width}x{this.Height} pixels, {this.Zoom}x zoom.";
-            Gfx.Message(b, help, this.HelpButton.Bounds.X - area.X - 60, new Vector2(area.X + 36, area.Bottom - 70), this.Message != null ? Color.DarkGreen : Color.DimGray);
+            string help = this.Message
+                ?? CustomContent.SmallWindowWarning
+                ?? $"{this.Width}x{this.Height} pixels, {this.Zoom}x zoom.";
+            Gfx.Message(b, help, Math.Max(180, this.KeysButton.Bounds.X - this.CanvasArea.X - 24), new Vector2(this.CanvasArea.X, area.Bottom - 70), this.Message != null ? Color.DarkGreen : Color.DimGray);
         }
 
         /// <summary>Draw the image, the transparency checkerboard behind it and the sprite grid over it.</summary>

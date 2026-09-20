@@ -6,6 +6,7 @@ using System.Text;
 using CustomContentCore.UI;
 using Microsoft.Xna.Framework.Graphics;
 using StardewModdingAPI;
+using StardewValley;
 
 namespace CustomContentCore
 {
@@ -226,6 +227,17 @@ namespace CustomContentCore
                 ? path
                 : System.IO.Path.GetFileName(path); // anything with tricks in it keeps only its name
         }
+
+        /// <summary>The smallest window the editor's screens are laid out for.</summary>
+        public const int MinimumWidth = 1600, MinimumHeight = 900;
+
+        /// <summary>Whether the game's window is smaller than the editor is made for, so screens are cramped.</summary>
+        public static bool WindowIsSmall => Game1.uiViewport.Width < MinimumWidth || Game1.uiViewport.Height < MinimumHeight;
+
+        /// <summary>A line to show when the window is too small, or null when there's nothing to say.</summary>
+        public static string? SmallWindowWarning => WindowIsSmall
+            ? $"This window is {Game1.uiViewport.Width}x{Game1.uiViewport.Height}. The editor is made for {MinimumWidth}x{MinimumHeight} or bigger; some buttons are cramped below that."
+            : null;
 
         public static string ToFileName(string? name)
         {
