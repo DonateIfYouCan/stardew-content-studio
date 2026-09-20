@@ -36,6 +36,10 @@ namespace CustomCharacters.UI
         private string? Message;
         private Color MessageColor = Color.DarkRed;
 
+        /// <summary>The sheet image the painter is open on, if any, as asked for with <see cref="CustomContent.TakeLock"/>.</summary>
+        /// <remarks>One sheet holds every hairstyle (or every hat, or every shirt), so while Player A paints it nobody else may.</remarks>
+        private string? HeldSheet;
+
         private readonly Cycler LayerCycler;
         private readonly Button PrevItemButton;
         private readonly Button NextItemButton;
@@ -89,8 +93,14 @@ namespace CustomCharacters.UI
             this.SyncButtons();
         }
 
+        public override void OnResume()
+        {
+            this.ReleaseSheet(); // the painter (or whatever else was opened) is closed again
+        }
+
         public override void Dispose()
         {
+            this.ReleaseSheet();
             foreach (Texture2D? texture in this.Originals.Values.Concat(this.HdSheets.Values))
                 texture?.Dispose();
         }
@@ -370,10 +380,10 @@ namespace CustomCharacters.UI
             FarmerLayer layer = this.Layer;
             (Texture2D? hd, int factor, _) = this.GetSheet(layer);
 
-            // editing a sheet you already have: paint it at the size it already is
+            // editing a sheet you already have: paint it at the size it already is, and hold that file while it's open
             if (hd != null && this.Files.TryGetValue(layer.Id, out string? file) && this.Store.DecodeForEditor(file) is { } mine)
             {
-                this.OpenPaint(layer, mine, factor);
+                this.PaintFile(layer, file, mine, factor);
                 return;
             }
 
@@ -389,6 +399,44 @@ namespace CustomCharacters.UI
                 ("The game's size (1x)", $"{original.Width}x{original.Height}: one pixel is one game pixel.", () => this.OpenPaint(layer, ImageProcessor.FromTexture(original), 1)),
                 ("Twice the size (2x)", $"{original.Width * 2}x{original.Height * 2}: room for finer detail.", () => this.OpenPaint(layer, ImageProcessor.Enlarge(ImageProcessor.FromTexture(original), 2), 2)),
                 ("Four times the size (4x)", $"{original.Width * 4}x{original.Height * 4}: the usual size for HD art.", () => this.OpenPaint(layer, ImageProcessor.Enlarge(ImageProcessor.FromTexture(original), 4), 4))));
+        }
+
+        /// <summary>Open the paint screen on a sheet image the mod already has, unless another player in the game is changing that file.</summary>
+        /// <param name="layer">The sheet being painted.</param>
+        /// <param name="file">The image's path in the images folder, which is what's asked for.</param>
+        /// <param name="image">The pixels to start from.</param>
+        /// <param name="factor">How many times bigger than the game's sheet those pixels are, for the grid.</param>
+        /// <remarks>
+        /// This is the one that matters: every hairstyle lives in the same sheet, so if Player A is painting it, Player B painting
+        /// it too would save a copy made before Player A's work and throw it away. The file is held until the painter is closed.
+        /// </remarks>
+        private void PaintFile(FarmerLayer layer, string file, Pixels image, int factor)
+        {
+            string thing = SheetLockThing(file);
+            string label = $"the {layer.Label.ToLowerInvariant()} sheet";
+            CustomContent.TakeLock(this.Store.Manifest, thing, label, (granted, holder) =>
+            {
+                if (!granted)
+                {
+                    this.ShowError($"{holder} is changing {label} right now.");
+                    return;
+                }
+                this.HeldSheet = thing;
+                this.OpenPaint(layer, image, factor);
+            });
+        }
+
+        /// <summary>What an image in the mod's images folder is called when asking to be the only one changing it.</summary>
+        /// <param name="file">The image's path relative to that folder.</param>
+        private static string SheetLockThing(string file) => $"file:{CharacterStore.ImageFolderName}/{file}";
+
+        /// <summary>Let go of the sheet image the painter was open on, so another player can take their turn at it.</summary>
+        private void ReleaseSheet()
+        {
+            if (this.HeldSheet is not { } thing)
+                return;
+            this.HeldSheet = null;
+            CustomContent.ReleaseLock(this.Store.Manifest, thing);
         }
 
         /// <summary>Open the paint screen and use whatever comes back as this layer's sheet.</summary>

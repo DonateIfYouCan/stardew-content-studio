@@ -46,6 +46,8 @@ namespace CustomContentCore.UI
             this.ExportButton.Visible = this.ImportButton.Visible = ContentPacks.Any;
             this.VersionsButton = this.Add(new Button("Earlier versions", () => this.Root.Push(new VersionsScreen()), "Put back a file as it was before it was last written over, e.g. after a player in your game changed something."));
             this.MultiplayerButton = this.Add(new Button("Multiplayer", () => this.Root.Push(new MultiplayerScreen()), "Share your content with the players in your game, use a host's content, and let players change it. All off unless you turn it on."));
+            this.DonateButton = this.Add(new Button("Buy me a coffee", () => this.CopyLink(DonateUrl), $"Optional. Copies {DonateUrl} to paste in your browser. Nothing is unlocked by donating."));
+            this.GitHubButton = this.Add(new Button("GitHub: bugs & ideas", () => this.CopyLink(GitHubUrl), $"Source, docs, bug reports, feedback and feature requests. Copies {GitHubUrl} to paste in your browser."));
         }
 
         /// <summary>Copy a link to the clipboard (opening a browser from the game isn't reliable on every OS).</summary>

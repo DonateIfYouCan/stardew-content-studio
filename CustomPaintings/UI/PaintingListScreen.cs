@@ -553,7 +553,8 @@ namespace CustomPaintings.UI
                 ? $"Delete '{row.Name}'?\n\nIts image will be moved to paintings/{PaintingStore.RemovedFolderName} so it isn't added again.\n{warning}"
                 : $"Delete '{row.Name}'?\n\n{warning}";
 
-            this.Root.Push(new ConfirmScreen(message, "Delete", () =>
+            // the confirmation pops before it runs, which resumes this list and lets the file go, so take it again for the write itself
+            this.Root.Push(new ConfirmScreen(message, "Delete", () => this.WhenNobodyElseIsChangingIt(() =>
             {
                 try
                 {
@@ -582,7 +583,7 @@ namespace CustomPaintings.UI
                 {
                     this.ShowMessage($"Couldn't delete: {ex.Message}", error: true);
                 }
-            }));
+            })));
         }
 
         /// <summary>Export the selected game painting's original art (ignoring any replacement).</summary>

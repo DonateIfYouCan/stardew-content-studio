@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using CustomContentCore;
 using CustomContentCore.UI;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -66,7 +67,7 @@ namespace CustomCharacters.UI
             Button button = base.Add(new Button(label, onClick, description));
             this.Entries.Add((button, description));
             if (writes)
-                this.WritingButtons.Add(button);
+                this.WritingButtons.Add((button, description));
         }
 
         protected override void OnLayout(Rectangle area)
@@ -98,10 +99,10 @@ namespace CustomCharacters.UI
         private void SyncButtons()
         {
             string? busy = CustomContent.WhoIsChanging(this.Store.Manifest, LockThing);
-            foreach (Button button in this.WritingButtons)
+            foreach ((Button button, string tooltip) in this.WritingButtons)
             {
                 button.Enabled = busy == null;
-                button.Tooltip = busy != null ? $"{busy} is changing the characters right now." : this.Entries.First(e => e.Button == button).Description;
+                button.Tooltip = busy != null ? $"{busy} is changing the characters right now." : tooltip;
             }
         }
     }

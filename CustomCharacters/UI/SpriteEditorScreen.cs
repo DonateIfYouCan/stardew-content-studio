@@ -39,6 +39,10 @@ namespace CustomCharacters.UI
         private string? Message;
         private Color MessageColor = Color.DarkRed;
 
+        /// <summary>The sheet image the painter is open on, if any, as asked for with <see cref="CustomContent.TakeLock"/>.</summary>
+        /// <remarks>The main sheet is used by every outfit without its own, so while Player A paints it nobody else may.</remarks>
+        private string? HeldSheet;
+
         private readonly Cycler OutfitCycler;
         private readonly Button ExportButton;
         private readonly Button ChooseButton;
@@ -78,8 +82,14 @@ namespace CustomCharacters.UI
             this.SyncButtons();
         }
 
+        public override void OnResume()
+        {
+            this.ReleaseSheet(); // the painter (or whatever else was opened) is closed again
+        }
+
         public override void Dispose()
         {
+            this.ReleaseSheet();
             foreach (Texture2D? texture in this.Originals.Values.Concat(this.HdSheets.Values))
                 texture?.Dispose();
         }
@@ -247,9 +257,21 @@ namespace CustomCharacters.UI
         {
             string outfit = this.Outfit;
             string? file = outfit.Length == 0 ? this.Set.File : this.Set.Outfits.GetValueOrDefault(outfit);
-            if (file != null && this.Store.DecodeForEditor(file) is { } mine)
+            if (!string.IsNullOrEmpty(file) && this.Store.DecodeForEditor(file) is { } mine)
             {
-                this.OpenPaint(outfit, mine);
+                // a sheet the mod already has: hold that file while the painter is open, so Player B can't paint over Player A's work
+                string thing = $"file:{CharacterStore.ImageFolderName}/{file}";
+                string label = $"{this.DisplayName}'s sprite sheet";
+                CustomContent.TakeLock(this.Store.Manifest, thing, label, (granted, holder) =>
+                {
+                    if (!granted)
+                    {
+                        this.ShowError($"{holder} is changing {label} right now.");
+                        return;
+                    }
+                    this.HeldSheet = thing;
+                    this.OpenPaint(outfit, mine);
+                });
                 return;
             }
 
@@ -347,6 +369,15 @@ namespace CustomCharacters.UI
                 this.MessageColor = Color.DarkGreen;
                 this.SyncButtons();
             }, this.Store.BrowserPlaces));
+        }
+
+        /// <summary>Let go of the sheet image the painter was open on, so another player can take their turn at it.</summary>
+        private void ReleaseSheet()
+        {
+            if (this.HeldSheet is not { } thing)
+                return;
+            this.HeldSheet = null;
+            CustomContent.ReleaseLock(this.Store.Manifest, thing);
         }
 
         private void RemoveSheet()
