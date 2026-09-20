@@ -39,9 +39,13 @@ namespace CustomCrops
             });
             helper.ConsoleCommands.Add("ccrop_list", "Lists the custom crops.", (_, _) =>
             {
-                foreach (CustomCrop crop in Store.File.Crops)
-                    this.Monitor.Log($"  {crop.Id}: \"{crop.Name}\" seeds {Store.GetSeedId(crop.Id)}, {string.Join("/", crop.Seasons)}, {crop.DaysInPhase.Sum()} days, sells {crop.SellPrice}g, seeds {crop.SeedPrice}g", LogLevel.Info);
-                this.Monitor.Log($"{Store.File.Crops.Count} crop(s).", LogLevel.Info);
+                foreach (CropStore.RenderedCrop entry in Store.Entries)
+                {
+                    CustomCrop crop = entry.Data;
+                    string owner = entry.IsOwn ? "" : $" (from {entry.OwnerName})";
+                    this.Monitor.Log($"  {entry.Id}: \"{crop.Name}\"{owner} seeds {Store.GetSeedId(entry.Id)}, {string.Join("/", crop.Seasons)}, {crop.DaysInPhase.Sum()} days, sells {crop.SellPrice}g, seeds {crop.SeedPrice}g", LogLevel.Info);
+                }
+                this.Monitor.Log($"{Store.Entries.Count} crop(s).", LogLevel.Info);
             });
             helper.ConsoleCommands.Add("ccrop_give", "Adds seeds (and a harvest) of a custom crop to your inventory.\nUsage: ccrop_give <crop id or name> [count]", (_, args) =>
             {
@@ -52,15 +56,15 @@ namespace CustomCrops
                 }
                 int count = args.Length > 1 && int.TryParse(args[^1], out int n) ? n : 10;
                 string name = string.Join(" ", args.Length > 1 && int.TryParse(args[^1], out int _) ? args[..^1] : args);
-                CustomCrop? crop = Store.File.Crops.FirstOrDefault(c => c.Id.Equals(name, StringComparison.OrdinalIgnoreCase) || c.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
-                if (crop == null)
+                CropStore.RenderedCrop? entry = Store.Entries.FirstOrDefault(e => e.Id.Equals(name, StringComparison.OrdinalIgnoreCase) || e.Data.Id.Equals(name, StringComparison.OrdinalIgnoreCase) || e.Data.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+                if (entry == null)
                 {
                     this.Monitor.Log($"No crop matches '{name}'.", LogLevel.Warn);
                     return;
                 }
-                Game1.player.addItemToInventoryBool(ItemRegistry.Create("(O)" + Store.GetSeedId(crop.Id), count));
-                Game1.player.addItemToInventoryBool(ItemRegistry.Create("(O)" + Store.GetHarvestId(crop.Id), 1));
-                this.Monitor.Log($"Added {count} {crop.Name} Seeds and 1 {crop.Name}.", LogLevel.Info);
+                Game1.player.addItemToInventoryBool(ItemRegistry.Create("(O)" + Store.GetSeedId(entry.Id), count));
+                Game1.player.addItemToInventoryBool(ItemRegistry.Create("(O)" + Store.GetHarvestId(entry.Id), 1));
+                this.Monitor.Log($"Added {count} {entry.DisplayName} Seeds and 1 {entry.DisplayName}.", LogLevel.Info);
             });
             helper.ConsoleCommands.Add("ccrop_export", "Exports a game crop's growth sheet as a template.\nUsage: ccrop_export <crop name, like Parsnip>", (_, args) =>
             {

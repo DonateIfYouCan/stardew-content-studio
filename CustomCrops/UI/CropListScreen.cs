@@ -14,7 +14,7 @@ namespace CustomCrops.UI
     internal sealed class CropListScreen : Screen
     {
         private readonly CropStore Store;
-        private readonly ScrollList<CustomCrop> List;
+        private readonly ScrollList<CropStore.RenderedCrop> List;
         private readonly Button NewButton;
         private readonly Button EditButton;
         private readonly Button GiveButton;
@@ -28,7 +28,7 @@ namespace CustomCrops.UI
         public CropListScreen(CropStore store)
         {
             this.Store = store;
-            this.List = this.Add(new ScrollList<CustomCrop>(80, this.DrawRow)
+            this.List = this.Add(new ScrollList<CropStore.RenderedCrop>(80, this.DrawRow)
             {
                 OnSelect = (_, _) => this.SyncButtons(),
                 OnDoubleClick = _ => this.EditSelected(),
@@ -45,10 +45,10 @@ namespace CustomCrops.UI
 
         public override void OnResume() => this.Refresh();
 
-        /// <summary>Open the editor for a crop by name or ID.</summary>
+        /// <summary>Open the editor for one of your own crops by name or ID (another player's can't be edited).</summary>
         public bool OpenByName(string search)
         {
-            int index = this.List.Items.FindIndex(c => c.Name.Equals(search, StringComparison.OrdinalIgnoreCase) || c.Id.Equals(search, StringComparison.OrdinalIgnoreCase));
+            int index = this.List.Items.FindIndex(entry => entry.IsOwn && (entry.Data.Name.Equals(search, StringComparison.OrdinalIgnoreCase) || entry.Data.Id.Equals(search, StringComparison.OrdinalIgnoreCase)));
             if (index < 0)
                 return false;
             this.List.SelectedIndex = index;
@@ -82,29 +82,34 @@ namespace CustomCrops.UI
                 Gfx.Message(b, this.Message, this.CloseButton.Bounds.X - this.Area.X - 60, new Vector2(this.Area.X + 36, this.Area.Bottom - 70), this.MessageColor);
         }
 
-        private void DrawRow(SpriteBatch b, CustomCrop crop, Rectangle bounds, bool selected, bool hover)
+        private void DrawRow(SpriteBatch b, CropStore.RenderedCrop entry, Rectangle bounds, bool selected, bool hover)
         {
-            if (this.GetIcon(crop) is { } icon)
+            CustomCrop crop = entry.Data;
+            if (this.GetIcon(entry) is { } icon)
             {
                 int size = bounds.Height - 16;
                 b.Draw(icon, new Rectangle(bounds.X + 8, bounds.Y + 8, size, size), new Rectangle(icon.Width / 2, 0, icon.Width / 2, icon.Height), Color.White);
             }
             int textX = bounds.X + bounds.Height + 12;
-            Gfx.Text(b, Gfx.Fit(crop.Name, bounds.Right - textX - 12), new Vector2(textX, bounds.Y + 8));
+            string? badge = entry.IsOwn ? null : $"from {entry.OwnerName}"; // say whose crop it is, since you can look at it but not change it
+            Gfx.Text(b, Gfx.Fit(entry.DisplayName, bounds.Right - textX - (badge != null ? 140 : 12)), new Vector2(textX, bounds.Y + 8));
             string seasons = string.Join(", ", crop.Seasons.Select(s => char.ToUpper(s[0]) + s[1..]));
             string details = $"{seasons} · {CropStore.Days(crop.DaysInPhase.Sum())}" + (crop.RegrowDays > 0 ? $", regrows every {CropStore.Days(crop.RegrowDays)}" : "") + $" · sells for {crop.SellPrice}g · seeds {crop.SeedPrice}g";
             Gfx.Text(b, Gfx.Fit(details, bounds.Right - textX - 12), new Vector2(textX, bounds.Y + 42), Color.DimGray);
+            if (badge != null)
+            {
+                Vector2 size = Gfx.Font.MeasureString(badge);
+                Gfx.Text(b, badge, new Vector2(bounds.Right - size.X - 12, bounds.Y + 8), new Color(160, 80, 20));
+            }
         }
 
-        private Texture2D? GetIcon(CustomCrop crop)
+        private Texture2D? GetIcon(CropStore.RenderedCrop entry)
         {
-            if (this.Icons.TryGetValue(crop.Id, out Texture2D? icon))
+            if (this.Icons.TryGetValue(entry.Id, out Texture2D? icon))
                 return icon;
-            if (!this.Store.Crops.TryGetValue(crop.Id, out CropStore.RenderedCrop? rendered))
-                return null;
-            icon = new Texture2D(Game1.graphics.GraphicsDevice, rendered.ObjectsHd.Width, rendered.ObjectsHd.Height);
-            icon.SetData(rendered.ObjectsHd.Data);
-            this.Icons[crop.Id] = icon;
+            icon = new Texture2D(Game1.graphics.GraphicsDevice, entry.ObjectsHd.Width, entry.ObjectsHd.Height);
+            icon.SetData(entry.ObjectsHd.Data);
+            this.Icons[entry.Id] = icon;
             return icon;
         }
 
@@ -119,20 +124,21 @@ namespace CustomCrops.UI
         {
             string? selected = this.List.Selected?.Id;
             this.ClearIcons();
-            this.List.Items = this.Store.File.Crops.ToList();
-            this.List.SelectedIndex = this.List.Items.FindIndex(c => c.Id == selected);
+            this.List.Items = this.Store.Entries.ToList(); // your own crops first, then those of the players sharing theirs
+            this.List.SelectedIndex = this.List.Items.FindIndex(entry => entry.Id == selected);
             this.SyncButtons();
         }
 
         private void SyncButtons()
         {
             bool selected = this.List.Selected != null;
-            this.EditButton.Visible = selected;
+            bool own = this.List.Selected?.IsOwn == true; // another player's crop can be looked at and planted, not changed
+            this.EditButton.Visible = own;
             this.GiveButton.Visible = selected;
             this.GiveButton.Enabled = Context.IsWorldReady;
             this.GiveButton.Tooltip = Context.IsWorldReady ? "Adds 10 seeds to your inventory, for testing." : "Load a save first.";
-            this.DuplicateButton.Visible = this.List.Selected != null;
-            this.DeleteButton.Visible = selected;
+            this.DuplicateButton.Visible = own;
+            this.DeleteButton.Visible = own;
         }
 
         private void CreateNew()
@@ -143,15 +149,15 @@ namespace CustomCrops.UI
 
         private void EditSelected()
         {
-            if (this.List.Selected is { } crop)
-                this.Root.Push(new CropEditorScreen(this.Store, crop, isNew: false, name => this.ShowMessage($"Saved '{name}'.")));
+            if (this.List.Selected is { IsOwn: true } entry)
+                this.Root.Push(new CropEditorScreen(this.Store, entry.Data, isNew: false, name => this.ShowMessage($"Saved '{name}'.")));
         }
 
         private void GiveSelected()
         {
-            if (this.List.Selected is not { } crop || !Context.IsWorldReady)
+            if (this.List.Selected is not { } entry || !Context.IsWorldReady)
                 return;
-            Item seeds = ItemRegistry.Create("(O)" + this.Store.GetSeedId(crop.Id), 10);
+            Item seeds = ItemRegistry.Create("(O)" + this.Store.GetSeedId(entry.Id), 10);
             if (!Game1.player.addItemToInventoryBool(seeds))
                 Game1.createItemDebris(seeds, Game1.player.getStandingPosition(), Game1.player.FacingDirection);
             Game1.playSound("coin");
@@ -161,8 +167,9 @@ namespace CustomCrops.UI
         /// <summary>Copy the selected crop, so you can tweak it without losing the original.</summary>
         private void DuplicateSelected()
         {
-            if (this.List.Selected is not { } crop)
+            if (this.List.Selected is not { IsOwn: true } entry)
                 return;
+            CustomCrop crop = entry.Data;
             CropsFile file = this.Store.ReadFile();
             CustomCrop copy = Newtonsoft.Json.JsonConvert.DeserializeObject<CustomCrop>(Newtonsoft.Json.JsonConvert.SerializeObject(crop))!;
             copy.Name = $"{crop.Name} copy";
@@ -185,8 +192,9 @@ namespace CustomCrops.UI
 
         private void DeleteSelected()
         {
-            if (this.List.Selected is not { } crop)
+            if (this.List.Selected is not { IsOwn: true } entry)
                 return;
+            CustomCrop crop = entry.Data;
             this.Root.Push(new ConfirmScreen($"Delete '{crop.Name}'?\n\nPlanted crops, seeds and harvests of it in your world will turn into Error Items.", "Delete", () =>
             {
                 CropsFile file = this.Store.ReadFile();

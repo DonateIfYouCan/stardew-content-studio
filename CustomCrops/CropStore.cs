@@ -42,11 +42,29 @@ namespace CustomCrops
         /// <summary>Rendered art by crop ID.</summary>
         private Dictionary<string, RenderedCrop> Rendered = new(StringComparer.OrdinalIgnoreCase);
 
+        /// <summary>The loaded crops in the order they were read: your own first, then each player sharing theirs.</summary>
+        private List<RenderedCrop> Ordered = new();
+
         /// <summary>Rendered art for one crop (premultiplied pixels).</summary>
         public sealed class RenderedCrop
         {
             public CustomCrop Data = null!;
             public int Scale = 1;
+
+            /// <summary>The ID this crop is known by in the game's data: another player's is tagged, so two players' crops can't clash.</summary>
+            public string Id = "";
+
+            /// <summary>The name shown in-game, with the owner's name after it for another player's crop.</summary>
+            public string DisplayName = "";
+
+            /// <summary>The player this crop belongs to (0 for your own), in a multiplayer game where players share content.</summary>
+            public long OwnerId;
+
+            /// <summary>The name of the player it belongs to, empty for your own.</summary>
+            public string OwnerName = "";
+
+            /// <summary>Whether this is your own crop, the only kind you can change.</summary>
+            public bool IsOwn => this.OwnerId == 0;
 
             /// <summary>Seed (left) and harvest (right) icons, 32x16 at the game's resolution.</summary>
             public Pixels ObjectsLow = null!;
@@ -67,10 +85,18 @@ namespace CustomCrops
         /// <summary>The folder content is loaded from: the mod folder, or (in multiplayer) the host's content.</summary>
         private string ContentFolder => ContentPacks.GetContentRoot(this.Manifest, this.Helper.DirectoryPath);
         public string ImageFolder => Path.Combine(this.ContentFolder, ImageFolderName);
+
+        /// <summary>Your own <c>crops.json</c>; the only one that's ever written back.</summary>
         public CropsFile File { get; private set; } = new();
+
         public bool IgnoringFileChanges => DateTime.UtcNow < this.IgnoreFileChangesUntil;
         public (string Label, string Path)[] BrowserPlaces => new[] { ("Mod images", this.ImageFolder) };
+
+        /// <summary>The loaded crops by their game ID (see <see cref="RenderedCrop.Id"/>).</summary>
         public IReadOnlyDictionary<string, RenderedCrop> Crops => this.Rendered;
+
+        /// <summary>The loaded crops in display order: your own first, then those of each player sharing theirs.</summary>
+        public IReadOnlyList<RenderedCrop> Entries => this.Ordered;
 
 
         /*********
@@ -85,30 +111,40 @@ namespace CustomCrops
         }
 
         /// <summary>Get the files in use (data file and referenced images), which are the only ones shared in multiplayer.</summary>
+        /// <remarks>Only ever your own files: another player's images are theirs to share, not ours to pass on.</remarks>
         public IEnumerable<string> GetSharedFiles()
         {
             List<string?> files = new() { Path.Combine(this.ContentFolder, DataFileName) };
-            foreach (CustomCrop crop in this.File.Crops)
-                files.AddRange(new[] { crop.HarvestImage?.File, crop.SeedImage?.File, crop.GrowthSheet }.Select(this.ResolveImage));
+            foreach (CustomCrop crop in this.File.Crops) // this.File is always your own crops.json, never a peer's
+                files.AddRange(new[] { crop.HarvestImage?.File, crop.SeedImage?.File, crop.GrowthSheet }.Select(file => this.ResolveImage(file)));
             return files.OfType<string>();
         }
 
         public string GetHarvestId(string id) => $"{this.Manifest.UniqueID}_{id}";
         public string GetSeedId(string id) => $"{this.Manifest.UniqueID}_{id}_Seeds";
+
+        /// <summary>Get the ID a crop is known by in the game's data: another player's crops are tagged, so two players can both have a 'Moonberry'.</summary>
+        /// <param name="id">The crop's ID as written in its owner's data file.</param>
+        /// <param name="source">The content it came from, or null for your own.</param>
+        public static string GetEntryId(string id, ContentPacks.ContentSource? source) => source is null or { IsOwn: true } ? id : CustomContent.OwnerTag(source) + "_" + id;
+
         private string GetObjectsAsset(string id) => $"Mods/{this.Manifest.UniqueID}/{id}/Objects";
         private string GetCropAsset(string id) => $"Mods/{this.Manifest.UniqueID}/{id}/Crop";
 
         public static int GetScale(int resolution) => resolution <= 0 || resolution >= 64 ? 4 : resolution >= 32 ? 2 : 1;
 
-        public CropsFile ReadFile()
+        /// <summary>Read a crops file without applying it.</summary>
+        /// <param name="folder">The content folder to read from, or null for your own.</param>
+        public CropsFile ReadFile(string? folder = null)
         {
+            string path = Path.Combine(folder ?? this.ContentFolder, DataFileName);
             try
             {
-                return CustomContent.ReadJsonFile<CropsFile>(Path.Combine(this.ContentFolder, DataFileName)) ?? new CropsFile();
+                return CustomContent.ReadJsonFile<CropsFile>(path) ?? new CropsFile();
             }
             catch (Exception ex)
             {
-                this.Monitor.Log($"Couldn't read {DataFileName} (is the JSON valid?): {ex.Message}", LogLevel.Error);
+                this.Monitor.Log($"Couldn't read {path} (is the JSON valid?): {ex.Message}", LogLevel.Error);
                 return new CropsFile();
             }
         }
@@ -125,31 +161,42 @@ namespace CustomCrops
 
         public void Reload()
         {
+            IReadOnlyList<ContentPacks.ContentSource> sources = CustomContent.GetContentSources(this.Manifest, this.Helper.DirectoryPath);
             this.File = this.ReadFile();
             foreach (RenderedCrop old in this.Rendered.Values)
                 foreach (Texture2D texture in old.Textures)
                     texture.Dispose();
 
             Dictionary<string, RenderedCrop> rendered = new(StringComparer.OrdinalIgnoreCase);
-            foreach (CustomCrop crop in this.File.Crops)
+            List<RenderedCrop> ordered = new();
+
+            // your own crops first, then those of the players sharing theirs
+            foreach (ContentPacks.ContentSource source in sources)
             {
-                if (string.IsNullOrWhiteSpace(crop.Id) || rendered.ContainsKey(crop.Id))
+                CropsFile sourceFile = source.IsOwn ? this.File : this.ReadFile(source.Folder);
+                foreach (CustomCrop crop in sourceFile.Crops)
                 {
-                    this.Monitor.Log($"Skipped crop '{crop.Name}': it needs a unique Id.", LogLevel.Warn);
-                    continue;
-                }
-                try
-                {
-                    rendered[crop.Id] = this.Render(crop, out string? warning);
-                    if (warning != null)
-                        this.Monitor.Log($"Crop '{crop.Name}': {warning}", LogLevel.Warn);
-                }
-                catch (Exception ex)
-                {
-                    this.Monitor.Log($"Couldn't load crop '{crop.Name}': {ex.Message}", LogLevel.Error);
+                    string id = GetEntryId(crop.Id, source);
+                    if (string.IsNullOrWhiteSpace(crop.Id) || rendered.ContainsKey(id))
+                    {
+                        this.Monitor.Log($"Skipped crop '{crop.Name}': it needs a unique Id.", LogLevel.Warn);
+                        continue;
+                    }
+                    try
+                    {
+                        rendered[id] = this.Render(crop, out string? warning, source);
+                        ordered.Add(rendered[id]);
+                        if (warning != null)
+                            this.Monitor.Log($"Crop '{crop.Name}': {warning}", LogLevel.Warn);
+                    }
+                    catch (Exception ex)
+                    {
+                        this.Monitor.Log($"Couldn't load crop '{crop.Name}': {ex.Message}", LogLevel.Error);
+                    }
                 }
             }
             this.Rendered = rendered;
+            this.Ordered = ordered;
 
             this.Helper.GameContent.InvalidateCache(asset =>
                 asset.Name.IsEquivalentTo("Data/Objects")
@@ -163,20 +210,32 @@ namespace CustomCrops
         /// <summary>Render a crop's art. Also used by the editor for previews.</summary>
         /// <param name="crop">The crop data.</param>
         /// <param name="warning">A problem worth telling the player about (the crop still works).</param>
-        public RenderedCrop Render(CustomCrop crop, out string? warning)
+        /// <param name="source">The content it came from: your own folder, or another player's in multiplayer.</param>
+        public RenderedCrop Render(CustomCrop crop, out string? warning, ContentPacks.ContentSource? source = null)
         {
             warning = null;
             int scale = GetScale(crop.Resolution);
-            RenderedCrop result = new() { Data = crop, Scale = scale };
+
+            // an image named in another player's data is only ever looked for in that player's folder
+            string? folder = source is { IsOwn: false } ? source.Folder : null;
+            RenderedCrop result = new()
+            {
+                Data = crop,
+                Scale = scale,
+                Id = GetEntryId(crop.Id, source),
+                OwnerId = source?.OwnerId ?? 0,
+                OwnerName = source is { IsOwn: false } ? source.OwnerName : "",
+                DisplayName = source is { IsOwn: false } ? $"{crop.Name} ({source.OwnerName})" : crop.Name
+            };
 
             // harvest icon
-            Pixels? harvest = this.LoadSquare(crop.HarvestImage, 16 * scale);
+            Pixels? harvest = this.LoadSquare(crop.HarvestImage, 16 * scale, folder);
             if (harvest == null && crop.HarvestImage != null)
                 warning = $"harvest image '{crop.HarvestImage.File}' not found.";
             harvest ??= Placeholder(16 * scale);
 
             // seed icon
-            Pixels seed = this.LoadSquare(crop.SeedImage, 16 * scale) ?? MakePacket(harvest, scale);
+            Pixels seed = this.LoadSquare(crop.SeedImage, 16 * scale, folder) ?? MakePacket(harvest, scale);
 
             Pixels objects = SideBySide(seed, harvest);
             result.ObjectsHd = new Pixels(ImageProcessor.Premultiply(objects.Data), objects.Width, objects.Height);
@@ -186,7 +245,7 @@ namespace CustomCrops
             Pixels? growth = null;
             if (!string.IsNullOrWhiteSpace(crop.GrowthSheet))
             {
-                growth = this.LoadGrowthSheet(crop.GrowthSheet, scale, out string? error);
+                growth = this.LoadGrowthSheet(crop.GrowthSheet, scale, out string? error, folder);
                 if (growth == null)
                     warning = error;
             }
@@ -279,17 +338,24 @@ namespace CustomCrops
             return Path.GetFileName(target);
         }
 
-        public string? ResolveImage(string? file)
+        /// <summary>Get the full path to an image referenced in the data, if it exists.</summary>
+        /// <param name="file">The image name from the data file.</param>
+        /// <param name="folder">The content folder it belongs to: your own, or another player's in multiplayer.</param>
+        public string? ResolveImage(string? file, string? folder = null)
         {
             if (string.IsNullOrWhiteSpace(file))
                 return null;
-            string path = Path.Combine(this.ImageFolder, file);
-            return System.IO.File.Exists(path) && CustomContent.IsInsideFolder(path, this.ImageFolder) ? Path.GetFullPath(path) : null; // only inside the content folder
+            string imageFolder = folder == null ? this.ImageFolder : Path.Combine(folder, ImageFolderName);
+            string path = Path.Combine(imageFolder, file);
+            return System.IO.File.Exists(path) && CustomContent.IsInsideFolder(path, imageFolder) ? Path.GetFullPath(path) : null; // only inside that one content folder
         }
 
-        public Pixels? Decode(string? file)
+        /// <summary>Read an image referenced in the data, or null if it's missing or unreadable.</summary>
+        /// <param name="file">The image name from the data file.</param>
+        /// <param name="folder">The content folder it belongs to: your own, or another player's in multiplayer.</param>
+        public Pixels? Decode(string? file, string? folder = null)
         {
-            string? path = this.ResolveImage(file);
+            string? path = this.ResolveImage(file, folder);
             if (path == null)
                 return null;
             try
@@ -343,23 +409,23 @@ namespace CustomCrops
                 int days = crop.DaysInPhase.Sum();
                 string seasons = string.Join(" and ", crop.Seasons.Select(s => char.ToUpper(s[0]) + s[1..].ToLowerInvariant()));
 
-                objects[this.GetSeedId(crop.Id)] = new ObjectData
+                objects[this.GetSeedId(rendered.Id)] = new ObjectData
                 {
-                    Name = $"{crop.Name} Seeds",
-                    DisplayName = $"{CustomContent.ToDisplayName(crop.Name, "Crop")} Seeds",
+                    Name = $"{rendered.DisplayName} Seeds",
+                    DisplayName = $"{CustomContent.ToDisplayName(rendered.DisplayName, "Crop")} Seeds",
                     Description = $"Plant these in {seasons}. Takes {Days(days)} to mature" + (crop.RegrowDays > 0 ? $", and keeps producing every {(crop.RegrowDays == 1 ? "day" : Days(crop.RegrowDays))}." : ".") + (crop.Trellis ? " Grows on a trellis." : ""),
                     Type = "Seeds",
                     Category = StardewValley.Object.SeedsCategory,
                     Price = Math.Max(1, crop.SeedPrice / 2),
-                    Texture = this.GetObjectsAsset(crop.Id),
+                    Texture = this.GetObjectsAsset(rendered.Id),
                     SpriteIndex = 0,
                     ContextTags = new List<string> { "custom_crop_seed" }
                 };
 
-                objects[this.GetHarvestId(crop.Id)] = new ObjectData
+                objects[this.GetHarvestId(rendered.Id)] = new ObjectData
                 {
-                    Name = crop.Name,
-                    DisplayName = CustomContent.ToDisplayName(crop.Name, "Crop"),
+                    Name = rendered.DisplayName,
+                    DisplayName = CustomContent.ToDisplayName(rendered.DisplayName, "Crop"),
                     Description = string.IsNullOrWhiteSpace(crop.Description) ? $"A homegrown {crop.Name.ToLowerInvariant()}." : crop.Description,
                     Type = "Basic",
                     Category = crop.Category.ToLowerInvariant() switch
@@ -371,7 +437,7 @@ namespace CustomCrops
                     },
                     Price = Math.Max(0, crop.SellPrice),
                     Edibility = crop.Energy > 0 ? (int)Math.Ceiling(crop.Energy / 2.5) : -300,
-                    Texture = this.GetObjectsAsset(crop.Id),
+                    Texture = this.GetObjectsAsset(rendered.Id),
                     SpriteIndex = 1,
                     ContextTags = new List<string> { "custom_crop" }
                 };
@@ -383,17 +449,17 @@ namespace CustomCrops
             foreach (RenderedCrop rendered in this.Rendered.Values)
             {
                 CustomCrop crop = rendered.Data;
-                crops[this.GetSeedId(crop.Id)] = new CropData
+                crops[this.GetSeedId(rendered.Id)] = new CropData
                 {
                     Seasons = crop.Seasons.Select(s => Enum.TryParse(s, true, out Season season) ? season : Season.Spring).Distinct().DefaultIfEmpty(Season.Spring).ToList(),
                     DaysInPhase = crop.DaysInPhase.Where(d => d > 0).Take(5).DefaultIfEmpty(1).ToList(),
                     RegrowDays = crop.RegrowDays > 0 ? crop.RegrowDays : -1,
                     IsRaised = crop.Trellis,
-                    HarvestItemId = this.GetHarvestId(crop.Id),
+                    HarvestItemId = this.GetHarvestId(rendered.Id),
                     HarvestMinStack = Math.Max(1, crop.HarvestMin),
                     HarvestMaxStack = Math.Max(Math.Max(1, crop.HarvestMin), crop.HarvestMax),
                     HarvestMethod = crop.Scythe ? HarvestMethod.Scythe : HarvestMethod.Grab,
-                    Texture = this.GetCropAsset(crop.Id),
+                    Texture = this.GetCropAsset(rendered.Id),
                     SpriteIndex = 0,
                     CountForMonoculture = true,
                     CountForPolyculture = true
@@ -412,7 +478,7 @@ namespace CustomCrops
                     if (!shops.TryGetValue(shopId, out ShopData? shop))
                         return;
                     shop.Items ??= new List<ShopItemData>();
-                    string entryId = this.GetSeedId(crop.Id);
+                    string entryId = this.GetSeedId(rendered.Id);
                     shop.Items.RemoveAll(i => i.Id == entryId);
                     shop.Items.Add(new ShopItemData
                     {
@@ -438,17 +504,17 @@ namespace CustomCrops
         ** Private methods: images
         *********/
         /// <summary>Load an image's square crop at the given size, or null if there's no image.</summary>
-        private Pixels? LoadSquare(ImageRef? image, int size)
+        private Pixels? LoadSquare(ImageRef? image, int size, string? folder)
         {
-            if (image == null || this.Decode(image.File) is not { } pixels)
+            if (image == null || this.Decode(image.File, folder) is not { } pixels)
                 return null;
             Rectangle crop = ImageProcessor.ToCropRect(image.Crop, pixels.Width, pixels.Height) ?? ImageProcessor.DefaultCrop(pixels.Width, pixels.Height, 1);
             return ImageProcessor.Resize(pixels, crop, size, size);
         }
 
-        private Pixels? LoadGrowthSheet(string file, int scale, out string? error)
+        private Pixels? LoadGrowthSheet(string file, int scale, out string? error, string? folder)
         {
-            Pixels? pixels = this.Decode(file);
+            Pixels? pixels = this.Decode(file, folder);
             if (pixels == null)
             {
                 error = $"growth sheet '{file}' not found.";
