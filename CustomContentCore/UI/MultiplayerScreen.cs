@@ -1,5 +1,8 @@
+using System.Collections.Generic;
+using System.Linq;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using StardewModdingAPI;
 using StardewValley;
 
 namespace CustomContentCore.UI
@@ -12,6 +15,12 @@ namespace CustomContentCore.UI
         private readonly Checkbox ChangeBox;
         private readonly Button CloseButton;
 
+        /// <summary>What's being changed right now, and by whom.</summary>
+        private readonly ScrollList<(string Key, string Holder, string Label)> Busy;
+
+        /// <summary>Takes something back from the player changing it (the host only).</summary>
+        private readonly Button FreeButton;
+
         public MultiplayerScreen()
         {
             this.ShareBox = this.Add(new Checkbox("Share my content when I host", CoreMod.Config.ShareContentAsHost,
@@ -22,7 +31,29 @@ namespace CustomContentCore.UI
             this.ChangeBox = this.Add(new Checkbox("Let players change my content", CoreMod.Config.LetOthersChangeMyContent,
                 v => { CoreMod.Config.LetOthersChangeMyContent = v; CoreMod.SaveConfig(); },
                 "When you host: the players in your game can edit the content everyone is using, and what they save is sent to you and kept as yours. One player at a time per thing.\nThe previous version of anything they change is kept."));
+            this.Busy = this.Add(new ScrollList<(string Key, string Holder, string Label)>(44, this.DrawBusyRow)
+            {
+                EmptyText = "Nobody is changing anything right now."
+            });
+            this.FreeButton = this.Add(new Button("Take it back", this.FreeSelected, "Stop that player changing it. What they send afterwards is refused, so they'd have to open it again."));
             this.CloseButton = this.Add(new Button("Close", () => this.Root.Pop()));
+        }
+
+        /// <summary>One thing being changed: what it is, and who has it.</summary>
+        private void DrawBusyRow(SpriteBatch b, (string Key, string Holder, string Label) row, Rectangle bounds, bool selected, bool hover)
+        {
+            string what = row.Label.Length > 0 ? row.Label : row.Key;
+            Gfx.Text(b, Gfx.Fit(what, bounds.Width - 220), new Vector2(bounds.X + 12, bounds.Y + (bounds.Height - Gfx.LineHeight) / 2));
+            Gfx.Text(b, row.Holder, new Vector2(bounds.Right - 200, bounds.Y + (bounds.Height - Gfx.LineHeight) / 2), Color.DimGray);
+        }
+
+        private void FreeSelected()
+        {
+            if (this.Busy.Selected is { Key.Length: > 0 } row)
+            {
+                CoreMod.Locks?.ForceRelease(row.Key);
+                Game1.playSound("smallSelect");
+            }
         }
 
         protected override void OnLayout(Rectangle area)
@@ -33,11 +64,20 @@ namespace CustomContentCore.UI
             this.ShareBox.Bounds = new Rectangle(area.X + pad, y, w, 44);
             this.AcceptBox.Bounds = new Rectangle(area.X + pad, y + 96, w, 44);
             this.ChangeBox.Bounds = new Rectangle(area.X + pad, y + 192, w, 44);
+            int listTop = this.ChangeBox.Bounds.Bottom + 76;
+            this.Busy.Bounds = new Rectangle(area.X + pad, listTop, w, System.Math.Max(88, area.Bottom - 84 - 16 - listTop));
+            this.FreeButton.Bounds = new Rectangle(area.X + pad, area.Bottom - 84, 220, 60);
             this.CloseButton.Bounds = new Rectangle(area.Right - pad - 180, area.Bottom - 84, 180, 60);
         }
 
         public override void Draw(SpriteBatch b, int mouseX, int mouseY)
         {
+            // who's changing what only means something in a game where everyone is using one set
+            bool shared = CoreMod.Locks?.InSharedGame == true;
+            this.Busy.Visible = shared;
+            this.Busy.Items = shared ? CoreMod.Locks!.All().ToList() : new List<(string, string, string)>();
+            this.FreeButton.Visible = shared && Context.IsMainPlayer && this.Busy.Items.Count > 0;
+
             Rectangle area = this.Area;
             Gfx.Panel(b, area);
             Gfx.Text(b, "Multiplayer", new Vector2(area.X + 36, area.Y + 24), null, Gfx.TitleFont);
@@ -49,8 +89,8 @@ namespace CustomContentCore.UI
             Gfx.Message(b, "As host: your paintings, crops, furniture, wallpaper and character art are what the game runs on for everyone.", noteWidth, new Vector2(area.X + 40, this.ShareBox.Bounds.Bottom + 6), Color.DimGray);
             Gfx.Message(b, "As a player in someone else's game: their set is used while you're there, and your own is put back when you leave.", noteWidth, new Vector2(area.X + 40, this.AcceptBox.Bounds.Bottom + 6), Color.DimGray);
             Gfx.Message(b, "A player's save is sent to you, checked, and written into your content; the version it replaces is kept in a 'versions' folder.", noteWidth, new Vector2(area.X + 40, this.ChangeBox.Bounds.Bottom + 6), Color.DimGray);
-            if (CoreMod.Sync?.UsingHostContent == true)
-                Gfx.Text(b, "You're using the host's content in this game; your own comes back when you leave.", new Vector2(area.X + 36, area.Bottom - 120), Color.DimGray);
+            if (this.Busy.Visible)
+                Gfx.Text(b, "Being changed right now", new Vector2(area.X + 36, this.Busy.Bounds.Y - 34), Color.DimGray);
         }
 
         /// <summary>Ask for confirmation before accepting other players' content.</summary>

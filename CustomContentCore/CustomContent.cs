@@ -91,6 +91,7 @@ namespace CustomContentCore
         public static void NotifyContentChanged()
         {
             ContentPacks.NotifyReloaded();
+            ContentPacks.KeepVersionOfDataFiles();
             CoreMod.Sync?.QueueOfferToAcceptingPlayers();
             CoreMod.Sync?.PushChangesToHost();
         }

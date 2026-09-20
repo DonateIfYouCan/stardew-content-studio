@@ -11,18 +11,17 @@ It provides:
 - **Content packs**: *Export pack* saves all custom content of every Custom Content mod (data + images) into one `.zip`;
   *Import pack* loads it on another PC (replacing that content, after automatically backing up the current content to `Exports/Backups`).
   Imports only write into each mod's registered content files/folders.
-- **Multiplayer content sharing** (off by default, opt-in on *both* sides): anyone with *Share my content with other players*
-  sends their custom content to players who turned on *Accept shared content* - the host or a player who joined, in either
-  direction. You take one player's content at a time (the first who offers), and sharing wins over accepting, so two players
-  who both share keep their own content instead of swapping it. An empty offer is ignored. Received content goes to a
-  per-sender cache (`host-content/`) and is only used while in that game; your own content is never changed, and editing is
-  Only changed files are sent (SHA-256 checked), the sender's edits are pushed live. Split-screen is skipped.
-  See [Multiplayer security](#multiplayer-security).
-- **Changing each other's content** (off by default, *Let others change my content*): ask the owner of a shared item for a turn at
-  changing it, edit their version in the normal editor, and send it back. The owner is the only one who ever writes their own files,
-  so there is nothing to merge: a turn is one item at a time, runs out by itself, is dropped when someone leaves, and a change is
-  refused if the item moved on meanwhile. What comes back is checked again by the owner (images decoded and re-encoded, the owner
-  names the files it stores, the item ID can't be changed). See [Multiplayer security](#multiplayer-security).
+- **One content set per multiplayer game** (off by default, opt-in on both sides): with *Share my content when I host*, everyone in
+  the Host's game uses the Host's content - paintings, crops, furniture, wallpaper and character sheets alike - so there is one
+  answer to whose hair sheet is in use and placed items keep the IDs they were placed with. A player who turns on *Accept shared
+  content* has their own content saved to a backup zip first, and it comes back when they leave. Only changed files are sent
+  (SHA-256 checked). Split-screen is skipped.
+- **Players changing the Host's content** (off by default, *Let players change my content*): if the Host allows it, Player A can
+  edit the set everyone is using. Whatever Player A opens is held until they close it, so Player B can't write over them, and the
+  Host can take anything back. What Player A saves is sent to the Host, who checks it, keeps the version it replaces and passes the
+  new one on to everyone. Only the Host writes the Host's files. See [Multiplayer security](#multiplayer-security).
+- **Earlier versions**: every save keeps a copy of the data file it replaces (the last 10), and any of them can be put back from
+  the editor's *Earlier versions* screen.
 - **Full-screen image viewer** with captions and slideshow navigation.
 - **High-resolution furniture drawing**: mods register a renderer and their furniture is drawn from their own (sharper) texture.
 
@@ -143,13 +142,10 @@ file data without the right secret are ignored, and a player only ever gets one 
 - JSON must be a UTF-8 object, at most 32 levels deep, with text values under 20,000 characters. It's parsed and written out
   again without comments or `$...` properties like `$type`. The mods never enable Newtonsoft type handling.
 
-**Changing each other's content.** A turn is asked of the item's owner, never the host, and only if they turned on *Let others
-change my content*. The owner hands out a fresh 256-bit secret with the turn; only messages carrying it can change that item.
-One player holds a turn on an item at a time, it runs out after a few minutes unless the editor says it's still going, and it's
-dropped when that player leaves. What comes back is treated like any other received content: the item ID is forced back to the
-owner's own (a change can't rename an item or move to another one), sent file names are reduced to a name the owner chooses
-itself, images go through the same decode-and-re-encode, and the change is refused if the owner's copy of the item changed while
-it was being edited. Only the owner ever writes the owner's files; the editor's game writes nothing.
+**Changes from players.** The Host only accepts them with *Let players change my content* on, only from a player who holds that
+file (or for a file the Host doesn't have yet), and only for the Host's own registered content paths. What arrives is rebuilt from
+scratch like anything else received, and the version it replaces is kept in a `versions` folder. Locks are a courtesy between
+players, not a safeguard: the Host checks again before writing, and can take a file back from anyone.
 
 **Where it goes.** Files are written only to `host-content/<player>/`, and only the 5 most recent players are kept. Images are
 loaded only from inside the content folder, so a data file can't point to other files on the PC. Nothing received is ever

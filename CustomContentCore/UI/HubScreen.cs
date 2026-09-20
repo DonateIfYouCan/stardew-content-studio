@@ -17,6 +17,7 @@ namespace CustomContentCore.UI
         private readonly Button ExportButton;
         private readonly Button ImportButton;
         private readonly Button MultiplayerButton;
+        private readonly Button VersionsButton;
         private readonly Button DonateButton;
         private readonly Button GitHubButton;
 
@@ -43,6 +44,7 @@ namespace CustomContentCore.UI
             this.ExportButton = this.Add(new Button("Export pack", this.ExportPack, "Save all your custom content (data and images) into one file, e.g. to use on another PC."));
             this.ImportButton = this.Add(new Button("Import pack", this.ImportPack, "Load a pack made with 'Export pack'. Your current content is backed up first."));
             this.ExportButton.Visible = this.ImportButton.Visible = ContentPacks.Any;
+            this.VersionsButton = this.Add(new Button("Earlier versions", () => this.Root.Push(new VersionsScreen()), "Put back a file as it was before it was last written over, e.g. after a player in your game changed something."));
             this.MultiplayerButton = this.Add(new Button("Multiplayer", () => this.Root.Push(new MultiplayerScreen()), "Share your content with the players in your game, use a host's content, and let players change it. All off unless you turn it on."));
         }
 
@@ -138,6 +140,7 @@ namespace CustomContentCore.UI
             this.GitHubButton.Bounds = new Rectangle(area.Right - 32 - 300, area.Bottom - 84 - 64, 300, 52);
             this.DonateButton.Bounds = new Rectangle(this.GitHubButton.Bounds.X - 12 - 260, area.Bottom - 84 - 64, 260, 52);
             this.MultiplayerButton.Bounds = new Rectangle(area.X + 32, area.Bottom - 84 - 64, 220, 52);
+            this.VersionsButton.Bounds = new Rectangle(area.X + 32 + 232, area.Bottom - 84 - 64, 240, 52);
         }
 
         public override void Draw(SpriteBatch b, int mouseX, int mouseY)

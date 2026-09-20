@@ -36,7 +36,10 @@ namespace CustomCrops
 
         private readonly IModHelper Helper;
         private readonly IMonitor Monitor;
-        private readonly IManifest Manifest;
+
+        /// <summary>The mod this content belongs to. The UI needs it to ask who else in the game is changing the crops.</summary>
+        internal readonly IManifest Manifest;
+
         private DateTime IgnoreFileChangesUntil;
 
         /// <summary>Rendered art by crop ID.</summary>

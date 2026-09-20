@@ -22,6 +22,10 @@ namespace CustomCrops.UI
         private readonly Button DuplicateButton;
         private readonly Button CloseButton;
         private readonly Dictionary<string, Texture2D> Icons = new();
+
+        /// <summary>The buttons that write to the crops file, with the tooltips they normally show, so the "someone else has it" note can be taken off again.</summary>
+        private readonly (Button Button, string? Tooltip)[] WritingButtons;
+
         private string? Message;
         private Color MessageColor = Color.DarkGreen;
 
@@ -31,19 +35,24 @@ namespace CustomCrops.UI
             this.List = this.Add(new ScrollList<CustomCrop>(80, this.DrawRow)
             {
                 OnSelect = (_, _) => this.SyncButtons(),
-                OnDoubleClick = _ => this.EditSelected(),
+                OnDoubleClick = _ => this.WhenNobodyElseIsChangingIt(this.EditSelected),
                 EmptyText = "No crops yet. Click 'New crop' to make one."
             });
-            this.NewButton = this.Add(new Button("+ New crop", this.CreateNew, "Make a new crop: seeds, growing plant and harvest."));
-            this.EditButton = this.Add(new Button("Edit", this.EditSelected));
+            this.NewButton = this.Add(new Button("+ New crop", () => this.WhenNobodyElseIsChangingIt(this.CreateNew), "Make a new crop: seeds, growing plant and harvest."));
+            this.EditButton = this.Add(new Button("Edit", () => this.WhenNobodyElseIsChangingIt(this.EditSelected)));
             this.GiveButton = this.Add(new Button("Get seeds", this.GiveSelected, "Adds 10 seeds to your inventory, for testing."));
-            this.DuplicateButton = this.Add(new Button("Duplicate", this.DuplicateSelected, "Make a copy to tweak, keeping the original."));
-            this.DeleteButton = this.Add(new Button("Delete", this.DeleteSelected));
+            this.DuplicateButton = this.Add(new Button("Duplicate", () => this.WhenNobodyElseIsChangingIt(this.DuplicateSelected), "Make a copy to tweak, keeping the original."));
+            this.DeleteButton = this.Add(new Button("Delete", () => this.WhenNobodyElseIsChangingIt(this.DeleteSelected)));
             this.CloseButton = this.Add(new Button("Close", () => this.Root.Pop()));
+            this.WritingButtons = new[] { (this.NewButton, this.NewButton.Tooltip), (this.EditButton, this.EditButton.Tooltip), (this.DuplicateButton, this.DuplicateButton.Tooltip), (this.DeleteButton, this.DeleteButton.Tooltip) };
             this.Refresh();
         }
 
-        public override void OnResume() => this.Refresh();
+        public override void OnResume()
+        {
+            CustomContent.ReleaseLock(this.Store.Manifest, LockThing); // whatever was opened is closed again
+            this.Refresh();
+        }
 
         /// <summary>Open the editor for a crop by name or ID.</summary>
         public bool OpenByName(string search)
@@ -52,11 +61,15 @@ namespace CustomCrops.UI
             if (index < 0)
                 return false;
             this.List.SelectedIndex = index;
-            this.EditSelected();
+            this.WhenNobodyElseIsChangingIt(this.EditSelected);
             return true;
         }
 
-        public override void Dispose() => this.ClearIcons();
+        public override void Dispose()
+        {
+            CustomContent.ReleaseLock(this.Store.Manifest, LockThing);
+            this.ClearIcons();
+        }
 
         protected override void OnLayout(Rectangle area)
         {
@@ -133,6 +146,30 @@ namespace CustomCrops.UI
             this.GiveButton.Tooltip = Context.IsWorldReady ? "Adds 10 seeds to your inventory, for testing." : "Load a save first.";
             this.DuplicateButton.Visible = this.List.Selected != null;
             this.DeleteButton.Visible = selected;
+
+            // in a game where everyone uses the Host's set, say who's changing it rather than let Player A write over Player B
+            string? busy = CustomContent.WhoIsChanging(this.Store.Manifest, LockThing);
+            foreach ((Button button, string? tooltip) in this.WritingButtons)
+            {
+                button.Enabled = busy == null;
+                button.Tooltip = busy != null ? $"{busy} is changing the crops right now." : tooltip;
+            }
+        }
+
+        /// <summary>What the crops file is called when asking to be the only one changing it.</summary>
+        private const string LockThing = "file:" + CropStore.DataFileName;
+
+        /// <summary>Do something that writes to the crops file, unless another player in the game is already changing it.</summary>
+        /// <remarks>The lock is held until this screen is closed or something opened from it comes back, so Player B can't save over Player A halfway through.</remarks>
+        private void WhenNobodyElseIsChangingIt(Action action)
+        {
+            CustomContent.TakeLock(this.Store.Manifest, LockThing, "the crops", (granted, holder) =>
+            {
+                if (granted)
+                    action();
+                else
+                    this.ShowMessage($"{holder} is changing the crops right now.", error: true);
+            });
         }
 
         private void CreateNew()

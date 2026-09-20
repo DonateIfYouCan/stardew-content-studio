@@ -56,7 +56,8 @@ namespace CustomFurniture
 
         private readonly IModHelper Helper;
         private readonly IMonitor Monitor;
-        private readonly IManifest Manifest;
+        /// <summary>The mod's manifest; the UI needs it to ask who's changing the mod's files in a shared game.</summary>
+        internal readonly IManifest Manifest;
         private DateTime IgnoreFileChangesUntil;
         private List<FurnitureTemplate>? TemplateCache;
 
@@ -86,6 +87,11 @@ namespace CustomFurniture
         /// <summary>The folder content is loaded from: the mod folder, or (in multiplayer) the host's content.</summary>
         private string ContentFolder => ContentPacks.GetContentRoot(this.Manifest, this.Helper.DirectoryPath);
         public string ImageFolder => Path.Combine(this.ContentFolder, ImageFolderName);
+
+        /// <summary>What one of the mod's images is called when asking to be the only one changing it.</summary>
+        /// <param name="file">The image's file name, as stored in the data file (relative to the images folder).</param>
+        /// <returns>The path relative to the mod folder, which is the same for the Host and every player.</returns>
+        public static string GetImageLockThing(string file) => $"file:{ImageFolderName}/{file}";
         public FurnitureFile File { get; private set; } = new();
         public bool IgnoringFileChanges => DateTime.UtcNow < this.IgnoreFileChangesUntil;
         public (string Label, string Path)[] BrowserPlaces => new[] { ("Mod images", this.ImageFolder) };

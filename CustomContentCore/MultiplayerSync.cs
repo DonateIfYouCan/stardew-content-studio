@@ -79,6 +79,13 @@ namespace CustomContentCore
             public List<OfferedFile> Files { get; set; } = new();
         }
 
+        /// <summary>Host → player: a change wasn't kept, so the player should take the host's version back.</summary>
+        public sealed class ChangeRefusedMessage
+        {
+            public string Reason { get; set; } = "";
+            public List<string> Files { get; set; } = new(); // "mod/path"
+        }
+
         /// <summary>Host → player: send me these changed files.</summary>
         public sealed class ChangeRequestMessage
         {
@@ -104,7 +111,7 @@ namespace CustomContentCore
         private const string HelloType = "Hello", JoinType = "Join", OfferType = "Offer", RequestType = "Request", ChunkType = "Chunk";
 
         /// <summary>A player who changed something in the host's content sends it back the same way, the other way round.</summary>
-        private const string ChangeOfferType = "ChangeOffer", ChangeRequestType = "ChangeRequest", ChangeChunkType = "ChangeChunk";
+        private const string ChangeOfferType = "ChangeOffer", ChangeRequestType = "ChangeRequest", ChangeChunkType = "ChangeChunk", ChangeRefusedType = "ChangeRefused";
 
         /// <summary>How many versions of a file to keep when it's written over.</summary>
         private const int KeptVersions = 10;
@@ -728,8 +735,9 @@ namespace CustomContentCore
             string name = this.NameOf(playerId, null);
             if (!CoreMod.Config.LetOthersChangeMyContent)
             {
-                Game1.addHUDMessage(new HUDMessage($"{name} changed something, but 'Let others change my content' is off.") { noIcon = true });
-                this.Monitor.Log($"{name} sent a change, but 'Let others change my content' is off; ignored.", LogLevel.Info);
+                Game1.addHUDMessage(new HUDMessage($"{name} changed something, but 'Let players change my content' is off.") { noIcon = true });
+                this.Monitor.Log($"{name} sent a change, but 'Let players change my content' is off; ignored.", LogLevel.Info);
+                this.SendTo(playerId, new ChangeRefusedMessage { Reason = "the host doesn't let players change their content", Files = offer.Files.Select(f => $"{f.Mod}/{f.Path}").ToList() }, ChangeRefusedType);
                 return;
             }
 
@@ -836,6 +844,36 @@ namespace CustomContentCore
             this.ApplyChange(playerId, chunk.Mod, chunk.Path, clean, files.Count == 0);
         }
 
+        /// <summary>As a player: the host didn't keep our change, so take their version back instead of drifting apart.</summary>
+        private void OnChangeRefused(long playerId, ChangeRefusedMessage message)
+        {
+            if (!this.UsingHostContent || playerId != this.SenderId || this.Token == null)
+                return;
+
+            List<string> again = new();
+            foreach (string key in message.Files.Take(MaxFiles))
+            {
+                int slash = key.IndexOf('/');
+                if (slash <= 0)
+                    continue;
+                string modId = key.Substring(0, slash), relative = key.Substring(slash + 1);
+                if (!this.IsSafe(modId, relative))
+                    continue;
+
+                this.Index.Remove(key); // forget what we had, so the host's version is fetched again
+                this.Downloaded.Remove(key);
+                again.Add(key);
+            }
+            if (again.Count == 0)
+                return;
+
+            this.SaveIndex();
+            this.SendToSender(new RequestMessage { Token = this.Token, Files = again }, RequestType);
+            string reason = new string((message.Reason ?? "").Where(ch => !char.IsControl(ch)).Take(80).ToArray());
+            Game1.addHUDMessage(new HUDMessage($"The host didn't keep your change ({reason}); theirs is being put back.") { noIcon = true });
+            this.Monitor.Log($"The host didn't keep a change ({reason}); taking their version back.", LogLevel.Info);
+        }
+
         /// <summary>As host: write a player's change into our own content, keeping the version it replaces.</summary>
         private void ApplyChange(long playerId, string modId, string relativePath, byte[] clean, bool last)
         {
@@ -851,6 +889,7 @@ namespace CustomContentCore
             if (File.Exists(path) && CoreMod.Locks?.MayChange(playerId, $"{modId}|file:{relativePath}") == false)
             {
                 this.Monitor.Log($"Refused a change to '{relativePath}' from {this.NameOf(playerId, null)}: someone else is changing it.", LogLevel.Info);
+                this.SendTo(playerId, new ChangeRefusedMessage { Reason = "someone else is changing that", Files = new List<string> { $"{modId}/{relativePath}" } }, ChangeRefusedType);
                 return;
             }
 
@@ -867,6 +906,9 @@ namespace CustomContentCore
             this.Monitor.Log($"{name} changed your custom content; the previous version is in the 'versions' folder.", LogLevel.Info);
             this.QueueOfferToAcceptingPlayers(); // everyone gets the new version, including whoever sent it
         }
+
+        /// <summary>Keep a copy of a file that's about to be written over, so a change can be undone.</summary>
+        public void KeepVersionOf(string modFolder, string relativePath, string path) => this.KeepVersion(modFolder, relativePath, path);
 
         /// <summary>Keep a copy of a file that's about to be written over, so a change can be undone.</summary>
         private void KeepVersion(string modFolder, string relativePath, string path)
@@ -930,6 +972,9 @@ namespace CustomContentCore
                         break;
                     case ChangeChunkType:
                         this.OnChangeChunk(e.FromPlayerID, e.ReadAs<ChunkMessage>());
+                        break;
+                    case ChangeRefusedType when fromOurSender:
+                        this.OnChangeRefused(e.FromPlayerID, e.ReadAs<ChangeRefusedMessage>());
                         break;
                     case RequestType when CoreMod.Config.ShareContentAsHost:
                         this.OnRequest(e.FromPlayerID, e.ReadAs<RequestMessage>());

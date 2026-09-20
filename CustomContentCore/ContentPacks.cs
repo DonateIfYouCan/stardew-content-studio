@@ -68,6 +68,46 @@ namespace CustomContentCore
         /// <summary>Note that content was reloaded (e.g. the host's arrived, or a player changed something).</summary>
         internal static void NotifyReloaded() => ContentVersion++;
 
+        /// <summary>How many earlier versions of a data file to keep.</summary>
+        private const int KeptVersions = 10;
+
+        /// <summary>Keep a copy of every mod's data file as it is now, so a change can be undone later.</summary>
+        /// <remarks>Only the data files: they're small, and the images they point at are kept as long as something uses them.</remarks>
+        internal static void KeepVersionOfDataFiles()
+        {
+            foreach (Registration registration in Registrations)
+            {
+                foreach (string relative in registration.Paths.Where(p => p.EndsWith(".json", StringComparison.OrdinalIgnoreCase)))
+                {
+                    // in a host's game this is the host's copy, so its versions are kept beside it rather than in this player's own folder
+                    string root = GetContentRoot(registration.Mod, registration.Folder);
+                    string path = Path.Combine(root, relative);
+                    if (!File.Exists(path))
+                        continue;
+
+                    try
+                    {
+                        string folder = Path.Combine(root, "versions");
+                        Directory.CreateDirectory(folder);
+                        string stem = Path.GetFileNameWithoutExtension(relative), extension = Path.GetExtension(relative);
+
+                        // skip it if nothing changed since the last copy
+                        FileInfo[] kept = new DirectoryInfo(folder).GetFiles($"{stem}.*{extension}").OrderByDescending(f => f.Name).ToArray();
+                        if (kept.FirstOrDefault() is { } newest && newest.Length == new FileInfo(path).Length && File.ReadAllBytes(newest.FullName).SequenceEqual(File.ReadAllBytes(path)))
+                            continue;
+
+                        File.Copy(path, Path.Combine(folder, $"{stem}.{DateTime.Now:yyyyMMdd-HHmmss}{extension}"), overwrite: true);
+                        foreach (FileInfo old in kept.Skip(KeptVersions - 1))
+                            old.Delete();
+                    }
+                    catch
+                    {
+                        // keeping a copy is a convenience; never let it stop a save
+                    }
+                }
+            }
+        }
+
         /// <summary>Whether a mod is currently showing a multiplayer host's content (so editing should be disabled).</summary>
         public static bool IsUsingHostContent(IManifest mod) => RootOverrides.ContainsKey(mod.UniqueID);
 

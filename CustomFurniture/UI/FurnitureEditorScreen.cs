@@ -27,6 +27,9 @@ namespace CustomFurniture.UI
         private string? Message;
         private Color MessageColor = Color.DarkRed;
 
+        /// <summary>The sheet image the paint screen is open on, held so no other player changes it while it's being painted; null when the painter is closed.</summary>
+        private string? PaintedImageLock;
+
         private readonly Button BaseButton;
         private readonly Button ExportButton;
         private readonly Button ChooseButton;
@@ -75,10 +78,26 @@ namespace CustomFurniture.UI
             this.SyncButtons();
         }
 
+        /// <summary>Called when a screen opened from here closes again, such as the paint screen.</summary>
+        public override void OnResume()
+        {
+            this.ReleasePaintedImage();
+        }
+
         public override void Dispose()
         {
+            this.ReleasePaintedImage();
             this.SheetTexture?.Dispose();
             this.TemplateTexture?.Dispose();
+        }
+
+        /// <summary>Let go of the sheet image the paint screen was open on, so another player in the game can paint it.</summary>
+        private void ReleasePaintedImage()
+        {
+            if (this.PaintedImageLock is not { } thing)
+                return;
+            this.PaintedImageLock = null;
+            CustomContent.ReleaseLock(this.Store.Manifest, thing);
         }
 
         protected override void OnLayout(Rectangle area)
@@ -264,7 +283,19 @@ namespace CustomFurniture.UI
         {
             if (this.Sheet is { } mine)
             {
-                this.OpenPaint(mine);
+                // painting over an image file already in the mod folder, so hold that file until the painter closes;
+                // the sizes below start from a copy of the game's art instead, which is nobody's file yet.
+                string thing = FurnitureStore.GetImageLockThing(this.Item.Sheet!);
+                CustomContent.TakeLock(this.Store.Manifest, thing, $"the image for '{this.Item.Name}'", (granted, holder) =>
+                {
+                    if (!granted)
+                    {
+                        this.ShowError($"{holder} is changing that image right now.");
+                        return;
+                    }
+                    this.PaintedImageLock = thing;
+                    this.OpenPaint(mine);
+                });
                 return;
             }
             if (this.Template == null)

@@ -22,8 +22,15 @@ namespace CustomFurniture.UI
         private readonly Button DuplicateButton;
         private readonly Button CloseButton;
         private readonly Dictionary<string, Texture2D> Thumbnails = new();
+
+        /// <summary>The buttons that write to the furniture file, with the tooltip each one has when nobody else is changing it.</summary>
+        private readonly (Button Button, string? Tooltip)[] WritingButtons;
+
         private string? Message;
         private Color MessageColor = Color.DarkGreen;
+
+        /// <summary>What the furniture file is called when asking to be the only one changing it. The wallpapers live in the same file, so the two lists share one lock.</summary>
+        private const string LockThing = "file:" + FurnitureStore.DataFileName;
 
         public FurnitureListScreen(FurnitureStore store)
         {
@@ -31,20 +38,43 @@ namespace CustomFurniture.UI
             this.List = this.Add(new ScrollList<CustomFurnitureItem>(88, this.DrawRow)
             {
                 OnSelect = (_, _) => this.SyncButtons(),
-                OnDoubleClick = _ => this.EditSelected(),
+                OnDoubleClick = _ => this.WhenNobodyElseIsChangingIt(this.EditSelected),
                 EmptyText = "No furniture yet. Click 'New furniture' to make some."
             });
-            this.NewButton = this.Add(new Button("+ New furniture", this.CreateNew, "Make furniture based on a game piece: lamps, fireplaces, beds, tables, decor..."));
-            this.EditButton = this.Add(new Button("Edit", this.EditSelected));
+            this.NewButton = this.Add(new Button("+ New furniture", () => this.WhenNobodyElseIsChangingIt(this.CreateNew), "Make furniture based on a game piece: lamps, fireplaces, beds, tables, decor..."));
+            this.EditButton = this.Add(new Button("Edit", () => this.WhenNobodyElseIsChangingIt(this.EditSelected)));
             this.GiveButton = this.Add(new Button("Put in inventory", this.GiveSelected, "Adds one to your inventory, for testing."));
-            this.DuplicateButton = this.Add(new Button("Duplicate", this.DuplicateSelected, "Make a copy to tweak, keeping the original."));
-            this.DeleteButton = this.Add(new Button("Delete", this.DeleteSelected));
+            this.DuplicateButton = this.Add(new Button("Duplicate", () => this.WhenNobodyElseIsChangingIt(this.DuplicateSelected), "Make a copy to tweak, keeping the original."));
+            this.DeleteButton = this.Add(new Button("Delete", () => this.WhenNobodyElseIsChangingIt(this.DeleteSelected)));
             this.CloseButton = this.Add(new Button("Close", () => this.Root.Pop()));
+            this.WritingButtons = new[] { this.NewButton, this.EditButton, this.DuplicateButton, this.DeleteButton }.Select(b => (b, b.Tooltip)).ToArray();
             this.Refresh();
         }
 
-        public override void OnResume() => this.Refresh();
-        public override void Dispose() => this.ClearThumbnails();
+        public override void OnResume()
+        {
+            CustomContent.ReleaseLock(this.Store.Manifest, LockThing); // whatever was opened is closed again
+            this.Refresh();
+        }
+
+        public override void Dispose()
+        {
+            CustomContent.ReleaseLock(this.Store.Manifest, LockThing);
+            this.ClearThumbnails();
+        }
+
+        /// <summary>Do something that writes to the furniture file, unless another player in the game is already changing it.</summary>
+        /// <remarks>Everyone in a shared game is using the Host's one copy, so Player B is told who has it rather than writing over Player A.</remarks>
+        private void WhenNobodyElseIsChangingIt(Action action)
+        {
+            CustomContent.TakeLock(this.Store.Manifest, LockThing, "the furniture", (granted, holder) =>
+            {
+                if (granted)
+                    action();
+                else
+                    this.ShowMessage($"{holder} is changing the furniture right now.", error: true);
+            });
+        }
 
         /// <summary>Open the editor for furniture by name or ID.</summary>
         public bool OpenByName(string search)
@@ -53,7 +83,7 @@ namespace CustomFurniture.UI
             if (index < 0)
                 return false;
             this.List.SelectedIndex = index;
-            this.EditSelected();
+            this.WhenNobodyElseIsChangingIt(this.EditSelected);
             return true;
         }
 
@@ -124,6 +154,14 @@ namespace CustomFurniture.UI
             this.GiveButton.Enabled = Context.IsWorldReady;
             this.DuplicateButton.Visible = selected;
             this.DeleteButton.Visible = selected;
+
+            // in a game where everyone uses one set, say who's changing it instead of letting two players write over each other
+            string? busy = CustomContent.WhoIsChanging(this.Store.Manifest, LockThing);
+            foreach ((Button button, string? tooltip) in this.WritingButtons)
+            {
+                button.Enabled = busy == null;
+                button.Tooltip = busy != null ? $"{busy} is changing the furniture right now." : tooltip;
+            }
         }
 
         private void CreateNew()
@@ -178,7 +216,8 @@ namespace CustomFurniture.UI
         {
             if (this.List.Selected is not { } item)
                 return;
-            this.Root.Push(new ConfirmScreen($"Delete '{item.Name}'?\n\nCopies placed in your world will turn into Error Items.", "Delete", () =>
+            // the confirmation closes before the delete happens, and closing it lets go of the file, so ask for it again before writing
+            this.Root.Push(new ConfirmScreen($"Delete '{item.Name}'?\n\nCopies placed in your world will turn into Error Items.", "Delete", () => this.WhenNobodyElseIsChangingIt(() =>
             {
                 FurnitureFile file = this.Store.ReadFile();
                 file.Furniture.RemoveAll(f => f.Id == item.Id);
@@ -191,7 +230,7 @@ namespace CustomFurniture.UI
                 {
                     this.ShowMessage($"Couldn't delete: {ex.Message}", error: true);
                 }
-            }));
+            })));
         }
 
         private void ShowMessage(string message, bool error = false)

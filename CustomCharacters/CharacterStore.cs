@@ -30,7 +30,9 @@ namespace CustomCharacters
 
         private readonly IModHelper Helper;
         private readonly IMonitor Monitor;
-        private readonly IManifest Manifest;
+
+        /// <summary>The mod this content belongs to. The UI needs it to ask who else in the game is changing the characters.</summary>
+        internal readonly IManifest Manifest;
 
         /// <summary>Loaded portrait sets by villager name.</summary>
         private Dictionary<string, LoadedSet> Sets = new(StringComparer.OrdinalIgnoreCase);
