@@ -185,8 +185,8 @@ namespace CustomContentCore.UI
             int noteRoom = (int)(this.DonateButton.Bounds.X - 24 - heading.X - noteX); // the support heading sits on this line too
             if (noteRoom > 140)
                 Gfx.Text(b, Gfx.Fit("- only accept content in games with people you trust", noteRoom), heading + new Vector2(noteX, 0), Color.DarkRed);
-            if (CoreMod.Sync?.UsingHostContent == true)
-                Gfx.Text(b, "You're using the host's content in this game, so editing is off until you leave.", new Vector2(this.Area.X + 36, this.Area.Y + 70), Color.DarkRed);
+            if (CoreMod.Sync?.UsingPeerContent == true)
+                Gfx.Text(b, "Other players' content is shown next to yours in this game. You can only change your own.", new Vector2(this.Area.X + 36, this.Area.Y + 70), Color.DarkRed);
             Gfx.Text(b, "Support (optional)", new Vector2(this.DonateButton.Bounds.X, this.DonateButton.Bounds.Y - 40), Color.DimGray);
             Gfx.Text(b, Gfx.Fit("Thanks for using these mods!", this.Area.Right - 32 - this.DonateButton.Bounds.X), new Vector2(this.DonateButton.Bounds.X, this.DonateButton.Bounds.Bottom + 8), Color.DimGray);
             if (this.Message != null)

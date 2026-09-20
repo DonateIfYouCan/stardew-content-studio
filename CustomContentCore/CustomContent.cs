@@ -93,6 +93,14 @@ namespace CustomContentCore
             CoreMod.Sync?.QueueOfferToAcceptingPlayers();
         }
 
+        /// <summary>Everywhere a mod should load content from: its own folder first, then the other players who share theirs.</summary>
+        /// <param name="mod">The mod's manifest.</param>
+        /// <param name="ownFolder">The mod's own folder (its <c>DirectoryPath</c>).</param>
+        public static IReadOnlyList<ContentPacks.ContentSource> GetContentSources(IManifest mod, string ownFolder) => ContentPacks.GetContentSources(mod, ownFolder);
+
+        /// <summary>A short tag for another player's content, so their item IDs can't clash with yours (empty for your own).</summary>
+        public static string OwnerTag(ContentPacks.ContentSource source) => source.IsOwn ? "" : "p" + ((ulong)source.OwnerId).ToString("x16").Substring(0, 8);
+
         /// <summary>Whether a mod is showing a multiplayer host's content right now (editing should be disabled).</summary>
         public static bool IsUsingHostContent(IManifest mod) => ContentPacks.IsUsingHostContent(mod);
 

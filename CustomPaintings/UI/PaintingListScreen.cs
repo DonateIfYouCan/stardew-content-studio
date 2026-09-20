@@ -26,6 +26,7 @@ namespace CustomPaintings.UI
             public string Name = "";
             public string Details = "";
             public string? Badge;
+            public long OwnerId;                 // 0 for your own, otherwise the player who shared it
             public CustomPainting? Painting;     // explicit entry in paintings.json
             public bool AutoAdded;
             public string? AutoFile;
@@ -255,10 +256,11 @@ namespace CustomPaintings.UI
                     FurnitureId = entry.FurnitureId,
                     Name = entry.Name ?? entry.FurnitureId,
                     Details = $"{kind} · {entry.Price}g · {DescribeSources(entry)}",
-                    Painting = painting,
-                    AutoAdded = painting == null,
-                    AutoFile = painting == null ? entry.Slides.FirstOrDefault()?.Path : null,
-                    Badge = painting == null ? "auto-added" : null
+                    OwnerId = entry.OwnerId,
+                    Painting = entry.IsOwn ? painting : null,
+                    AutoAdded = entry.IsOwn && painting == null,
+                    AutoFile = entry.IsOwn && painting == null ? entry.Slides.FirstOrDefault()?.Path : null,
+                    Badge = !entry.IsOwn ? $"from {entry.OwnerName}" : painting == null ? "auto-added" : null
                 };
                 row.Thumbnail = this.CreateThumbnail(entry);
                 rows.Add(row);
@@ -355,9 +357,10 @@ namespace CustomPaintings.UI
             this.NewFrameButton.Visible = mine;
             this.AutoAddBox.Visible = mine;
 
-            this.EditButton.Visible = mine && row != null;
-            this.DeleteButton.Visible = mine && row != null;
-            this.DuplicateButton.Visible = mine && row != null && !row.AutoAdded;
+            bool ownRow = row != null && row.OwnerId == 0; // another player's painting can be seen, not changed
+            this.EditButton.Visible = mine && ownRow;
+            this.DeleteButton.Visible = mine && ownRow;
+            this.DuplicateButton.Visible = mine && ownRow && !row!.AutoAdded;
             this.GiveButton.Visible = row != null && ModEntry.Config.EditorCanGive;
             this.GiveButton.Enabled = Context.IsWorldReady;
             this.GiveButton.Tooltip = Context.IsWorldReady ? "Adds one to your inventory, for testing." : "Load a save first.";

@@ -69,6 +69,27 @@ namespace CustomContentCore
             public List<string> Files { get; set; } = new(); // "mod/path"
         }
 
+        /// <summary>Another player whose shared content we're taking.</summary>
+        private sealed class Source
+        {
+            public long PlayerId;
+
+            /// <summary>Their name, shown next to their items.</summary>
+            public string Name = "";
+
+            /// <summary>The secret we made for them; only messages carrying it count as theirs.</summary>
+            public string? Token;
+
+            public OfferMessage? Offer;
+            public readonly Dictionary<string, (int Count, byte[]?[] Parts)> Incoming = new(StringComparer.OrdinalIgnoreCase);
+            public Dictionary<string, string> Index = new(StringComparer.OrdinalIgnoreCase);
+            public int Pending;
+            public long ReceivedBytes;
+
+            /// <summary>Whether their content is being shown (so it's only announced once).</summary>
+            public bool InUse;
+        }
+
         /// <summary>Host → player: part of a file.</summary>
         public sealed class ChunkMessage
         {
@@ -120,23 +141,17 @@ namespace CustomContentCore
         /// <summary>The players still to be told, once we're in the game and have a name to show.</summary>
         private readonly HashSet<long> ToGreet = new();
 
-        // player
-        private string? Token;
-        private bool HelloHandled;
-        private string HostName = "";
-        private OfferMessage? CurrentOffer;
+        // player: everyone whose content we're showing next to our own, by player ID
+        private readonly Dictionary<long, Source> Sources = new();
 
-        /// <summary>The player whose content we're taking: the host, or another player who shares. Only one at a time.</summary>
-        private long SenderId;
-        private readonly Dictionary<string, (int Count, byte[]?[] Parts)> Incoming = new(StringComparer.OrdinalIgnoreCase);
-        private Dictionary<string, string> Index = new(StringComparer.OrdinalIgnoreCase);
-        private readonly List<(int Generation, string Key, OfferedFile File, Task<(bool Ok, byte[] Clean, string Error)> Task)> Sanitizing = new();
+        /// <summary>The players we turned down because 'Accept shared content' was off, so they can be answered if it's switched on.</summary>
+        private readonly HashSet<long> Declined = new();
+
+        private readonly List<(int Generation, long Player, string Key, OfferedFile File, Task<(bool Ok, byte[] Clean, string Error)> Task)> Sanitizing = new();
         private int Generation;
-        private int Pending;
-        private long ReceivedBytes;
 
-        /// <summary>Whether this player is currently using a host's content.</summary>
-        public bool UsingHostContent { get; private set; }
+        /// <summary>Whether other players' content is currently mixed in with ours.</summary>
+        public bool UsingPeerContent { get; private set; }
 
 
         /*********
@@ -178,11 +193,16 @@ namespace CustomContentCore
                 this.ToGreet.Clear();
         }
 
-        /// <summary>As player, ask the host for its content if 'Accept content from hosts' was just turned on.</summary>
+        /// <summary>Answer the players we turned down, after 'Accept shared content' was switched on.</summary>
         public void OnAcceptChanged()
         {
-            if (Context.IsMultiplayer && this.HelloHandled && CoreMod.Config.AcceptContentFromHost && this.Token == null)
-                this.SendJoin();
+            if (!Context.IsMultiplayer || !CoreMod.Config.AcceptContentFromHost)
+                return;
+            foreach (long playerId in this.Declined.ToArray())
+            {
+                this.Declined.Remove(playerId);
+                this.OnHello(playerId, new HelloMessage());
+            }
         }
 
 
@@ -234,10 +254,11 @@ namespace CustomContentCore
             this.PlayerTokens.Remove(e.Peer.PlayerID);
             this.Greeted.Remove(e.Peer.PlayerID);
             this.ToGreet.Remove(e.Peer.PlayerID);
+            this.Declined.Remove(e.Peer.PlayerID);
 
-            // whoever's content we were using has gone
-            if (e.Peer.PlayerID == this.SenderId || e.Peer.IsHost && this.SenderId == 0)
-                this.StopUsingHostContent();
+            // a player whose content we were showing has gone
+            if (this.Sources.Remove(e.Peer.PlayerID))
+                this.ApplyContent();
         }
 
         private void OnJoin(long playerId, JoinMessage join)
@@ -392,62 +413,50 @@ namespace CustomContentCore
         /*********
         ** Player
         *********/
+        /// <summary>A player says they share their content: answer with a secret of our own, so we can tell their offer from anyone else's.</summary>
         private void OnHello(long fromPlayer, HelloMessage hello)
         {
-            // one source at a time: the first player who offers is the one we answer, and our secret only goes to them
-            if (this.HelloHandled)
-                return;
+            if (this.Sources.ContainsKey(fromPlayer))
+                return; // already answered them
 
-            // sharing wins over accepting, so two players who both share keep their own content instead of swapping it
-            if (CoreMod.Config.ShareContentAsHost)
-            {
-                this.Monitor.Log($"{this.NameOf(fromPlayer, hello.HostName)} is sharing custom content, but you share your own, so you keep using yours.", LogLevel.Info);
-                return;
-            }
-
-            this.HelloHandled = true;
-            this.SenderId = fromPlayer;
-            this.HostName = this.NameOf(fromPlayer, hello.HostName);
-
+            string name = this.NameOf(fromPlayer, hello.HostName);
             if (!CoreMod.Config.AcceptContentFromHost)
             {
-                this.SendToSender(new JoinMessage { Declined = true }, JoinType);
-                Game1.addHUDMessage(new HUDMessage($"{this.HostName} is sharing custom content. Turn on 'Accept shared content' (K) to see it.") { noIcon = true });
-                this.Monitor.Log($"{this.HostName} offered custom content, but 'Accept shared content' is off; declined.", LogLevel.Info);
+                this.Declined.Add(fromPlayer);
+                this.SendTo(fromPlayer, new JoinMessage { Declined = true }, JoinType);
+                Game1.addHUDMessage(new HUDMessage($"{name} is sharing custom content. Turn on 'Accept shared content' (K) to see it.") { noIcon = true });
+                this.Monitor.Log($"{name} offered custom content, but 'Accept shared content' is off; declined.", LogLevel.Info);
                 return;
             }
-            this.SendJoin();
+
+            Source source = new() { PlayerId = fromPlayer, Name = name, Token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)) };
+            this.Sources[fromPlayer] = source;
+            this.SendTo(fromPlayer, new JoinMessage { Token = source.Token }, JoinType);
         }
 
-        /// <summary>Make a new secret for this game and send it to the host.</summary>
-        private void SendJoin()
+        private void OnOffer(long fromPlayer, OfferMessage offer)
         {
-            this.Token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
-            this.SendToSender(new JoinMessage { Token = this.Token }, JoinType);
-        }
-
-        private void OnOffer(OfferMessage offer)
-        {
-            if (!CoreMod.Config.AcceptContentFromHost || this.Token == null || !TokensEqual(this.Token, offer.Token))
+            if (!CoreMod.Config.AcceptContentFromHost || !this.Sources.TryGetValue(fromPlayer, out Source? source) || source.Token == null || !TokensEqual(source.Token, offer.Token))
             {
-                this.Monitor.Log("Ignored a content offer without the secret (not from the player we answered).", LogLevel.Trace);
+                this.Monitor.Log("Ignored a content offer without the secret (not from a player we answered).", LogLevel.Trace);
                 return;
             }
 
             // validate the offer
             if (offer.Files.Count > MaxFiles)
             {
-                this.Monitor.Log($"A player offered {offer.Files.Count} files, more than the {MaxFiles} limit; ignored.", LogLevel.Warn);
+                this.Monitor.Log($"{source.Name} offered {offer.Files.Count} files, more than the {MaxFiles} limit; ignored.", LogLevel.Warn);
                 return;
             }
-            offer.HostName = this.NameOf(this.SenderId, offer.HostName);
+            source.Name = this.NameOf(fromPlayer, offer.HostName);
+            offer.HostName = source.Name;
             long total = 0;
             List<OfferedFile> valid = new();
             HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
             foreach (OfferedFile file in offer.Files)
             {
                 bool isJson = file.Path.EndsWith(".json", StringComparison.OrdinalIgnoreCase);
-                if (!this.IsSafe(file.Mod, file.Path) || file.Size <= 0 || file.Size > (isJson ? ContentValidator.MaxJsonBytes : MaxFileBytes) || !IsValidHash(file.Hash) || !seen.Add($"{file.Mod}/{file.Path}"))
+                if (!this.IsSafe(source, file.Mod, file.Path) || file.Size <= 0 || file.Size > (isJson ? ContentValidator.MaxJsonBytes : MaxFileBytes) || !IsValidHash(file.Hash) || !seen.Add($"{file.Mod}/{file.Path}"))
                 {
                     this.Monitor.Log($"Ignored offered file '{file.Mod}/{file.Path}' (not allowed).", LogLevel.Trace);
                     continue;
@@ -457,57 +466,57 @@ namespace CustomContentCore
             }
             if (total > MaxTotalBytes)
             {
-                this.Monitor.Log($"{offer.HostName} offered {total / 1024 / 1024} MB of content, more than the {MaxTotalBytes / 1024 / 1024} MB limit; ignored.", LogLevel.Warn);
+                this.Monitor.Log($"{source.Name} offered {total / 1024 / 1024} MB of content, more than the {MaxTotalBytes / 1024 / 1024} MB limit; ignored.", LogLevel.Warn);
                 return;
             }
             if (valid.Count == 0)
             {
-                this.Monitor.Log($"{offer.HostName} shared no custom content, so you keep using your own.", LogLevel.Info);
+                this.Monitor.Log($"{source.Name} shared no custom content.", LogLevel.Info);
                 return;
             }
             offer.Files = valid;
-            this.CurrentOffer = offer;
-            this.LoadIndex();
+            source.Offer = offer;
+            this.LoadIndex(source);
 
-            // request what's missing or changed (the cache has rebuilt files, so compare with the hash the host sent before)
+            // request what's missing or changed (the cache has rebuilt files, so compare with the hash they sent before)
             List<string> needed = valid
-                .Where(f => !File.Exists(this.GetCachePath(f.Mod, f.Path)) || !this.Index.TryGetValue($"{f.Mod}/{f.Path}", out string? hash) || hash != f.Hash)
+                .Where(f => !File.Exists(this.GetCachePath(source, f.Mod, f.Path)) || !source.Index.TryGetValue($"{f.Mod}/{f.Path}", out string? hash) || hash != f.Hash)
                 .Select(f => $"{f.Mod}/{f.Path}")
                 .ToList();
-            this.Incoming.Clear();
+            source.Incoming.Clear();
             this.Generation++;
-            this.ReceivedBytes = 0;
-            this.Pending = needed.Count;
-            this.SendToSender(new RequestMessage { Token = this.Token, Files = needed }, RequestType);
-            this.Monitor.Log($"{offer.HostName} offered {valid.Count} content files; downloading {needed.Count}.", LogLevel.Info);
+            source.ReceivedBytes = 0;
+            source.Pending = needed.Count;
+            this.SendTo(fromPlayer, new RequestMessage { Token = source.Token, Files = needed }, RequestType);
+            this.Monitor.Log($"{source.Name} offered {valid.Count} content files; downloading {needed.Count}.", LogLevel.Info);
             if (needed.Count > 0)
-                Game1.addHUDMessage(new HUDMessage($"Downloading {offer.HostName}'s custom content ({needed.Count} files)...") { noIcon = true });
+                Game1.addHUDMessage(new HUDMessage($"Downloading {source.Name}'s custom content ({needed.Count} files)...") { noIcon = true });
             else
-                this.UseHostContent();
+                this.ApplyContent();
         }
 
-        private void OnChunk(ChunkMessage chunk)
+        private void OnChunk(long fromPlayer, ChunkMessage chunk)
         {
-            if (this.CurrentOffer == null || this.Token == null || !TokensEqual(this.Token, chunk.Token))
+            if (!this.Sources.TryGetValue(fromPlayer, out Source? source) || source.Offer == null || source.Token == null || !TokensEqual(source.Token, chunk.Token))
                 return;
-            OfferedFile? file = this.CurrentOffer.Files.FirstOrDefault(f => f.Mod.Equals(chunk.Mod, StringComparison.OrdinalIgnoreCase) && f.Path.Equals(chunk.Path, StringComparison.OrdinalIgnoreCase));
+            OfferedFile? file = source.Offer.Files.FirstOrDefault(f => f.Mod.Equals(chunk.Mod, StringComparison.OrdinalIgnoreCase) && f.Path.Equals(chunk.Path, StringComparison.OrdinalIgnoreCase));
             long size = file?.Size ?? 0;
             int expectedCount = (int)Math.Max(1, (size + ChunkBytes - 1) / ChunkBytes);
             if (file == null || chunk.Count != expectedCount || chunk.Index < 0 || chunk.Index >= chunk.Count || chunk.Data.Length > (ChunkBytes / 3 + 1) * 4)
                 return;
 
             byte[] data = Convert.FromBase64String(chunk.Data);
-            if (data.Length > ChunkBytes || (this.ReceivedBytes += data.Length) > MaxTotalBytes)
+            if (data.Length > ChunkBytes || (source.ReceivedBytes += data.Length) > MaxTotalBytes)
             {
-                this.Monitor.Log("Received more content data than allowed; stopped accepting it.", LogLevel.Warn);
-                this.CurrentOffer = null;
-                this.Incoming.Clear();
+                this.Monitor.Log($"{source.Name} sent more content data than allowed; stopped accepting it.", LogLevel.Warn);
+                source.Offer = null;
+                source.Incoming.Clear();
                 return;
             }
 
             string key = $"{file.Mod}/{file.Path}";
-            if (!this.Incoming.TryGetValue(key, out var parts) || parts.Count != chunk.Count)
-                this.Incoming[key] = parts = (chunk.Count, new byte[chunk.Count][]);
+            if (!source.Incoming.TryGetValue(key, out var parts) || parts.Count != chunk.Count)
+                source.Incoming[key] = parts = (chunk.Count, new byte[chunk.Count][]);
             if (parts.Parts[chunk.Index] != null)
                 return; // duplicate
             parts.Parts[chunk.Index] = data;
@@ -516,17 +525,17 @@ namespace CustomContentCore
 
             // file complete: check its size and checksum, then rebuild it from scratch before saving
             byte[] bytes = parts.Parts.SelectMany(p => p!).ToArray();
-            this.Incoming.Remove(key);
+            source.Incoming.Remove(key);
             if (bytes.Length != file.Size || HashBytes(bytes) != file.Hash)
             {
-                this.Monitor.Log($"Received '{key}' but its size or checksum doesn't match; ignored.", LogLevel.Warn);
-                if (--this.Pending <= 0)
-                    this.UseHostContent();
+                this.Monitor.Log($"Received '{key}' from {source.Name} but its size or checksum doesn't match; ignored.", LogLevel.Warn);
+                if (--source.Pending <= 0)
+                    this.ApplyContent();
                 return;
             }
             // rebuilding a big image takes a moment, so do it in the background (see OnUpdateTicked)
             string extension = Path.GetExtension(file.Path).ToLowerInvariant();
-            this.Sanitizing.Add((this.Generation, key, file, Task.Run(() =>
+            this.Sanitizing.Add((this.Generation, fromPlayer, key, file, Task.Run(() =>
             {
                 bool ok = ContentValidator.TrySanitize(extension, bytes, out byte[] clean, out string error);
                 return (ok, clean, error);
@@ -538,80 +547,87 @@ namespace CustomContentCore
         {
             for (int i = 0; i < this.Sanitizing.Count; i++)
             {
-                (int generation, string key, OfferedFile file, Task<(bool Ok, byte[] Clean, string Error)> task) = this.Sanitizing[i];
+                (int generation, long playerId, string key, OfferedFile file, Task<(bool Ok, byte[] Clean, string Error)> task) = this.Sanitizing[i];
                 if (!task.IsCompleted)
                     continue;
                 this.Sanitizing.RemoveAt(i--);
-                if (generation != this.Generation || this.CurrentOffer == null)
-                    continue; // left that game meanwhile
+                if (generation != this.Generation || !this.Sources.TryGetValue(playerId, out Source? source) || source.Offer == null)
+                    continue; // left that game or stopped taking their content meanwhile
 
                 (bool ok, byte[] clean, string error) = task.IsCompletedSuccessfully ? task.Result : (false, Array.Empty<byte>(), "couldn't be processed");
                 if (ok)
                 {
-                    string path = this.GetCachePath(file.Mod, file.Path);
+                    string path = this.GetCachePath(source, file.Mod, file.Path);
                     Directory.CreateDirectory(Path.GetDirectoryName(path)!);
                     File.WriteAllBytes(path, clean);
-                    this.Index[key] = file.Hash;
-                    this.SaveIndex();
+                    source.Index[key] = file.Hash;
+                    this.SaveIndex(source);
                 }
                 else
-                    this.Monitor.Log($"Received '{key}' but rejected it: {error}.", LogLevel.Warn);
+                    this.Monitor.Log($"Received '{key}' from {source.Name} but rejected it: {error}.", LogLevel.Warn);
 
-                if (--this.Pending <= 0)
-                    this.UseHostContent();
+                if (--source.Pending <= 0)
+                    this.ApplyContent();
             }
         }
 
-        /// <summary>Switch the mods to the host's cached content.</summary>
-        private void UseHostContent()
+        /// <summary>Show every ready player's content next to our own.</summary>
+        private void ApplyContent()
         {
-            if (this.CurrentOffer == null)
-                return;
-
-            foreach ((IManifest mod, _, string[] paths, Action reload) in ContentPacks.GetRegistrations())
+            List<Source> ready = this.Sources.Values.Where(s => s.Offer != null && s.Pending <= 0).ToList();
+            foreach ((IManifest mod, _, _, Action reload) in ContentPacks.GetRegistrations())
             {
-                string root = this.GetCacheRoot(mod.UniqueID);
-                Directory.CreateDirectory(root);
+                List<ContentPacks.ContentSource> peers = new();
+                foreach (Source source in ready)
+                {
+                    string root = this.GetCacheRoot(source, mod.UniqueID);
+                    if (!Directory.Exists(root))
+                        continue; // they share nothing for this mod
 
-                // remove cached files the host no longer has (or that were rejected)
-                HashSet<string> offered = this.CurrentOffer.Files.Where(f => f.Mod == mod.UniqueID).Select(f => Path.GetFullPath(this.GetCachePath(f.Mod, f.Path))).ToHashSet(StringComparer.OrdinalIgnoreCase);
-                foreach (string file in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories).ToArray())
-                    if (!offered.Contains(Path.GetFullPath(file)))
-                        File.Delete(file);
-
-                ContentPacks.SetContentRoot(mod.UniqueID, root);
+                    // remove cached files they no longer have (or that were rejected)
+                    HashSet<string> offered = source.Offer!.Files.Where(f => f.Mod == mod.UniqueID).Select(f => Path.GetFullPath(this.GetCachePath(source, f.Mod, f.Path))).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                    foreach (string file in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories).ToArray())
+                    {
+                        if (!offered.Contains(Path.GetFullPath(file)))
+                            File.Delete(file);
+                    }
+                    peers.Add(new ContentPacks.ContentSource(source.PlayerId, source.Name, root, IsOwn: false));
+                }
+                ContentPacks.SetPeerSources(mod.UniqueID, peers);
                 this.SafeReload(mod, reload);
             }
+
+            foreach (Source source in ready.Where(s => !s.InUse))
+            {
+                source.InUse = true;
+                Game1.addHUDMessage(new HUDMessage($"Showing {source.Name}'s custom content too.") { noIcon = true });
+                this.Monitor.Log($"Showing {source.Name}'s custom content ({source.Offer!.Files.Count} files) next to your own.", LogLevel.Info);
+            }
+            this.UsingPeerContent = ready.Any(s => s.InUse);
             this.PruneCache();
-            this.UsingHostContent = true;
-            string who = this.NameOf(this.SenderId, this.CurrentOffer.HostName);
-            Game1.addHUDMessage(new HUDMessage($"Using {who}'s custom content.") { noIcon = true });
-            this.Monitor.Log($"Using {who}'s custom content ({this.CurrentOffer.Files.Count} files).", LogLevel.Info);
         }
 
-        /// <summary>Switch back to this player's own content.</summary>
+        /// <summary>Show only our own content again (we left the game, or the players sharing it went).</summary>
         public void StopUsingHostContent()
         {
-            this.CurrentOffer = null;
             this.Generation++;
-            this.Token = null;
-            this.HelloHandled = false;
-            this.SenderId = 0;
-            this.Incoming.Clear();
+            this.Sources.Clear();
+            this.Declined.Clear();
+            this.Sanitizing.Clear();
             this.Outgoing.Clear();
             this.PlayerTokens.Clear();
             this.Greeted.Clear();
             this.ToGreet.Clear();
-            if (!this.UsingHostContent)
+            if (!this.UsingPeerContent)
                 return;
 
-            this.UsingHostContent = false;
+            this.UsingPeerContent = false;
             foreach ((IManifest mod, _, _, Action reload) in ContentPacks.GetRegistrations())
             {
-                ContentPacks.SetContentRoot(mod.UniqueID, null);
+                ContentPacks.SetPeerSources(mod.UniqueID, Array.Empty<ContentPacks.ContentSource>());
                 this.SafeReload(mod, reload);
             }
-            this.Monitor.Log("Switched back to your own custom content.", LogLevel.Info);
+            this.Monitor.Log("Showing only your own custom content again.", LogLevel.Info);
         }
 
 
@@ -626,17 +642,16 @@ namespace CustomContentCore
             {
                 // note: FromPlayerID can be forged, and messages between players pass through the host; the secret is what
                 // proves an offer belongs to the player we answered, and everything received is rebuilt before it's used
-                bool fromOurSender = this.SenderId != 0 && e.FromPlayerID == this.SenderId;
                 switch (e.Type)
                 {
                     case HelloType:
                         this.OnHello(e.FromPlayerID, e.ReadAs<HelloMessage>());
                         break;
-                    case OfferType when fromOurSender:
-                        this.OnOffer(e.ReadAs<OfferMessage>());
+                    case OfferType:
+                        this.OnOffer(e.FromPlayerID, e.ReadAs<OfferMessage>());
                         break;
-                    case ChunkType when fromOurSender:
-                        this.OnChunk(e.ReadAs<ChunkMessage>());
+                    case ChunkType:
+                        this.OnChunk(e.FromPlayerID, e.ReadAs<ChunkMessage>());
                         break;
                     case JoinType when CoreMod.Config.ShareContentAsHost:
                         this.OnJoin(e.FromPlayerID, e.ReadAs<JoinMessage>());
@@ -655,12 +670,11 @@ namespace CustomContentCore
             }
         }
 
-        /// <summary>Send a message to the one player whose content we're taking, and to nobody else.</summary>
-        private void SendToSender<T>(T message, string type)
+        /// <summary>Send a message to one player, and to nobody else.</summary>
+        private void SendTo<T>(long playerId, T message, string type)
         {
-            long id = this.SenderId != 0 ? this.SenderId : Game1.MasterPlayer?.UniqueMultiplayerID ?? 0;
-            if (id != 0)
-                this.Helper.Multiplayer.SendMessage(message, type, new[] { this.ModId }, new[] { id });
+            if (playerId != 0)
+                this.Helper.Multiplayer.SendMessage(message, type, new[] { this.ModId }, new[] { playerId });
         }
 
         /// <summary>Reload a mod's content, so one mod failing never leaves the others half-switched.</summary>
@@ -677,41 +691,42 @@ namespace CustomContentCore
         }
 
         /// <summary>Whether a mod/path from the host is safe to store: a registered mod, one of its content paths, an allowed file type, and no path tricks.</summary>
-        private bool IsSafe(string modId, string relativePath)
+        private bool IsSafe(Source source, string modId, string relativePath)
         {
             if (string.IsNullOrWhiteSpace(modId) || !ContentValidator.IsSafeRelativePath(relativePath) || Path.IsPathRooted(relativePath))
                 return false;
             if (!AllowedExtensions.Contains(Path.GetExtension(relativePath).ToLowerInvariant()) || !ContentPacks.IsContentPath(modId, relativePath))
                 return false;
-            string root = Path.GetFullPath(this.GetCacheRoot(modId)) + Path.DirectorySeparatorChar;
-            return Path.GetFullPath(this.GetCachePath(modId, relativePath)).StartsWith(root, StringComparison.Ordinal);
+            string root = Path.GetFullPath(this.GetCacheRoot(source, modId)) + Path.DirectorySeparatorChar;
+            return Path.GetFullPath(this.GetCachePath(source, modId, relativePath)).StartsWith(root, StringComparison.Ordinal);
         }
 
-        private string GetHostFolder()
+        /// <summary>The folder holding one player's shared content.</summary>
+        private string GetPlayerFolder(Source source)
         {
-            string host = new string((this.HostName + "_" + this.SenderId).Select(ch => IsAsciiLetterOrDigit(ch) || ch is '_' or '-' ? ch : '_').ToArray());
-            return Path.Combine(this.Helper.DirectoryPath, "host-content", host);
+            string name = new string((source.Name + "_" + source.PlayerId).Select(ch => IsAsciiLetterOrDigit(ch) || ch is '_' or '-' ? ch : '_').ToArray());
+            return Path.Combine(this.Helper.DirectoryPath, "host-content", name);
         }
 
-        private string GetCacheRoot(string modId)
+        private string GetCacheRoot(Source source, string modId)
         {
-            return Path.Combine(this.GetHostFolder(), new string(modId.Select(ch => IsAsciiLetterOrDigit(ch) || ch is '.' or '_' ? ch : '_').ToArray()));
+            return Path.Combine(this.GetPlayerFolder(source), new string(modId.Select(ch => IsAsciiLetterOrDigit(ch) || ch is '.' or '_' ? ch : '_').ToArray()));
         }
 
-        private string GetCachePath(string modId, string relativePath)
+        private string GetCachePath(Source source, string modId, string relativePath)
         {
-            return Path.Combine(this.GetCacheRoot(modId), relativePath.Replace('/', Path.DirectorySeparatorChar));
+            return Path.Combine(this.GetCacheRoot(source, modId), relativePath.Replace('/', Path.DirectorySeparatorChar));
         }
 
-        /// <summary>Load which host version (hash) each cached file came from.</summary>
-        private void LoadIndex()
+        /// <summary>Load which version (hash) of each cached file we have from a player.</summary>
+        private void LoadIndex(Source source)
         {
-            this.Index = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            source.Index = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             try
             {
-                string path = Path.Combine(this.GetHostFolder(), IndexFile);
+                string path = Path.Combine(this.GetPlayerFolder(source), IndexFile);
                 if (File.Exists(path) && JsonConvert.DeserializeObject<Dictionary<string, string>>(File.ReadAllText(path)) is { } index)
-                    this.Index = new Dictionary<string, string>(index, StringComparer.OrdinalIgnoreCase);
+                    source.Index = new Dictionary<string, string>(index, StringComparer.OrdinalIgnoreCase);
             }
             catch
             {
@@ -719,10 +734,10 @@ namespace CustomContentCore
             }
         }
 
-        private void SaveIndex()
+        private void SaveIndex(Source source)
         {
-            Directory.CreateDirectory(this.GetHostFolder());
-            File.WriteAllText(Path.Combine(this.GetHostFolder(), IndexFile), JsonConvert.SerializeObject(this.Index));
+            Directory.CreateDirectory(this.GetPlayerFolder(source));
+            File.WriteAllText(Path.Combine(this.GetPlayerFolder(source), IndexFile), JsonConvert.SerializeObject(source.Index));
         }
 
         /// <summary>Delete the content of older hosts, keeping the most recent few.</summary>
@@ -731,10 +746,10 @@ namespace CustomContentCore
             try
             {
                 DirectoryInfo root = new(Path.Combine(this.Helper.DirectoryPath, "host-content"));
-                string current = Path.GetFullPath(this.GetHostFolder());
-                foreach (DirectoryInfo old in root.EnumerateDirectories().OrderByDescending(d => d.LastWriteTimeUtc).Skip(MaxCachedHosts))
+                HashSet<string> current = this.Sources.Values.Select(s => Path.GetFullPath(this.GetPlayerFolder(s))).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                foreach (DirectoryInfo old in root.EnumerateDirectories().OrderByDescending(d => d.LastWriteTimeUtc).Skip(Math.Max(MaxCachedHosts, current.Count)))
                 {
-                    if (Path.GetFullPath(old.FullName) != current && old.LinkTarget == null)
+                    if (!current.Contains(Path.GetFullPath(old.FullName)) && old.LinkTarget == null)
                         old.Delete(recursive: true);
                 }
             }

@@ -48,10 +48,42 @@ namespace CustomContentCore
         /// <summary>Content folders to use instead of a mod's own folder (e.g. a multiplayer host's content), by mod ID.</summary>
         private static readonly Dictionary<string, string> RootOverrides = new(StringComparer.OrdinalIgnoreCase);
 
+        /// <summary>The content of other players in this multiplayer game, by mod ID, in the order they should be loaded.</summary>
+        private static readonly Dictionary<string, List<ContentSource>> PeerSources = new(StringComparer.OrdinalIgnoreCase);
+
         /// <summary>The registered mods: their ID, name, own folder, content paths and reload callback.</summary>
         internal static IEnumerable<(IManifest Mod, string Folder, string[] Paths, Action Reload)> GetRegistrations()
         {
             return Registrations.Select(r => (r.Mod, r.Folder, r.Paths, r.Reload)).ToList();
+        }
+
+        /// <summary>Where a mod loads content from: its own folder, or another player's content in a multiplayer game.</summary>
+        /// <param name="OwnerId">The player the content belongs to (0 for your own).</param>
+        /// <param name="OwnerName">The player's name, to show next to their items.</param>
+        /// <param name="Folder">The folder to read the data file and images from.</param>
+        /// <param name="IsOwn">Whether this is your own content, the only content you can write to.</param>
+        public sealed record ContentSource(long OwnerId, string OwnerName, string Folder, bool IsOwn);
+
+        /// <summary>Get everywhere a mod should load content from: its own folder first, then the other players who share theirs.</summary>
+        /// <param name="mod">The mod's manifest.</param>
+        /// <param name="ownFolder">The mod's own folder.</param>
+        /// <remarks>Only the mod's own folder is ever written to; other players' items are edited by asking their owner (that comes later, with locks).</remarks>
+        public static IReadOnlyList<ContentSource> GetContentSources(IManifest mod, string ownFolder)
+        {
+            List<ContentSource> sources = new() { new ContentSource(0, "", GetContentRoot(mod, ownFolder), IsOwn: true) };
+            if (PeerSources.TryGetValue(mod.UniqueID, out List<ContentSource>? peers))
+                sources.AddRange(peers.Where(p => Directory.Exists(p.Folder)));
+            return sources;
+        }
+
+        /// <summary>Set the other players' content for a mod (empty to clear it).</summary>
+        internal static void SetPeerSources(string modId, IEnumerable<ContentSource> sources)
+        {
+            List<ContentSource> list = sources.ToList();
+            if (list.Count > 0)
+                PeerSources[modId] = list;
+            else
+                PeerSources.Remove(modId);
         }
 
         /// <summary>Get the folder a mod should load its content from: its own folder, or (in multiplayer) the host's content.</summary>

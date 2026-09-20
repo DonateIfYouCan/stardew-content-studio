@@ -29,6 +29,15 @@ namespace CustomPaintings
         /// <summary>The unqualified furniture ID.</summary>
         public string FurnitureId { get; init; } = "";
 
+        /// <summary>The player this painting belongs to (0 for your own), in a multiplayer game where players share content.</summary>
+        public long OwnerId { get; init; }
+
+        /// <summary>The name of the player it belongs to, empty for your own.</summary>
+        public string OwnerName { get; init; } = "";
+
+        /// <summary>Whether this is your own painting, the only kind you can change.</summary>
+        public bool IsOwn => this.OwnerId == 0;
+
         /// <summary>Whether this is a replaced existing painting (instead of a new one).</summary>
         public bool IsReplacement { get; init; }
 
@@ -218,10 +227,11 @@ namespace CustomPaintings
         }
 
         /// <summary>Read the file contents without applying them.</summary>
-        public PaintingsFile ReadFile()
+        public PaintingsFile ReadFile(string? folder = null)
         {
-            string path = Path.Combine(this.ModFolder, DataFileName);
-            if (!System.IO.File.Exists(path) && !ContentPacks.IsUsingHostContent(this.Manifest))
+            bool own = folder == null;
+            string path = Path.Combine(folder ?? this.ModFolder, DataFileName);
+            if (!System.IO.File.Exists(path) && own)
             {
                 System.IO.File.WriteAllText(path, ExampleFileContent);
                 this.Monitor.Log($"Created {DataFileName} with examples.", LogLevel.Info);
@@ -309,15 +319,19 @@ namespace CustomPaintings
         }
 
         /// <summary>Get the full path to an image referenced in the data, if it exists.</summary>
-        public string? ResolveImage(string? image)
+        /// <param name="image">The image path from the data file.</param>
+        /// <param name="folder">The content folder it belongs to: your own, or another player's in multiplayer.</param>
+        public string? ResolveImage(string? image, string? folder = null)
         {
             if (string.IsNullOrWhiteSpace(image))
                 return null;
 
-            // only files inside the content folder (content can come from another player in multiplayer)
-            foreach (string candidate in new[] { Path.Combine(this.ImageFolder, image), Path.Combine(this.ModFolder, image) })
+            folder ??= this.ModFolder;
+
+            // only files inside that content folder (content can come from another player in multiplayer)
+            foreach (string candidate in new[] { Path.Combine(folder, ImageFolderName, image), Path.Combine(folder, image) })
             {
-                if (System.IO.File.Exists(candidate) && CustomContent.IsInsideFolder(candidate, this.ModFolder))
+                if (System.IO.File.Exists(candidate) && CustomContent.IsInsideFolder(candidate, folder))
                     return Path.GetFullPath(candidate);
             }
             return null;
@@ -327,7 +341,7 @@ namespace CustomPaintings
         public IEnumerable<string> GetSharedFiles()
         {
             List<string> files = new() { Path.Combine(this.ModFolder, DataFileName) };
-            files.AddRange(this.Added.Concat(this.Replaced).SelectMany(e => e.Slides).Select(s => s.Path));
+            files.AddRange(this.Added.Concat(this.Replaced).Where(e => e.IsOwn).SelectMany(e => e.Slides).Select(s => s.Path)); // never pass on another player's images
             IEnumerable<string> frameNames = this.File.Paintings.Select(p => p.Frame).Concat(this.File.Replace.Select(r => r.Frame)).Append(this.File.AutoDefaults.Frame);
             foreach (string frame in frameNames.Where(f => !string.IsNullOrWhiteSpace(f)).Distinct(StringComparer.OrdinalIgnoreCase))
             {
@@ -341,6 +355,7 @@ namespace CustomPaintings
         /// <summary>Read paintings.json and the images, then refresh the game data.</summary>
         public void Reload()
         {
+            IReadOnlyList<ContentPacks.ContentSource> sources = CustomContent.GetContentSources(this.Manifest, this.Helper.DirectoryPath);
             PaintingsFile file = this.ReadFile();
             this.File = file;
 
@@ -354,61 +369,73 @@ namespace CustomPaintings
             IDictionary<string, string> furniture = this.Helper.GameContent.Load<Dictionary<string, string>>("Data/Furniture");
             Dictionary<string, Pixels> imageCache = new(StringComparer.OrdinalIgnoreCase);
 
-            // explicit paintings
-            HashSet<string> usedImages = new(StringComparer.OrdinalIgnoreCase);
-            foreach (CustomPainting painting in file.Paintings)
+            // your own paintings first, then those of the players sharing theirs
+            foreach (ContentPacks.ContentSource source in sources)
             {
-                foreach (Slide slide in painting.GetSlides())
-                    if (this.ResolveImage(slide.File) is { } path)
-                        usedImages.Add(path);
-                this.AddPainting(painting, imageCache);
-            }
-            foreach (Replacement replacement in file.Replace)
-            {
-                foreach (Slide slide in replacement.GetSlides())
-                    if (this.ResolveImage(slide.File) is { } path)
-                        usedImages.Add(path);
-                this.AddReplacement(replacement, furniture, imageCache);
-            }
+                PaintingsFile sourceFile = source.IsOwn ? file : this.ReadFile(source.Folder);
+                string imageFolder = Path.Combine(source.Folder, ImageFolderName);
 
-            // auto-added images
-            if (file.AutoAddImages)
-            {
-                IEnumerable<string> images = Directory.Exists(this.ImageFolder) ? Directory.EnumerateFiles(this.ImageFolder) : Enumerable.Empty<string>();
-                foreach (string path in images.Where(p => ImageProcessor.IsImageFile(p) && !Path.GetFileName(p).StartsWith('.')).OrderBy(p => p)) // skip hidden files like macOS "._photo.jpg"
+                HashSet<string> usedImages = new(StringComparer.OrdinalIgnoreCase);
+                foreach (CustomPainting painting in sourceFile.Paintings)
                 {
-                    if (usedImages.Contains(Path.GetFullPath(path)))
-                        continue;
-
-                    string stem = Path.GetFileNameWithoutExtension(path);
-                    AutoDefaults d = file.AutoDefaults;
-                    this.AddPainting(
-                        new CustomPainting
-                        {
-                            Id = stem,
-                            Name = stem.Replace('_', ' ').Replace('-', ' '),
-                            Image = Path.GetFileName(path),
-                            Size = d.Size,
-                            Price = d.Price,
-                            Scaling = d.Scaling,
-                            Frame = d.Frame,
-                            Resolution = d.Resolution,
-                            InCatalogue = d.InCatalogue,
-                            Sources = d.Sources
-                        },
-                        imageCache
-                    );
+                    foreach (Slide slide in painting.GetSlides())
+                        if (this.ResolveImage(slide.File, source.Folder) is { } path)
+                            usedImages.Add(path);
+                    this.AddPainting(painting, imageCache, source);
                 }
-            }
 
-            // removals
-            foreach (string target in file.Remove)
-            {
-                string? id = ResolveFurnitureId(target, furniture);
-                if (id == null)
-                    this.Monitor.Log($"Remove: couldn't find a painting matching '{target}'. Use 'cpaint_vanilla' to see valid IDs.", LogLevel.Warn);
-                else
-                    this.Removed.Add(id);
+                // only your own content may change or remove the game's own paintings, so two players can't fight over one
+                if (source.IsOwn)
+                {
+                    foreach (Replacement replacement in sourceFile.Replace)
+                    {
+                        foreach (Slide slide in replacement.GetSlides())
+                            if (this.ResolveImage(slide.File) is { } path)
+                                usedImages.Add(path);
+                        this.AddReplacement(replacement, furniture, imageCache);
+                    }
+                    foreach (string target in sourceFile.Remove)
+                    {
+                        string? id = ResolveFurnitureId(target, furniture);
+                        if (id == null)
+                            this.Monitor.Log($"Remove: couldn't find a painting matching '{target}'. Use 'cpaint_vanilla' to see valid IDs.", LogLevel.Warn);
+                        else
+                            this.Removed.Add(id);
+                    }
+                }
+                else if (sourceFile.Replace.Count > 0 || sourceFile.Remove.Count > 0)
+                    this.Monitor.LogOnce($"{source.OwnerName} replaces or removes some of the game's own paintings; that part isn't taken over, only their own paintings are added.", LogLevel.Info);
+
+                // auto-added images
+                if (sourceFile.AutoAddImages)
+                {
+                    IEnumerable<string> images = Directory.Exists(imageFolder) ? Directory.EnumerateFiles(imageFolder) : Enumerable.Empty<string>();
+                    foreach (string path in images.Where(p => ImageProcessor.IsImageFile(p) && !Path.GetFileName(p).StartsWith('.')).OrderBy(p => p)) // skip hidden files like macOS "._photo.jpg"
+                    {
+                        if (usedImages.Contains(Path.GetFullPath(path)))
+                            continue;
+
+                        string stem = Path.GetFileNameWithoutExtension(path);
+                        AutoDefaults d = sourceFile.AutoDefaults;
+                        this.AddPainting(
+                            new CustomPainting
+                            {
+                                Id = stem,
+                                Name = stem.Replace('_', ' ').Replace('-', ' '),
+                                Image = Path.GetFileName(path),
+                                Size = d.Size,
+                                Price = d.Price,
+                                Scaling = d.Scaling,
+                                Frame = d.Frame,
+                                Resolution = d.Resolution,
+                                InCatalogue = d.InCatalogue,
+                                Sources = d.Sources
+                            },
+                            imageCache,
+                            source
+                        );
+                    }
+                }
             }
 
             // index entries and drop old high-res textures
@@ -585,14 +612,14 @@ namespace CustomPaintings
             return (int)(step % count);
         }
 
-        private List<ResolvedSlide> LoadSlides(ImageSettings settings, string label, Func<Pixels, (int W, int H)> getSize, bool table, Dictionary<string, Pixels> imageCache)
+        private List<ResolvedSlide> LoadSlides(ImageSettings settings, string label, Func<Pixels, (int W, int H)> getSize, bool table, Dictionary<string, Pixels> imageCache, string? folder = null)
         {
             List<ResolvedSlide> result = new();
             FrameStyle frame = this.GetFrame(settings.Frame);
             (int W, int H)? size = null;
             foreach (Slide slide in settings.GetSlides())
             {
-                string? path = this.ResolveImage(slide.File);
+                string? path = this.ResolveImage(slide.File, folder);
                 if (path == null)
                 {
                     this.Monitor.Log($"'{label}': image '{slide.File}' not found in the {ImageFolderName} folder.", LogLevel.Warn);
@@ -638,7 +665,7 @@ namespace CustomPaintings
             return result;
         }
 
-        private void AddPainting(CustomPainting painting, Dictionary<string, Pixels> imageCache)
+        private void AddPainting(CustomPainting painting, Dictionary<string, Pixels> imageCache, ContentPacks.ContentSource source)
         {
             string safeId = SanitizeId(painting.Id);
             if (safeId.Length == 0)
@@ -647,7 +674,10 @@ namespace CustomPaintings
                 return;
             }
 
-            string itemId = this.GetItemId(painting.Id);
+            // another player's paintings get their own IDs, so two players can both have a 'sunset' without clashing
+            if (!source.IsOwn)
+                safeId = CustomContent.OwnerTag(source) + "_" + safeId;
+            string itemId = this.GetItemId(safeId);
             if (this.Added.Any(p => p.FurnitureId == itemId))
             {
                 this.Monitor.Log($"Painting '{painting.Id}': duplicate Id, skipped.", LogLevel.Warn);
@@ -661,7 +691,7 @@ namespace CustomPaintings
             }
 
             (int W, int H) size = (2, 2);
-            List<ResolvedSlide> slides = this.LoadSlides(painting, painting.Id, image => size = this.GetPaintingSize(painting, image), painting.IsTable, imageCache);
+            List<ResolvedSlide> slides = this.LoadSlides(painting, painting.Id, image => size = this.GetPaintingSize(painting, image), painting.IsTable, imageCache, source.Folder);
             if (slides.Count == 0)
             {
                 this.Monitor.Log($"Painting '{painting.Id}' has no usable images, skipped.", LogLevel.Warn);
@@ -672,7 +702,9 @@ namespace CustomPaintings
             this.Added.Add(new ResolvedEntry
             {
                 FurnitureId = itemId,
-                Name = CleanName(painting.Name ?? painting.Id),
+                OwnerId = source.OwnerId,
+                OwnerName = source.IsOwn ? "" : source.OwnerName,
+                Name = source.IsOwn ? CleanName(painting.Name ?? painting.Id) : $"{CleanName(painting.Name ?? painting.Id)} ({source.OwnerName})",
                 Description = painting.Description,
                 Width = size.W,
                 Height = size.H,
