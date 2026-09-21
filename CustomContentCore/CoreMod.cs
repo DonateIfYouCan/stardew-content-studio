@@ -32,6 +32,9 @@ namespace CustomContentCore
         /// <summary>Whether to show the line of help that follows the mouse over buttons in the editor.</summary>
         public bool ShowHoverTips { get; set; } = true;
 
+        /// <summary>Whether the player has already been told once that their window is smaller than the editor is laid out for.</summary>
+        public bool SmallWindowNoticeSeen { get; set; } = false;
+
         /// <summary>When you host a multiplayer game, send your custom content to players who accept it.</summary>
         public bool ShareContentAsHost { get; set; } = false;
 
@@ -56,6 +59,26 @@ namespace CustomContentCore
 
         /// <summary>Keeps two players from changing the same thing at once.</summary>
         internal static ContentLocks? Locks { get; private set; }
+
+        /// <summary>Tell the player once, in a notice they click away, that their window is smaller than the editor is laid out for.</summary>
+        /// <remarks>
+        /// This used to be a line of text on the start page and the paint screen, which in a small window was itself squeezed
+        /// over the buttons it was warning about. A notice has room for it, and once seen it doesn't come back.
+        /// </remarks>
+        private static void TellOnceIfWindowIsSmall(EditorRoot root)
+        {
+            if (Config.SmallWindowNoticeSeen || CustomContent.SmallWindowWarning is not { } warning)
+                return;
+            root.Push(new ConfirmScreen(
+                $"{warning}\n\nMaking the window bigger, or playing full screen, gives every button room. This won't be shown again.",
+                "Got it",
+                () =>
+                {
+                    Config.SmallWindowNoticeSeen = true;
+                    SaveConfig();
+                },
+                cancelLabel: null));
+        }
 
         /// <summary>Say once that the window is smaller than the editor's screens are laid out for.</summary>
         private static void WarnIfWindowIsSmall()
@@ -197,7 +220,9 @@ namespace CustomContentCore
 
             if (Game1.activeClickableMenu is TitleMenu)
             {
-                TitleMenu.subMenu = new EditorRoot(first, () => TitleMenu.subMenu = null);
+                EditorRoot titleRoot = new(first, () => TitleMenu.subMenu = null);
+                TitleMenu.subMenu = titleRoot;
+                TellOnceIfWindowIsSmall(titleRoot);
                 return true;
             }
             if (Game1.activeClickableMenu != null && Context.IsWorldReady)
@@ -205,11 +230,13 @@ namespace CustomContentCore
                 Log("Close the open menu first.");
                 return false;
             }
-            Game1.activeClickableMenu = new EditorRoot(first, () =>
+            EditorRoot root = new(first, () =>
             {
                 if (Game1.activeClickableMenu is EditorRoot)
                     Game1.exitActiveMenu();
             });
+            Game1.activeClickableMenu = root;
+            TellOnceIfWindowIsSmall(root);
             return true;
         }
 

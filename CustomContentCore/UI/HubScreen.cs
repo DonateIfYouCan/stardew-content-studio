@@ -150,8 +150,6 @@ namespace CustomContentCore.UI
             Gfx.Panel(b, this.Area);
             Gfx.Text(b, "What do you want to edit?", new Vector2(this.Area.X + 36, this.Area.Y + 24), null, Gfx.TitleFont);
             base.Draw(b, mouseX, mouseY);
-            if (CustomContent.SmallWindowWarning is { } tooSmall)
-                Gfx.Text(b, Gfx.Fit(tooSmall, this.Area.Width - 72), new Vector2(this.Area.X + 36, this.Area.Bottom - 150), Color.DarkRed);
             if (CoreMod.Sync?.UsingHostContent == true)
             {
                 string note = CoreMod.Sync.CanChangeHostContent
@@ -180,11 +178,16 @@ namespace CustomContentCore.UI
 
         public override bool IsOverlay => true;
 
-        public ConfirmScreen(string message, string yesLabel, Action onYes)
+        /// <param name="message">What's being asked or said.</param>
+        /// <param name="yesLabel">The button that goes ahead (or, for a notice, closes it).</param>
+        /// <param name="onYes">What to do when it's clicked.</param>
+        /// <param name="cancelLabel">The button that backs out, or null for a notice with one button.</param>
+        public ConfirmScreen(string message, string yesLabel, Action onYes, string? cancelLabel = "Cancel")
         {
             this.Message = message;
             this.YesButton = this.Add(new Button(yesLabel, () => { this.Root.Pop(); onYes(); }));
-            this.NoButton = this.Add(new Button("Cancel", () => this.Root.Pop()));
+            this.NoButton = this.Add(new Button(cancelLabel ?? "", () => this.Root.Pop()));
+            this.NoButton.Visible = cancelLabel != null;
         }
 
         protected override void OnLayout(Rectangle area)

@@ -45,6 +45,12 @@ namespace CustomCrops
         /// <summary>Rendered art by crop ID.</summary>
         private Dictionary<string, RenderedCrop> Rendered = new(StringComparer.OrdinalIgnoreCase);
 
+        /// <summary>New art for the game's own crops, by the game crop's seed ID, with the change that asked for it.</summary>
+        private Dictionary<string, (GameCropChange Change, RenderedCrop Art)> GameReplaced = new(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>The game crops whose seeds are taken out of shops, by seed ID.</summary>
+        private HashSet<string> GameHidden = new(StringComparer.OrdinalIgnoreCase);
+
         /// <summary>Rendered art for one crop (premultiplied pixels).</summary>
         public sealed class RenderedCrop
         {
@@ -75,6 +81,21 @@ namespace CustomCrops
         public (string Label, string Path)[] BrowserPlaces => new[] { ("Mod images", this.ImageFolder) };
         public IReadOnlyDictionary<string, RenderedCrop> Crops => this.Rendered;
 
+        /// <summary>The new art for a game crop, if it has some.</summary>
+        public RenderedCrop? GetGameArt(string seedId) => this.GameReplaced.TryGetValue(seedId, out var replaced) ? replaced.Art : null;
+
+        /// <summary>Whether a game crop's seeds are taken out of shops.</summary>
+        public bool IsGameHidden(string seedId) => this.GameHidden.Contains(seedId);
+
+        /// <summary>The change to one game crop, if there is one.</summary>
+        public GameCropChange? GetGameChange(string seedId) => this.File.GameChanges.FirstOrDefault(c => string.Equals(c.Target, seedId, StringComparison.OrdinalIgnoreCase));
+
+        /// <summary>The item ID another player's game uses for a change to one of the game's crops.</summary>
+        internal static string GameItemId(string seedId) => CustomContent.GameItemPrefix + seedId;
+
+        /// <summary>What a game crop's new art is called as an asset. Custom crop IDs never contain '/', so this can't be one of them.</summary>
+        private string GetGameAsset(string seedId, bool objects) => $"Mods/{this.Manifest.UniqueID}/game/{seedId}/{(objects ? "Objects" : "Crop")}";
+
 
         /*********
         ** Public methods
@@ -93,6 +114,8 @@ namespace CustomCrops
             List<string?> files = new() { Path.Combine(this.ContentFolder, DataFileName) };
             foreach (CustomCrop crop in this.File.Crops)
                 files.AddRange(new[] { crop.HarvestImage?.File, crop.SeedImage?.File, crop.GrowthSheet }.Select(this.ResolveImage));
+            foreach (GameCropChange change in this.File.GameChanges)
+                files.AddRange(new[] { change.HarvestImage?.File, change.GrowthSheet }.Select(this.ResolveImage));
             return files.OfType<string>();
         }
 
@@ -154,13 +177,63 @@ namespace CustomCrops
             }
             this.Rendered = rendered;
 
+            foreach ((_, RenderedCrop old) in this.GameReplaced.Values)
+                foreach (Texture2D texture in old.Textures)
+                    texture.Dispose();
+            Dictionary<string, (GameCropChange, RenderedCrop)> replaced = new(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> hidden = new(StringComparer.OrdinalIgnoreCase);
+            foreach (GameCropChange change in this.File.GameChanges)
+            {
+                if (string.IsNullOrWhiteSpace(change.Target) || replaced.ContainsKey(change.Target) || hidden.Contains(change.Target))
+                    continue;
+                if (change.Hidden)
+                    hidden.Add(change.Target);
+                if (change.HarvestImage == null && string.IsNullOrWhiteSpace(change.GrowthSheet))
+                    continue;
+                try
+                {
+                    replaced[change.Target] = (change, this.RenderGameChange(change, out string? warning));
+                    if (warning != null)
+                        this.Monitor.Log($"Game crop '{change.Target}': {warning}", LogLevel.Warn);
+                }
+                catch (Exception ex)
+                {
+                    this.Monitor.Log($"Couldn't load new art for game crop '{change.Target}': {ex.Message}", LogLevel.Error);
+                }
+            }
+            this.GameReplaced = replaced;
+            this.GameHidden = hidden;
+
             this.Helper.GameContent.InvalidateCache(asset =>
                 asset.Name.IsEquivalentTo("Data/Objects")
                 || asset.Name.IsEquivalentTo("Data/Crops")
                 || asset.Name.IsEquivalentTo("Data/Shops")
                 || asset.Name.StartsWith($"Mods/{this.Manifest.UniqueID}/")
             );
-            this.Monitor.Log($"Loaded {this.Rendered.Count} custom crop(s).", LogLevel.Info);
+            this.Monitor.Log($"Loaded {this.Rendered.Count} custom crop(s)"
+                + (this.GameReplaced.Count + this.GameHidden.Count > 0 ? $"; {this.GameReplaced.Count} game crop(s) with new art, {this.GameHidden.Count} hidden" : "") + ".", LogLevel.Info);
+        }
+
+        /// <summary>The crop a change to a game crop is drawn as: the game crop, with whatever new art the change has.</summary>
+        /// <remarks>Also used by the editor, so a game crop is edited with the same screen and previews as your own.</remarks>
+        public CustomCrop AsCrop(GameCropChange change)
+        {
+            (string _, string name) = GetVanillaCrops().FirstOrDefault(v => v.SeedId == change.Target);
+            return new CustomCrop
+            {
+                Id = change.Target,
+                Name = name ?? change.Target,
+                HarvestImage = change.HarvestImage,
+                GrowthSheet = change.GrowthSheet,
+                LooksLike = change.Target,
+                Resolution = change.Resolution
+            };
+        }
+
+        /// <summary>Render the new art for a game crop.</summary>
+        private RenderedCrop RenderGameChange(GameCropChange change, out string? warning)
+        {
+            return this.Render(this.AsCrop(change), out warning);
         }
 
         /// <summary>Render a crop's art. Also used by the editor for previews.</summary>
@@ -252,7 +325,13 @@ namespace CustomCrops
             if (e.Name.StartsWith(prefix))
             {
                 string[] parts = e.Name.BaseName[prefix.Length..].Split('/');
-                if (parts.Length == 2 && this.Rendered.TryGetValue(parts[0], out RenderedCrop? crop))
+                if (parts.Length == 3 && parts[0] == "game" && this.GameReplaced.TryGetValue(parts[1], out var game))
+                {
+                    bool objects = parts[2] == "Objects";
+                    string assetName = e.NameWithoutLocale.Name;
+                    e.LoadFrom(() => this.CreateGameTexture(game.Art, objects, assetName), AssetLoadPriority.Exclusive);
+                }
+                else if (parts.Length == 2 && this.Rendered.TryGetValue(parts[0], out RenderedCrop? crop))
                 {
                     bool objects = parts[1] == "Objects";
                     string assetName = e.NameWithoutLocale.Name;
@@ -297,13 +376,23 @@ namespace CustomCrops
         }
 
         /// <summary>The IDs of the crops in the content this mod is using now.</summary>
-        public IEnumerable<string> GetItemIds() => this.ReadFile().Crops.Select(c => c.Id).Where(id => !string.IsNullOrWhiteSpace(id)).ToList();
+        public IEnumerable<string> GetItemIds()
+        {
+            CropsFile file = this.ReadFile();
+            return file.Crops.Select(c => c.Id)
+                .Concat(file.GameChanges.Where(c => !string.IsNullOrWhiteSpace(c.Target)).Select(c => GameItemId(c.Target))) // one per game crop, so each is held on its own
+                .Where(id => !string.IsNullOrWhiteSpace(id) && id != CustomContent.GameItemPrefix)
+                .ToList();
+        }
 
         /// <summary>Get one crop as JSON, for sending to the player whose content this is.</summary>
         /// <param name="itemId">The crop's ID in the content being used.</param>
         public string? GetItemJson(string itemId)
         {
-            CustomCrop? crop = this.ReadFile().Crops.FirstOrDefault(c => string.Equals(c.Id, itemId, StringComparison.OrdinalIgnoreCase));
+            CropsFile file = this.ReadFile();
+            object? crop = itemId.StartsWith(CustomContent.GameItemPrefix, StringComparison.Ordinal)
+                ? file.GameChanges.FirstOrDefault(c => string.Equals(c.Target, itemId.Substring(CustomContent.GameItemPrefix.Length), StringComparison.OrdinalIgnoreCase))
+                : file.Crops.FirstOrDefault(c => string.Equals(c.Id, itemId, StringComparison.OrdinalIgnoreCase));
             return crop == null
                 ? null
                 : JsonConvert.SerializeObject(crop, new JsonSerializerSettings { Formatting = Formatting.Indented, NullValueHandling = NullValueHandling.Ignore });
@@ -316,6 +405,9 @@ namespace CustomCrops
         /// <returns>Whether it was written.</returns>
         public bool ApplyItemJson(string itemId, string json, IDictionary<string, string> files)
         {
+            if (itemId.StartsWith(CustomContent.GameItemPrefix, StringComparison.Ordinal))
+                return this.ApplyGameChangeJson(itemId.Substring(CustomContent.GameItemPrefix.Length), json, files);
+
             CustomCrop? crop = JsonConvert.DeserializeObject<CustomCrop>(json);
             if (crop == null || string.IsNullOrWhiteSpace(itemId))
                 return false;
@@ -344,6 +436,15 @@ namespace CustomCrops
         public bool RemoveItem(string itemId)
         {
             CropsFile file = this.ReadFile();
+            if (itemId.StartsWith(CustomContent.GameItemPrefix, StringComparison.Ordinal))
+            {
+                // taking out a change to a game crop puts that crop back as the game has it
+                string target = itemId.Substring(CustomContent.GameItemPrefix.Length);
+                if (file.GameChanges.RemoveAll(c => string.Equals(c.Target, target, StringComparison.OrdinalIgnoreCase)) == 0)
+                    return false;
+                this.Save(file);
+                return true;
+            }
             int index = file.Crops.FindIndex(c => string.Equals(c.Id, itemId, StringComparison.OrdinalIgnoreCase));
             if (index < 0)
                 return false;
@@ -351,6 +452,35 @@ namespace CustomCrops
             file.Crops.RemoveAt(index);
             this.Save(file);
             return true;
+        }
+
+        /// <summary>Write one change to a game crop that a player made.</summary>
+        /// <param name="target">The game crop's seed ID; a change can't move to another crop.</param>
+        /// <param name="json">The change.</param>
+        /// <param name="files">Images that came with it, already checked.</param>
+        private bool ApplyGameChangeJson(string target, string json, IDictionary<string, string> files)
+        {
+            GameCropChange? change = JsonConvert.DeserializeObject<GameCropChange>(json);
+            if (change == null || string.IsNullOrWhiteSpace(target) || !GetVanillaCrops().Any(v => v.SeedId == target))
+                return false; // only the game's own crops
+
+            change.Target = target;
+            if (change.HarvestImage != null)
+                change.HarvestImage.File = this.TakeImage(change.HarvestImage.File, files);
+            string sheet = this.TakeImage(change.GrowthSheet, files);
+            change.GrowthSheet = sheet.Length > 0 ? sheet : null;
+            this.SaveGameChange(change);
+            return true;
+        }
+
+        /// <summary>Save a change to a game crop, replacing any earlier one; a change that changes nothing is dropped.</summary>
+        public void SaveGameChange(GameCropChange change)
+        {
+            CropsFile file = this.ReadFile();
+            file.GameChanges.RemoveAll(c => string.Equals(c.Target, change.Target, StringComparison.OrdinalIgnoreCase));
+            if (!change.IsEmpty)
+                file.GameChanges.Add(change);
+            this.Save(file);
         }
 
         /// <summary>Reduce an image reference to a plain file name, and copy in the file if one came with the change.</summary>
@@ -423,6 +553,27 @@ namespace CustomCrops
 
         private void EditObjects(IDictionary<string, ObjectData> objects)
         {
+            // the game's own crops: a new harvest icon on the game's harvest item, and hidden seeds kept out of random sales
+            if (this.GameReplaced.Count > 0 || this.GameHidden.Count > 0)
+            {
+                Dictionary<string, CropData>? gameCrops = OriginalContent.LoadData<Dictionary<string, CropData>>("Data/Crops");
+                foreach ((string seedId, (GameCropChange change, RenderedCrop _)) in this.GameReplaced)
+                {
+                    if (change.HarvestImage == null || gameCrops == null || !gameCrops.TryGetValue(seedId, out CropData? data))
+                        continue;
+                    if (data.HarvestItemId is { } harvestId && objects.TryGetValue(StardewValley.ItemRegistry.ManuallyQualifyItemId(harvestId, "(O)")[3..], out ObjectData? harvest))
+                    {
+                        harvest.Texture = this.GetGameAsset(seedId, objects: true);
+                        harvest.SpriteIndex = 1; // the new art's sheet is the seed packet, then the harvest
+                    }
+                }
+                foreach (string seedId in this.GameHidden)
+                {
+                    if (objects.TryGetValue(seedId, out ObjectData? seeds))
+                        seeds.ExcludeFromRandomSale = true;
+                }
+            }
+
             foreach (RenderedCrop rendered in this.Rendered.Values)
             {
                 CustomCrop crop = rendered.Data;
@@ -466,6 +617,15 @@ namespace CustomCrops
 
         private void EditCrops(IDictionary<string, CropData> crops)
         {
+            // the game's own crops: point the growing plant at the new sheet, and leave how it grows alone
+            foreach ((string seedId, (GameCropChange change, RenderedCrop _)) in this.GameReplaced)
+            {
+                if (string.IsNullOrWhiteSpace(change.GrowthSheet) || !crops.TryGetValue(seedId, out CropData? data))
+                    continue;
+                data.Texture = this.GetGameAsset(seedId, objects: false);
+                data.SpriteIndex = 0;
+            }
+
             foreach (RenderedCrop rendered in this.Rendered.Values)
             {
                 CustomCrop crop = rendered.Data;
@@ -489,6 +649,13 @@ namespace CustomCrops
 
         private void EditShops(IDictionary<string, ShopData> shops)
         {
+            if (this.GameHidden.Count > 0)
+            {
+                HashSet<string> hiddenSeeds = this.GameHidden.Select(id => "(O)" + id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                foreach (ShopData shop in shops.Values)
+                    shop.Items?.RemoveAll(item => item.ItemId != null && (hiddenSeeds.Contains(item.ItemId) || hiddenSeeds.Contains("(O)" + item.ItemId)));
+            }
+
             foreach (RenderedCrop rendered in this.Rendered.Values)
             {
                 CustomCrop crop = rendered.Data;

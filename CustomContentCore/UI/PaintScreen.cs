@@ -428,9 +428,7 @@ namespace CustomContentCore.UI
             this.DrawPalette(b, mouseX, mouseY);
             base.Draw(b, mouseX, mouseY);
 
-            string help = this.Message
-                ?? CustomContent.SmallWindowWarning
-                ?? $"{this.Width}x{this.Height} pixels, {this.Zoom}x zoom.";
+            string help = this.Message ?? $"{this.Width}x{this.Height} pixels, {this.Zoom}x zoom.";
             Gfx.Message(b, help, Math.Max(180, this.KeysButton.Bounds.X - this.CanvasArea.X - 24), new Vector2(this.CanvasArea.X, area.Bottom - 70), this.Message != null ? Color.DarkGreen : Color.DimGray);
         }
 

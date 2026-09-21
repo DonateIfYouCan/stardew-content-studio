@@ -6,6 +6,32 @@ namespace CustomCrops
     internal sealed class CropsFile
     {
         public List<CustomCrop> Crops { get; set; } = new();
+
+        /// <summary>Changes to the game's own crops: new art, or seeds taken out of shops. One per game crop.</summary>
+        public List<GameCropChange> GameChanges { get; set; } = new();
+    }
+
+    /// <summary>A change to one of the game's own crops. How it grows, what it sells for and its seed packet stay the game's.</summary>
+    internal sealed class GameCropChange
+    {
+        /// <summary>The game crop's seed item ID, like <c>472</c> for parsnip seeds.</summary>
+        public string Target { get; set; } = "";
+
+        /// <summary>A new harvest icon and its square crop, or null to keep the game's.</summary>
+        public ImageRef? HarvestImage { get; set; }
+
+        /// <summary>A new growth sheet (8 frames of 16x32 in a row, or a whole-number multiple), or null to keep the game's plant.</summary>
+        public string? GrowthSheet { get; set; }
+
+        /// <summary>How detailed the new art looks: 16 (pixel art), 32 (sharp), 64 (HD), or 0 (auto = HD).</summary>
+        public int Resolution { get; set; } = 0;
+
+        /// <summary>Whether its seeds are taken out of every shop and random sales. Crops already planted keep growing.</summary>
+        public bool Hidden { get; set; }
+
+        /// <summary>Whether this changes nothing any more, so it can be dropped.</summary>
+        [Newtonsoft.Json.JsonIgnore]
+        public bool IsEmpty => this.HarvestImage == null && string.IsNullOrWhiteSpace(this.GrowthSheet) && !this.Hidden;
     }
 
     /// <summary>A custom crop: its seeds, growing plant and harvest.</summary>

@@ -10,6 +10,35 @@ namespace CustomFurniture
 
         /// <summary>Custom wallpapers and floors.</summary>
         public List<CustomWallpaper> Wallpapers { get; set; } = new();
+
+        /// <summary>Changes to the game's own furniture: new art, or hidden from the catalogue and shops. One per game item.</summary>
+        public List<GameFurnitureChange> GameChanges { get; set; } = new();
+    }
+
+    /// <summary>A change to one of the game's own pieces of furniture. Its type, size, name and price stay the game's.</summary>
+    internal sealed class GameFurnitureChange
+    {
+        /// <summary>The game furniture's ID, like <c>1296</c>.</summary>
+        public string Target { get; set; } = "";
+
+        /// <summary>Your sprite sheet for it, relative to the <c>images</c> folder, in the same layout as the game's; empty to keep the game's art.</summary>
+        public string Sheet { get; set; } = "";
+
+        /// <summary>For single-frame furniture: how many animation frames the sheet has side by side (1 = not animated).</summary>
+        public int AnimationFrames { get; set; } = 1;
+
+        /// <summary>Milliseconds per animation frame.</summary>
+        public int FrameMilliseconds { get; set; } = 150;
+
+        /// <summary>How detailed it looks: 16 (pixel art), 32 (sharp), 64 (HD), or 0 (auto = the sheet's own detail).</summary>
+        public int Resolution { get; set; } = 0;
+
+        /// <summary>Whether it's taken out of the Furniture Catalogue and every shop. Copies already placed stay where they are.</summary>
+        public bool Hidden { get; set; }
+
+        /// <summary>Whether this changes nothing any more, so it can be dropped.</summary>
+        [Newtonsoft.Json.JsonIgnore]
+        public bool IsEmpty => string.IsNullOrWhiteSpace(this.Sheet) && !this.Hidden;
     }
 
     /// <summary>A custom wallpaper or floor made from one of your images (tiled by the game).</summary>

@@ -36,10 +36,38 @@ namespace Tests
         public void ItemPrefixesDontClash()
         {
             // each mod that keeps several kinds of thing in one file marks them apart, or a wallpaper could land on a chair
-            string[] prefixes = { "w:", "p:", "s:", "f:" };
+            string[] prefixes = { "w:", "p:", "s:", "f:", CustomContent.GameItemPrefix };
             Assert.Equal(prefixes.Length, prefixes.Distinct().Count());
             Assert.All(prefixes, prefix => Assert.EndsWith(":", prefix));
         }
+
+        [Theory]
+        [InlineData("CustomFurniture", "FurnitureStore.cs")]
+        [InlineData("CustomCrops", "CropStore.cs")]
+        public void AChangeToAGameItemTravelsOnItsOwn(string mod, string store)
+        {
+            // each change to one of the game's items is its own item, marked with the Core's prefix so the Host knows it
+            // changes the game (and needs the Host's say-so even the first time), and sent one by one like everything else
+            string code = System.IO.File.ReadAllText(System.IO.Path.Combine(Root(), mod, store));
+            Assert.Contains("CustomContent.GameItemPrefix + ", code);
+            Assert.Matches(@"GetItemIds\(\)[\s\S]*?GameChanges", code);
+            Assert.Matches(@"ApplyItemJson[\s\S]*?GameItemPrefix", code);
+            Assert.Matches(@"RemoveItem[\s\S]*?GameItemPrefix", code);
+        }
+
+        [Theory]
+        [InlineData("CustomFurniture", "FurnitureListScreen.cs")]
+        [InlineData("CustomCrops", "CropListScreen.cs")]
+        public void GameItemsAreHeldOneAtATime(string mod, string screen)
+        {
+            // Player A giving the game's lamp new art mustn't stop Player B hiding a game table, so nothing on these lists
+            // takes the whole file: that's the per-list lock that was asked to go
+            string code = System.IO.File.ReadAllText(System.IO.Path.Combine(Root(), mod, "UI", screen));
+            Assert.DoesNotContain("TakeLock(this.Store.Manifest, ListLockThing", code);
+            Assert.Contains("GameThing(", code);
+        }
+
+        private static string Root() => System.IO.Path.GetFullPath(System.IO.Path.Combine(System.AppContext.BaseDirectory, "..", "..", "..", ".."));
 
         /// <summary>The mods in this repo and whether they let their items be sent one at a time.</summary>
         /// <remarks>Read from the source, since loading the mods needs the game running.</remarks>

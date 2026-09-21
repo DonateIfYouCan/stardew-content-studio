@@ -267,6 +267,13 @@ namespace CustomContentCore
         /// <summary>The smallest window the editor's screens are laid out for.</summary>
         public const int MinimumWidth = 1600, MinimumHeight = 900;
 
+        /// <summary>
+        /// Put this in front of an item ID that changes one of the game's own items (new art for the game's lamp, a game
+        /// crop hidden from shops) rather than adding one. In a Host's game those always need the Host's
+        /// <c>Let players change my content</c>, even the first time, since they change the game for everyone.
+        /// </summary>
+        public const string GameItemPrefix = ChangeRules.GameItemPrefix;
+
         /// <summary>Whether the game's window is smaller than the editor is made for, so screens are cramped.</summary>
         public static bool WindowIsSmall => Game1.uiViewport.Width < MinimumWidth || Game1.uiViewport.Height < MinimumHeight;
 

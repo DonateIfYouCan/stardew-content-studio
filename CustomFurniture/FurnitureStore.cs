@@ -64,6 +64,12 @@ namespace CustomFurniture
         /// <summary>Loaded furniture by ID.</summary>
         private Dictionary<string, LoadedFurniture> Loaded = new(StringComparer.OrdinalIgnoreCase);
 
+        /// <summary>New art for the game's own furniture, by the game's furniture ID.</summary>
+        private Dictionary<string, LoadedFurniture> GameReplaced = new(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>The game's furniture taken out of the catalogue and shops, by ID.</summary>
+        private HashSet<string> GameHidden = new(StringComparer.OrdinalIgnoreCase);
+
         /// <summary>A piece of furniture after loading.</summary>
         public sealed class LoadedFurniture
         {
@@ -97,6 +103,21 @@ namespace CustomFurniture
         public (string Label, string Path)[] BrowserPlaces => new[] { ("Mod images", this.ImageFolder) };
         public IReadOnlyDictionary<string, LoadedFurniture> Furniture => this.Loaded;
 
+        /// <summary>The game's own furniture that has new art, by the game's furniture ID.</summary>
+        public IReadOnlyDictionary<string, LoadedFurniture> GameReplacements => this.GameReplaced;
+
+        /// <summary>Whether a game furniture item is taken out of the catalogue and shops.</summary>
+        public bool IsGameHidden(string id) => this.GameHidden.Contains(id);
+
+        /// <summary>The change to one game furniture item, if there is one.</summary>
+        public GameFurnitureChange? GetGameChange(string id) => this.File.GameChanges.FirstOrDefault(c => string.Equals(c.Target, id, StringComparison.OrdinalIgnoreCase));
+
+        /// <summary>The item ID another player's game uses for a change to one of the game's furniture items.</summary>
+        internal static string GameItemId(string target) => CustomContent.GameItemPrefix + target;
+
+        /// <summary>What a game furniture item's new art is called as an asset. Custom furniture IDs never contain '/', so this can't be one of them.</summary>
+        private string GetGameTextureAsset(string target) => $"Mods/{this.Manifest.UniqueID}/game/{target}";
+
         /// <summary>The custom wallpapers and floors.</summary>
         public WallpaperSets Wallpapers { get; }
 
@@ -125,6 +146,11 @@ namespace CustomFurniture
             foreach (CustomWallpaper item in this.File.Wallpapers)
             {
                 if (CustomContent.FindImage(item.Image, this.ImageFolder) is { } path)
+                    files.Add(path);
+            }
+            foreach (GameFurnitureChange change in this.File.GameChanges)
+            {
+                if (CustomContent.FindImage(change.Sheet, this.ImageFolder) is { } path)
                     files.Add(path);
             }
             return files;
@@ -263,6 +289,27 @@ namespace CustomFurniture
                     this.Monitor.Log($"Furniture '{item.Name}': {error}", LogLevel.Warn);
             }
             this.Loaded = loaded;
+
+            foreach (LoadedFurniture old in this.GameReplaced.Values)
+                old.HdTexture?.Dispose();
+            Dictionary<string, LoadedFurniture> replaced = new(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> hidden = new(StringComparer.OrdinalIgnoreCase);
+            foreach (GameFurnitureChange change in this.File.GameChanges)
+            {
+                if (string.IsNullOrWhiteSpace(change.Target) || replaced.ContainsKey(change.Target) || hidden.Contains(change.Target))
+                    continue;
+                if (change.Hidden)
+                    hidden.Add(change.Target);
+                if (string.IsNullOrWhiteSpace(change.Sheet))
+                    continue;
+                if (this.LoadGameChange(change, out string? error) is { } result)
+                    replaced[change.Target] = result;
+                else
+                    this.Monitor.Log($"Game furniture '{change.Target}': {error}", LogLevel.Warn);
+            }
+            this.GameReplaced = replaced;
+            this.GameHidden = hidden;
+
             this.Wallpapers.Reload(this.File.Wallpapers, this.Decode);
 
             this.Helper.GameContent.InvalidateCache(asset =>
@@ -271,7 +318,8 @@ namespace CustomFurniture
                 || asset.Name.IsEquivalentTo("Data/Shops")
                 || asset.Name.StartsWith($"Mods/{this.Manifest.UniqueID}/")
             );
-            this.Monitor.Log($"Loaded {this.Loaded.Count} custom furniture item(s) and {this.Wallpapers.Count} wallpaper(s)/floor(s).", LogLevel.Info);
+            this.Monitor.Log($"Loaded {this.Loaded.Count} custom furniture item(s) and {this.Wallpapers.Count} wallpaper(s)/floor(s)"
+                + (this.GameReplaced.Count + this.GameHidden.Count > 0 ? $"; {this.GameReplaced.Count} game item(s) with new art, {this.GameHidden.Count} hidden" : "") + ".", LogLevel.Info);
         }
 
         /// <summary>Load a piece of furniture's art. Also used by the editor for previews.</summary>
@@ -311,6 +359,22 @@ namespace CustomFurniture
             };
         }
 
+        /// <summary>Load the art for a change to a game furniture item. Also used by the editor for previews.</summary>
+        /// <remarks>It goes through the same steps as custom furniture: a piece based on the game item, with your sheet.</remarks>
+        public LoadedFurniture? LoadGameChange(GameFurnitureChange change, out string? error)
+        {
+            return this.Load(new CustomFurnitureItem
+            {
+                Id = change.Target,
+                Name = this.GetTemplate(change.Target)?.Name ?? change.Target,
+                BasedOn = change.Target,
+                Sheet = change.Sheet,
+                AnimationFrames = change.AnimationFrames,
+                FrameMilliseconds = change.FrameMilliseconds,
+                Resolution = change.Resolution
+            }, out error);
+        }
+
         public void OnAssetRequested(AssetRequestedEventArgs e)
         {
             string prefix = $"Mods/{this.Manifest.UniqueID}/";
@@ -321,6 +385,11 @@ namespace CustomFurniture
             }
             else if (e.Name.IsEquivalentTo("Data/AdditionalWallpaperFlooring"))
                 e.Edit(asset => this.Wallpapers.EditData(asset.GetData<List<StardewValley.GameData.ModWallpaperOrFlooring>>()), AssetEditPriority.Late);
+            else if (e.Name.StartsWith(prefix + "game/") && this.GameReplaced.TryGetValue(e.Name.BaseName[(prefix.Length + "game/".Length)..], out LoadedFurniture? gameFurniture))
+            {
+                string assetName = e.NameWithoutLocale.Name;
+                e.LoadFrom(() => this.CreateGameTexture(gameFurniture, assetName), AssetLoadPriority.Exclusive);
+            }
             else if (e.Name.StartsWith(prefix) && this.Loaded.TryGetValue(e.Name.BaseName[prefix.Length..], out LoadedFurniture? furniture))
             {
                 string assetName = e.NameWithoutLocale.Name;
@@ -362,7 +431,8 @@ namespace CustomFurniture
             FurnitureFile file = this.ReadFile();
             return file.Furniture.Select(f => f.Id)
                 .Concat(file.Wallpapers.Select(w => WallpaperItemId(w.Id))) // wallpaper and floors share this file, so their IDs are marked apart
-                .Where(id => !string.IsNullOrWhiteSpace(id) && id != WallpaperPrefix)
+                .Concat(file.GameChanges.Where(c => !string.IsNullOrWhiteSpace(c.Target)).Select(c => GameItemId(c.Target))) // one per game item, so each is held on its own
+                .Where(id => !string.IsNullOrWhiteSpace(id) && id != WallpaperPrefix && id != CustomContent.GameItemPrefix)
                 .ToList();
         }
 
@@ -379,7 +449,9 @@ namespace CustomFurniture
             FurnitureFile file = this.ReadFile();
             object? item = itemId.StartsWith(WallpaperPrefix, StringComparison.Ordinal)
                 ? file.Wallpapers.FirstOrDefault(w => string.Equals(w.Id, itemId.Substring(WallpaperPrefix.Length), StringComparison.OrdinalIgnoreCase))
-                : file.Furniture.FirstOrDefault(f => string.Equals(f.Id, itemId, StringComparison.OrdinalIgnoreCase));
+                : itemId.StartsWith(CustomContent.GameItemPrefix, StringComparison.Ordinal)
+                    ? file.GameChanges.FirstOrDefault(c => string.Equals(c.Target, itemId.Substring(CustomContent.GameItemPrefix.Length), StringComparison.OrdinalIgnoreCase))
+                    : file.Furniture.FirstOrDefault(f => string.Equals(f.Id, itemId, StringComparison.OrdinalIgnoreCase));
             return item == null
                 ? null
                 : JsonConvert.SerializeObject(item, new JsonSerializerSettings { Formatting = Formatting.Indented, NullValueHandling = NullValueHandling.Ignore });
@@ -396,6 +468,8 @@ namespace CustomFurniture
                 return false;
             if (itemId.StartsWith(WallpaperPrefix, StringComparison.Ordinal))
                 return this.ApplyWallpaperJson(itemId.Substring(WallpaperPrefix.Length), json, files);
+            if (itemId.StartsWith(CustomContent.GameItemPrefix, StringComparison.Ordinal))
+                return this.ApplyGameChangeJson(itemId.Substring(CustomContent.GameItemPrefix.Length), json, files);
 
             CustomFurnitureItem? item = JsonConvert.DeserializeObject<CustomFurnitureItem>(json);
             if (item == null)
@@ -431,6 +505,16 @@ namespace CustomFurniture
                 return true;
             }
 
+            if (itemId.StartsWith(CustomContent.GameItemPrefix, StringComparison.Ordinal))
+            {
+                // taking out a change to a game item puts that item back as the game has it
+                string target = itemId.Substring(CustomContent.GameItemPrefix.Length);
+                if (file.GameChanges.RemoveAll(c => string.Equals(c.Target, target, StringComparison.OrdinalIgnoreCase)) == 0)
+                    return false;
+                this.Save(file);
+                return true;
+            }
+
             int index = file.Furniture.FindIndex(f => string.Equals(f.Id, itemId, StringComparison.OrdinalIgnoreCase));
             if (index < 0)
                 return false;
@@ -438,6 +522,32 @@ namespace CustomFurniture
             file.Furniture.RemoveAt(index);
             this.Save(file);
             return true;
+        }
+
+        /// <summary>Write one change to a game furniture item that a player made.</summary>
+        /// <param name="target">The game furniture's ID; a change can't move to another item.</param>
+        /// <param name="json">The change.</param>
+        /// <param name="files">Images that came with it, already checked.</param>
+        private bool ApplyGameChangeJson(string target, string json, IDictionary<string, string> files)
+        {
+            GameFurnitureChange? change = JsonConvert.DeserializeObject<GameFurnitureChange>(json);
+            if (change == null || string.IsNullOrWhiteSpace(target) || this.GetTemplate(target) == null)
+                return false; // only the game furniture this mod knows how to draw
+
+            change.Target = target;
+            change.Sheet = this.TakeImage(change.Sheet, files);
+            this.SaveGameChange(change);
+            return true;
+        }
+
+        /// <summary>Save a change to a game furniture item, replacing any earlier one; a change that changes nothing is dropped.</summary>
+        public void SaveGameChange(GameFurnitureChange change)
+        {
+            FurnitureFile file = this.ReadFile();
+            file.GameChanges.RemoveAll(c => string.Equals(c.Target, change.Target, StringComparison.OrdinalIgnoreCase));
+            if (!change.IsEmpty)
+                file.GameChanges.Add(change);
+            this.Save(file);
         }
 
         /// <summary>Write one wallpaper or floor a player changed or added into this content.</summary>
@@ -545,10 +655,47 @@ namespace CustomFurniture
                 string texture = this.GetTextureAsset(item.Id).Replace('/', '\\'); // data fields are separated by '/'
                 data[this.GetItemId(item.Id)] = $"{this.GetItemId(item.Id)}/{t.Type}/{t.TilesWide} {t.TilesHigh}/{t.BoxWide} {t.BoxHigh}/1/{Math.Max(0, item.Price)}/{t.Placement}/{name}/0/{texture}/{(!item.InCatalogue).ToString().ToLowerInvariant()}/custom_furniture";
             }
+
+            // the game's own furniture: point it at the new art, and keep everything else (type, size, name, price) the game's
+            foreach ((string id, LoadedFurniture _) in this.GameReplaced)
+            {
+                if (!data.TryGetValue(id, out string? raw))
+                    continue;
+                string[] fields = PadFields(raw.Split('/'), 11);
+                fields[8] = "0"; // the new texture holds only this item's frames
+                fields[9] = this.GetGameTextureAsset(id).Replace('/', '\\');
+                data[id] = string.Join('/', fields);
+            }
+            foreach (string id in this.GameHidden)
+            {
+                if (!data.TryGetValue(id, out string? raw))
+                    continue;
+                string[] fields = PadFields(raw.Split('/'), 11);
+                fields[10] = "true"; // off-limits: not in the catalogue, not sold at random
+                data[id] = string.Join('/', fields);
+            }
+        }
+
+        /// <summary>Pad a data entry's fields so a field the game left off can be set.</summary>
+        private static string[] PadFields(string[] fields, int count)
+        {
+            if (fields.Length >= count)
+                return fields;
+            string[] padded = new string[count];
+            Array.Fill(padded, "");
+            fields.CopyTo(padded, 0);
+            return padded;
         }
 
         private void EditShops(IDictionary<string, ShopData> shops)
         {
+            if (this.GameHidden.Count > 0)
+            {
+                HashSet<string> hiddenItems = this.GameHidden.Select(id => "(F)" + id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                foreach (ShopData shop in shops.Values)
+                    shop.Items?.RemoveAll(item => item.ItemId != null && hiddenItems.Contains(item.ItemId));
+            }
+
             foreach (LoadedFurniture furniture in this.Loaded.Values)
             {
                 CustomFurnitureItem item = furniture.Data;

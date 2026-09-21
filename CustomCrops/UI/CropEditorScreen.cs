@@ -26,6 +26,10 @@ namespace CustomCrops.UI
         private readonly Action<string> OnSaved;
         private readonly List<(string SeedId, string Name)> VanillaCrops;
 
+        /// <summary>When editing new art for one of the game's own crops, the change being made; null for your own crop.</summary>
+        /// <remarks>The game crop keeps how it grows, what it sells for and its seed packet, so only the art controls are shown.</remarks>
+        private readonly GameCropChange? GameChange;
+
         /// <summary>Which image the cropper edits: false = harvest icon, true = seed packet.</summary>
         private bool EditingSeed;
 
@@ -144,6 +148,22 @@ namespace CustomCrops.UI
             this.SyncImage();
         }
 
+        /// <summary>Edit new art for one of the game's own crops: its harvest icon and its growing plant.</summary>
+        /// <param name="store">The crop store.</param>
+        /// <param name="change">The change to that crop (a new one if it has none yet).</param>
+        /// <param name="onSaved">Called after saving, with the crop's name.</param>
+        public CropEditorScreen(CropStore store, GameCropChange change, Action<string> onSaved)
+            : this(store, store.AsCrop(change), isNew: false, onSaved)
+        {
+            this.GameChange = change;
+            // what makes it that crop stays the game's; only the art is yours
+            List<Widget> gameOwns = new() { this.ImageCycler, this.AutoPacketButton, this.LookCycler, this.NameField, this.DescriptionField, this.DaysField, this.RegrowField,
+                this.CategoryCycler, this.EnergyField, this.SellField, this.SeedPriceField, this.HarvestCountField, this.TrellisBox, this.ScytheBox, this.PierreBox, this.JojaBox, this.TravelerBox };
+            gameOwns.AddRange(this.SeasonBoxes);
+            foreach (Widget widget in gameOwns)
+                widget.Visible = false;
+        }
+
         public override void OnResume()
         {
             this.ReleaseSheet(); // the painter is closed again, so another player can take their turn at that sheet
@@ -171,7 +191,7 @@ namespace CustomCrops.UI
 
             // left: image cropper and growth look
             int lx = area.X + pad;
-            this.Labels.Add((new Rectangle(lx, top, 110, 48), "Image"));
+            this.Labels.Add((new Rectangle(lx, top, 110, 48), this.GameChange != null ? "Harvest icon" : "Image"));
             this.ImageCycler.Bounds = new Rectangle(lx + 110, top, leftW - 110, 48);
             int growthBlock = 48 + 12 + 48;
             this.Cropper.Bounds = new Rectangle(lx, top + 60, leftW, bottom - (top + 60) - 60 - growthBlock - 24);
@@ -217,16 +237,19 @@ namespace CustomCrops.UI
                 y += 52;
             }
 
-            Full("Name", this.NameField);
-            Full("Description", this.DescriptionField);
-            Boxes("Seasons", this.SeasonBoxes);
-            Pair("Days", this.DaysField, "Regrows", this.RegrowField);
-            Pair("Type", this.CategoryCycler, "Energy", this.EnergyField);
-            Pair("Sells for", this.SellField, "Seed price", this.SeedPriceField);
-            Pair("Harvest", this.HarvestCountField, "", this.TrellisBox, 0);
-            this.ScytheBox.Bounds = new Rectangle(this.TrellisBox.Bounds.X + 160, this.TrellisBox.Bounds.Y, 160, 44);
-            this.TrellisBox.Bounds = new Rectangle(this.TrellisBox.Bounds.X, this.TrellisBox.Bounds.Y, 150, 44);
-            Boxes("Seeds sold", this.PierreBox, this.JojaBox, this.TravelerBox);
+            if (this.GameChange == null)
+            {
+                Full("Name", this.NameField);
+                Full("Description", this.DescriptionField);
+                Boxes("Seasons", this.SeasonBoxes);
+                Pair("Days", this.DaysField, "Regrows", this.RegrowField);
+                Pair("Type", this.CategoryCycler, "Energy", this.EnergyField);
+                Pair("Sells for", this.SellField, "Seed price", this.SeedPriceField);
+                Pair("Harvest", this.HarvestCountField, "", this.TrellisBox, 0);
+                this.ScytheBox.Bounds = new Rectangle(this.TrellisBox.Bounds.X + 160, this.TrellisBox.Bounds.Y, 160, 44);
+                this.TrellisBox.Bounds = new Rectangle(this.TrellisBox.Bounds.X, this.TrellisBox.Bounds.Y, 150, 44);
+                Boxes("Seeds sold", this.PierreBox, this.JojaBox, this.TravelerBox);
+            }
             Full("Detail", this.DetailCycler);
 
             this.SaveButton.Bounds = new Rectangle(area.Right - pad - 200, area.Bottom - 84, 200, 60);
@@ -238,7 +261,9 @@ namespace CustomCrops.UI
         {
             Rectangle area = this.Area;
             Gfx.Panel(b, area);
-            Gfx.Text(b, this.IsNew ? "New crop" : $"Edit '{this.Crop.Name}'", new Vector2(area.X + 36, area.Y + 24), null, Gfx.TitleFont);
+            string title = this.GameChange != null ? $"New art for the game's {this.Crop.Name}" : this.IsNew ? "New crop" : $"Edit '{this.Crop.Name}'";
+            Gfx.Text(b, title, new Vector2(area.X + 36, area.Y + 24), null, Gfx.TitleFont);
+
 
             // generated seed packet (instead of the cropper)
             if (this.EditingSeed && this.Crop.SeedImage == null)
@@ -261,7 +286,9 @@ namespace CustomCrops.UI
             this.DrawPreview(b);
             base.Draw(b, mouseX, mouseY);
 
-            string help = "Days: one number per growth stage, like 1,2,2,3. Regrows: days until it produces again (leave empty to harvest once).";
+            string help = this.GameChange != null
+                ? "How it grows, what it sells for and its seed packet stay the game's. Leave an image empty to keep the game's."
+                : "Days: one number per growth stage, like 1,2,2,3. Regrows: days until it produces again (leave empty to harvest once).";
             Gfx.Message(b, this.Message ?? help, this.CancelButton.Bounds.X - area.X - 60, new Vector2(area.X + 36, area.Bottom - 70), this.Message != null ? this.MessageColor : Color.DimGray);
         }
 
@@ -283,14 +310,30 @@ namespace CustomCrops.UI
             // seed + harvest icons
             int icon = 64;
             int x = inner.X;
-            if (this.PreviewObjects != null)
+            if (this.GameChange != null)
             {
-                int half = this.PreviewObjects.Width / 2;
-                b.Draw(this.PreviewObjects, new Rectangle(x, inner.Y + 20, icon, icon), new Rectangle(0, 0, half, this.PreviewObjects.Height), Color.White);
-                b.Draw(this.PreviewObjects, new Rectangle(x + icon + 12, inner.Y + 20, icon, icon), new Rectangle(half, 0, half, this.PreviewObjects.Height), Color.White);
+                // a game crop keeps its own seed packet, so only the harvest icon is shown - or a note if it keeps that too
+                if (this.Crop.HarvestImage != null && this.PreviewObjects != null)
+                {
+                    int half = this.PreviewObjects.Width / 2;
+                    b.Draw(this.PreviewObjects, new Rectangle(x, inner.Y + 20, icon, icon), new Rectangle(half, 0, half, this.PreviewObjects.Height), Color.White);
+                }
+                else
+                    Gfx.Text(b, "The game's", new Vector2(x, inner.Y + 40), Color.White * 0.9f);
+                Gfx.Text(b, "Harvest", new Vector2(x, inner.Y + icon + 28), Color.White * 0.9f);
+                x += Math.Max(icon + 40, (int)Gfx.Font.MeasureString("The game's").X + 32);
             }
-            Gfx.Text(b, "Seeds  Harvest", new Vector2(x, inner.Y + icon + 28), Color.White * 0.9f);
-            x += Math.Max(icon * 2 + 40, (int)Gfx.Font.MeasureString("Seeds  Harvest").X + 32);
+            else
+            {
+                if (this.PreviewObjects != null)
+                {
+                    int half = this.PreviewObjects.Width / 2;
+                    b.Draw(this.PreviewObjects, new Rectangle(x, inner.Y + 20, icon, icon), new Rectangle(0, 0, half, this.PreviewObjects.Height), Color.White);
+                    b.Draw(this.PreviewObjects, new Rectangle(x + icon + 12, inner.Y + 20, icon, icon), new Rectangle(half, 0, half, this.PreviewObjects.Height), Color.White);
+                }
+                Gfx.Text(b, "Seeds  Harvest", new Vector2(x, inner.Y + icon + 28), Color.White * 0.9f);
+                x += Math.Max(icon * 2 + 40, (int)Gfx.Font.MeasureString("Seeds  Harvest").X + 32);
+            }
 
             // growth frames: seed, stages..., grown
             if (this.PreviewGrowth != null)
@@ -562,6 +605,25 @@ namespace CustomCrops.UI
         private void Save()
         {
             CustomCrop c = this.Crop;
+            if (this.GameChange is { } change)
+            {
+                change.HarvestImage = c.HarvestImage;
+                change.GrowthSheet = string.IsNullOrWhiteSpace(c.GrowthSheet) ? null : c.GrowthSheet;
+                change.Resolution = c.Resolution;
+                try
+                {
+                    this.Store.SaveGameChange(change);
+                }
+                catch (Exception ex)
+                {
+                    this.ShowError($"Couldn't save: {ex.Message}");
+                    return;
+                }
+                Game1.playSound("newArtifact");
+                this.Root.Pop();
+                this.OnSaved(c.Name);
+                return;
+            }
             if (string.IsNullOrWhiteSpace(c.Name))
             {
                 this.ShowError("Give the crop a name.");

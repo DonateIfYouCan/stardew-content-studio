@@ -20,6 +20,10 @@ namespace CustomFurniture.UI
         /// <summary>Called after saving, with the saved name.</summary>
         private readonly Action<string> OnSaved;
 
+        /// <summary>When editing new art for one of the game's own pieces, the change being made; null for your own furniture.</summary>
+        /// <remarks>The game's piece keeps its type, size, name and price, so only the art controls are shown.</remarks>
+        private readonly GameFurnitureChange? GameChange;
+
         private FurnitureTemplate? Template;
         private Pixels? Sheet;
         private Texture2D? SheetTexture;
@@ -78,6 +82,28 @@ namespace CustomFurniture.UI
             this.SyncButtons();
         }
 
+        /// <summary>Edit new art for one of the game's own pieces of furniture.</summary>
+        /// <param name="store">The furniture store.</param>
+        /// <param name="change">The change to that piece (a new one if it has none yet).</param>
+        /// <param name="onSaved">Called after saving, with the piece's name.</param>
+        public FurnitureEditorScreen(FurnitureStore store, GameFurnitureChange change, Action<string> onSaved)
+            : this(store, new CustomFurnitureItem
+            {
+                Id = change.Target,
+                Name = store.GetTemplate(change.Target)?.Name ?? change.Target,
+                BasedOn = change.Target,
+                Sheet = change.Sheet,
+                AnimationFrames = change.AnimationFrames,
+                FrameMilliseconds = change.FrameMilliseconds,
+                Resolution = change.Resolution
+            }, isNew: false, onSaved)
+        {
+            this.GameChange = change;
+            // the game's piece keeps what makes it that piece; only the art is yours
+            foreach (Widget widget in new Widget[] { this.BaseButton, this.NameField, this.PriceField, this.CatalogueBox, this.RobinBox, this.TravelerBox })
+                widget.Visible = false;
+        }
+
         /// <summary>Called when a screen opened from here closes again, such as the paint screen.</summary>
         public override void OnResume()
         {
@@ -118,14 +144,17 @@ namespace CustomFurniture.UI
                 widget.Bounds = new Rectangle(rx + labelW, y, rw - labelW, height);
                 y += height + 10;
             }
-            Row("Name", this.NameField);
-            Row("Price", this.PriceField);
-            this.Labels.Add((new Rectangle(rx, y, labelW, 44), "Sold in"));
-            this.CatalogueBox.Bounds = new Rectangle(rx + labelW, y, rw - labelW, 44);
-            y += 52;
-            this.RobinBox.Bounds = new Rectangle(rx + labelW, y, 160, 44);
-            this.TravelerBox.Bounds = new Rectangle(rx + labelW + 170, y, rw - labelW - 170, 44);
-            y += 60;
+            if (this.GameChange == null)
+            {
+                Row("Name", this.NameField);
+                Row("Price", this.PriceField);
+                this.Labels.Add((new Rectangle(rx, y, labelW, 44), "Sold in"));
+                this.CatalogueBox.Bounds = new Rectangle(rx + labelW, y, rw - labelW, 44);
+                y += 52;
+                this.RobinBox.Bounds = new Rectangle(rx + labelW, y, 160, 44);
+                this.TravelerBox.Bounds = new Rectangle(rx + labelW + 170, y, rw - labelW - 170, 44);
+                y += 60;
+            }
             Row("Detail", this.DetailCycler);
             bool animate = this.Template?.CanAnimate == true;
             this.FramesField.Visible = animate;
@@ -145,9 +174,12 @@ namespace CustomFurniture.UI
         {
             Rectangle area = this.Area;
             Gfx.Panel(b, area);
-            Gfx.Text(b, this.IsNew ? "New furniture" : $"Edit '{this.Item.Name}'", new Vector2(area.X + 36, area.Y + 24), null, Gfx.TitleFont);
+            string title = this.GameChange != null ? $"New art for the game's {this.Item.Name}" : this.IsNew ? "New furniture" : $"Edit '{this.Item.Name}'";
+            Gfx.Text(b, title, new Vector2(area.X + 36, area.Y + 24), null, Gfx.TitleFont);
             FurnitureTemplate? t = this.Template;
-            if (t != null)
+            if (t != null && this.GameChange != null)
+                Gfx.Text(b, $"{t.Kind}, {t.TilesWide}x{t.TilesHigh} tiles. Its type, size, name and price stay the game's.", new Vector2(area.X + 36, this.BaseButton.Bounds.Y + 12), Color.DimGray);
+            else if (t != null)
                 Gfx.Text(b, Gfx.Fit($"Based on: {t.Name} ({t.Kind}, {t.TilesWide}x{t.TilesHigh} tiles)", area.X + 32 + (int)(area.Width * 0.5) - this.BaseButton.Bounds.Right - 16), new Vector2(this.BaseButton.Bounds.Right + 16, this.BaseButton.Bounds.Y + 12));
 
             // preview: each frame (original on top, yours below), plus the animation
@@ -359,6 +391,26 @@ namespace CustomFurniture.UI
             }
             if (!this.ValidateSheet())
                 return;
+            if (this.GameChange is { } change)
+            {
+                change.Sheet = f.Sheet;
+                change.AnimationFrames = f.AnimationFrames;
+                change.FrameMilliseconds = f.FrameMilliseconds;
+                change.Resolution = f.Resolution;
+                try
+                {
+                    this.Store.SaveGameChange(change);
+                }
+                catch (Exception ex)
+                {
+                    this.ShowError($"Couldn't save: {ex.Message}");
+                    return;
+                }
+                Game1.playSound("newArtifact");
+                this.Root.Pop();
+                this.OnSaved(this.Item.Name);
+                return;
+            }
             if (string.IsNullOrWhiteSpace(f.Name))
             {
                 this.ShowError("Give it a name.");
