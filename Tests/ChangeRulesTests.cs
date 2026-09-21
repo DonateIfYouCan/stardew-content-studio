@@ -210,6 +210,16 @@ namespace Tests
             Assert.Matches(@"this\.Downloaded\[[^\]]+\]\s*=", decide);
         }
 
+        [Fact]
+        public void WhatAPlayerAddedIsStillTheirsAfterTheHostRestarts()
+        {
+            // "changing what you added is always yours" quietly ran out when the host quit: who added what was only kept in memory
+            string code = File.ReadAllText(Path.Combine(Root(), "CustomContentCore", "MultiplayerSync.cs"));
+            Assert.Matches(@"this\.AddedBy\[key\] = playerId;[\s\S]{0,200}this\.SaveAddedBy\(\)", code);
+            Assert.Matches(@"SaveLoaded \+= [^;]*LoadAddedBy", code);
+            Assert.DoesNotMatch(@"this\.AddedBy\.Clear\(\);\s*this\.HostAllowsChanges", code); // the reset on leaving a game mustn't wipe it
+        }
+
         private static string Root() => Path.GetFullPath(Path.Combine(System.AppContext.BaseDirectory, "..", "..", "..", ".."));
     }
 }

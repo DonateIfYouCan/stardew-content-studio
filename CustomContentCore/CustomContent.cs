@@ -122,6 +122,9 @@ namespace CustomContentCore
         /// <summary>Which player is changing something right now, if it isn't you.</summary>
         public static string? WhoIsChanging(IManifest mod, string thing) => CoreMod.Locks?.WhoHas($"{mod.UniqueID}|{thing}");
 
+        /// <summary>Goes up whenever who's changing what changes. A screen that greys out buttons with <see cref="WhoIsChanging"/> checks them again when this moves.</summary>
+        public static int LockVersion => ContentLocks.Version;
+
         /// <summary>Throw a friendly error if a mod's content can't be edited right now.</summary>
         /// <remarks>In a multiplayer game you edit the host's content, which is what everyone is using; what you save is sent to the host, who keeps it.</remarks>
         public static void EnsureEditable(IManifest mod)

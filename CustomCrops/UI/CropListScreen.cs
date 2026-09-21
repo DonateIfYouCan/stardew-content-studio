@@ -125,20 +125,33 @@ namespace CustomCrops.UI
                 button.Bounds = new Rectangle(bx, by, sideW, 56);
                 by += button == this.NewButton ? 88 : 64;
             }
+            this.GiveMineBounds = this.GiveButton.Bounds;
             by = y;
             foreach (Button button in new[] { this.GameArtButton, this.GameHideButton, this.GameRestoreButton })
             {
                 button.Bounds = new Rectangle(bx, by, sideW, 56);
                 by += 64;
             }
+            this.SyncButtons(); // the give button moves with the tab
             this.CloseButton.Bounds = new Rectangle(area.Right - pad - 180, area.Bottom - 84, 180, 60);
         }
+
+        /// <summary>Where the give button goes on the list of your own, worked out with the rest of the layout.</summary>
+        private Rectangle GiveMineBounds;
 
         /// <summary>The content version the rows were built from, so the list notices when another player's change arrives.</summary>
         private int BuiltVersion = -1;
 
+        /// <summary>The lock version the buttons were last checked against, so they catch up when someone takes or lets go of something.</summary>
+        private int LockVersionSeen = -1;
+
         public override void Draw(SpriteBatch b, int mouseX, int mouseY)
         {
+            if (this.LockVersionSeen != CustomContent.LockVersion)
+            {
+                this.LockVersionSeen = CustomContent.LockVersion;
+                this.SyncButtons(); // the rows say who's changing what as they're drawn, but buttons are only greyed out here
+            }
             if (this.BuiltVersion != CustomContent.ContentVersion)
                 this.Refresh(); // another player's change arrived while this list was open
 
@@ -283,6 +296,11 @@ namespace CustomCrops.UI
             this.GameHideButton.Visible = gamePicked;
             this.GameHideButton.Label = hidden ? "Sell the seeds again" : "Hide from shops";
             this.GameRestoreButton.Visible = replaced;
+
+            // on the game's list the give button goes under whichever of that list's buttons are showing, not over one
+            this.GiveButton.Bounds = this.ShowGame
+                ? new Rectangle(this.GameArtButton.Bounds.X, (replaced ? this.GameRestoreButton.Bounds : this.GameHideButton.Bounds).Bottom + 24, this.GameArtButton.Bounds.Width, this.GameArtButton.Bounds.Height)
+                : this.GiveMineBounds;
             foreach (Button button in new[] { this.GameArtButton, this.GameHideButton, this.GameRestoreButton })
             {
                 button.Enabled = gameBusy == null;

@@ -149,8 +149,16 @@ namespace CustomCharacters.UI
             this.CancelButton.Bounds = new Rectangle(this.SaveButton.Bounds.X - 16 - 180, area.Bottom - 84, 180, 60);
         }
 
+        /// <summary>The lock version the buttons were last checked against, so they catch up when someone takes or lets go of something.</summary>
+        private int LockVersionSeen = -1;
+
         public override void Draw(SpriteBatch b, int mouseX, int mouseY)
         {
+            if (this.LockVersionSeen != CustomContent.LockVersion)
+            {
+                this.LockVersionSeen = CustomContent.LockVersion;
+                this.SyncButtons(); // the rows say who's changing what as they're drawn, but buttons are only greyed out here
+            }
             Rectangle area = this.Area;
             Gfx.Panel(b, area);
             Gfx.Text(b, this.Title, new Vector2(area.X + 36, area.Y + 24), null, Gfx.TitleFont);

@@ -178,8 +178,16 @@ namespace CustomPaintings.UI
             this.CloseButton.Bounds = new Rectangle(area.Right - pad - 180, area.Bottom - 84, 180, 60);
         }
 
+        /// <summary>The lock version the buttons were last checked against, so they catch up when someone takes or lets go of something.</summary>
+        private int LockVersionSeen = -1;
+
         public override void Draw(SpriteBatch b, int mouseX, int mouseY)
         {
+            if (this.LockVersionSeen != CustomContent.LockVersion)
+            {
+                this.LockVersionSeen = CustomContent.LockVersion;
+                this.SyncButtons(); // the rows say who's changing what as they're drawn, but buttons are only greyed out here
+            }
             if (this.BuiltVersion != CustomContent.ContentVersion)
                 this.Refresh(); // another player's change arrived while this list was open
 

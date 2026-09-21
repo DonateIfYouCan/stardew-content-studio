@@ -157,6 +157,11 @@ namespace CustomContentCore
             if (!this.Mine.Remove(key))
                 return;
 
+            // the host's list still names us until its next update; without this, for that moment we'd be told we're
+            // changing it ourselves, and the buttons for the thing we just let go of would stay greyed out
+            this.Others.Remove(key);
+            Version++;
+
             if (Context.IsMainPlayer)
             {
                 this.Held.Remove(key);
@@ -168,6 +173,10 @@ namespace CustomContentCore
 
         /// <summary>Whether we're the one holding something.</summary>
         public bool IHoldIt(string key) => this.Mine.ContainsKey(key);
+
+        /// <summary>Goes up whenever who's holding what changes, so a screen can tell its buttons need checking again.</summary>
+        /// <remarks>Rows that say who's changing something are drawn fresh each time; buttons are enabled once, so they need this.</remarks>
+        public static int Version { get; private set; }
 
         /// <summary>Who is changing something right now, if anyone else is.</summary>
         public string? WhoHas(string key)
@@ -296,6 +305,7 @@ namespace CustomContentCore
             if (reply.Granted)
             {
                 this.Mine[reply.Key] = DateTime.UtcNow + RenewEvery;
+                Version++;
                 this.MineSince[reply.Key] = DateTime.UtcNow;
                 callback(true, "");
                 return;
@@ -312,6 +322,7 @@ namespace CustomContentCore
             if (playerId != Game1.MasterPlayer?.UniqueMultiplayerID)
                 return;
 
+            Version++;
             this.Others = list.Locks
                 .Where(l => l.Key.Length > 0)
                 .GroupBy(l => Clean(l.Key, 200), StringComparer.OrdinalIgnoreCase)
@@ -377,6 +388,7 @@ namespace CustomContentCore
         /// <summary>As host: tell everyone what's being changed, so their screens can say so.</summary>
         private void TellEveryone()
         {
+            Version++; // the host's own screens watch this too
             if (!Context.IsMainPlayer || !Context.IsMultiplayer)
                 return;
 

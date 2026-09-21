@@ -178,7 +178,7 @@ namespace CustomFurniture.UI
             Gfx.Text(b, title, new Vector2(area.X + 36, area.Y + 24), null, Gfx.TitleFont);
             FurnitureTemplate? t = this.Template;
             if (t != null && this.GameChange != null)
-                Gfx.Text(b, $"{t.Kind}, {t.TilesWide}x{t.TilesHigh} tiles. Its type, size, name and price stay the game's.", new Vector2(area.X + 36, this.BaseButton.Bounds.Y + 12), Color.DimGray);
+                Gfx.Text(b, Gfx.Fit($"{t.Kind}, {t.TilesWide}x{t.TilesHigh} tiles: its type, size, name and price stay the game's.", this.PreviewArea.Width), new Vector2(area.X + 36, this.BaseButton.Bounds.Y + 12), Color.DimGray);
             else if (t != null)
                 Gfx.Text(b, Gfx.Fit($"Based on: {t.Name} ({t.Kind}, {t.TilesWide}x{t.TilesHigh} tiles)", area.X + 32 + (int)(area.Width * 0.5) - this.BaseButton.Bounds.Right - 16), new Vector2(this.BaseButton.Bounds.Right + 16, this.BaseButton.Bounds.Y + 12));
 

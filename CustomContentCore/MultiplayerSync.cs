@@ -193,8 +193,12 @@ namespace CustomContentCore
         /// <summary>What each file we took from the host looked like when it arrived, so we can tell what we changed since.</summary>
         private Dictionary<string, string> Downloaded = new(StringComparer.OrdinalIgnoreCase);
 
-        /// <summary>Who added each item in this game, so a player can keep changing what they brought even when the rest is closed.</summary>
+        /// <summary>As host: who added each item, by <c>mod|item</c>, so a player can keep changing what they brought even when the rest is closed.</summary>
+        /// <remarks>Kept in <see cref="AddedByFile"/>, so it outlasts the game: Player A's painting is still theirs to change after the host restarts.</remarks>
         private readonly Dictionary<string, long> AddedBy = new(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>Where <see cref="AddedBy"/> is kept, in the Core's folder. Farmhand IDs are saved with the farm, so they still match next time.</summary>
+        private const string AddedByFile = "added-by.json";
 
         /// <summary>Changes a player is sending us, by player ID: the files they promised and the parts that have arrived.</summary>
         private readonly Dictionary<long, IncomingChange> IncomingChanges = new();
@@ -232,6 +236,46 @@ namespace CustomContentCore
             helper.Events.Multiplayer.ModMessageReceived += this.OnMessageReceived;
             helper.Events.GameLoop.UpdateTicked += this.OnUpdateTicked;
             helper.Events.GameLoop.ReturnedToTitle += (_, _) => this.StopUsingHostContent();
+            helper.Events.GameLoop.SaveLoaded += (_, _) => this.LoadAddedBy();
+            helper.Events.GameLoop.SaveCreated += (_, _) => this.LoadAddedBy();
+        }
+
+        /// <summary>As host: read back who added what, dropping anything that isn't there any more.</summary>
+        /// <remarks>
+        /// A record for an item that's gone could otherwise hand its old owner an item the host later made with the same name.
+        /// </remarks>
+        private void LoadAddedBy()
+        {
+            this.AddedBy.Clear();
+            if (!Context.IsMainPlayer)
+                return;
+            try
+            {
+                Dictionary<string, long>? saved = this.Helper.Data.ReadJsonFile<Dictionary<string, long>>(AddedByFile);
+                foreach ((string key, long player) in saved ?? new())
+                {
+                    int bar = key.IndexOf('|');
+                    if (bar > 0 && ContentPacks.GetEditing(key.Substring(0, bar))?.GetItemJson(key.Substring(bar + 1)) != null)
+                        this.AddedBy[key] = player;
+                }
+            }
+            catch (Exception ex)
+            {
+                this.Monitor.Log($"Couldn't read who added what ({ex.Message}); players can still add things, but not change what they added before.", LogLevel.Warn);
+            }
+        }
+
+        /// <summary>As host: keep who added what, so it's still known after the game closes.</summary>
+        private void SaveAddedBy()
+        {
+            try
+            {
+                this.Helper.Data.WriteJsonFile(AddedByFile, this.AddedBy);
+            }
+            catch (Exception ex)
+            {
+                this.Monitor.Log($"Couldn't save who added what: {ex.Message}", LogLevel.Warn);
+            }
         }
 
         /// <summary>As host, send the (changed) content to players who accepted it, e.g. after editing.</summary>
@@ -717,7 +761,6 @@ namespace CustomContentCore
             this.Downloaded.Clear();
             this.IncomingChanges.Clear();
             this.ItemBaseline.Clear();
-            this.AddedBy.Clear();
             this.HostAllowsChanges = false;
             this.Greeted.Clear();
             this.ToGreet.Clear();
@@ -900,7 +943,10 @@ namespace CustomContentCore
                     continue;
                 }
                 if (isNew)
+                {
                     this.AddedBy[key] = playerId; // theirs to change again later, even if the host doesn't open up the rest
+                    this.SaveAddedBy();
+                }
                 pending.Items.Add(new ChangedItem { Mod = item.Mod, Id = id, Json = item.Json });
             }
             foreach (string key in offer.Removed.Take(MaxFiles))
@@ -1101,6 +1147,8 @@ namespace CustomContentCore
                 {
                     touched.Add(modId);
                     done++;
+                    if (this.AddedBy.Remove($"{modId}|{id}")) // gone, so nobody owns that name any more
+                        this.SaveAddedBy();
                 }
             }
 

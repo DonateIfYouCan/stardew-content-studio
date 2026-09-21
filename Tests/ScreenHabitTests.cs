@@ -65,6 +65,27 @@ namespace Tests
             Assert.True(stale.Count == 0, $"these lists don't rebuild when content changes: {string.Join(", ", stale)}");
         }
 
+        /// <summary>A screen that greys out buttons while someone else is changing something checks them again when that changes.</summary>
+        /// <remarks>
+        /// The rows saying who's changing what are drawn fresh every frame, but buttons are only set when something is picked.
+        /// Without this, Player A closing an editor left their own buttons greyed out, because they were set while A still held it.
+        /// </remarks>
+        [Fact]
+        public void EveryScreenThatGreysOutButtonsForALockNoticesWhenItGoes()
+        {
+            List<string> stale = new();
+            foreach (string path in ScreenFiles())
+            {
+                string code = File.ReadAllText(path);
+                if (!code.Contains("CustomContent.WhoIsChanging(") || !code.Contains(".Enabled"))
+                    continue;
+                if (!code.Contains("CustomContent.LockVersion"))
+                    stale.Add(Path.GetFileName(path));
+            }
+
+            Assert.True(stale.Count == 0, $"these screens grey out buttons for a lock but never check them again when it's let go: {string.Join(", ", stale)}");
+        }
+
         private static IEnumerable<string> ScreenFiles()
         {
             string root = Path.GetFullPath(Path.Combine(System.AppContext.BaseDirectory, "..", "..", "..", ".."));
