@@ -237,11 +237,12 @@ namespace CustomCrops
         /// <summary>An empty growth sheet to paint on, at the given size.</summary>
         public static Pixels BlankGrowth(int scale) => new(new Color[GrowthWidth * scale * GrowthHeight * scale], GrowthWidth * scale, GrowthHeight * scale);
 
-        public static string ExportVanillaGrowth(string seedId, string name)
+        /// <param name="scale">How many times to enlarge it; 1 is the game's own size.</param>
+        public static string ExportVanillaGrowth(string seedId, string name, int scale)
         {
             Pixels growth = LoadVanillaGrowth(seedId, 1) ?? throw new InvalidOperationException("couldn't read that crop's growth sheet");
             using Texture2D texture = growth.ToTexture();
-            return ImageExport.Export(texture, null, $"Crop growth - {name}", ImageExport.DefaultScale);
+            return ImageExport.Export(texture, null, $"Crop growth - {name}", scale);
         }
 
         /// <summary>Handle the game requesting an asset.</summary>

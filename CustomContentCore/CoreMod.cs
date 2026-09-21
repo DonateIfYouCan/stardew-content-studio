@@ -23,8 +23,14 @@ namespace CustomContentCore
         /// <summary>Where "Export original" saves images (empty = Pictures/Stardew Custom Content).</summary>
         public string ExportFolder { get; set; } = "";
 
-        /// <summary>How many times to enlarge exported images (nearest-neighbor, so pixels stay sharp). 1 = original size.</summary>
-        public int ExportScale { get; set; } = 4;
+        /// <summary>
+        /// The enlargement offered first when you export, and used by the console commands (nearest-neighbor, so pixels stay
+        /// sharp). 1 = the game's own size, which is what most players want: an HD sheet is a choice, not the default.
+        /// </summary>
+        public int ExportScale { get; set; } = 1;
+
+        /// <summary>Whether to show the line of help that follows the mouse over buttons in the editor.</summary>
+        public bool ShowHoverTips { get; set; } = true;
 
         /// <summary>When you host a multiplayer game, send your custom content to players who accept it.</summary>
         public bool ShareContentAsHost { get; set; } = false;

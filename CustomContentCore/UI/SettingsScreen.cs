@@ -12,6 +12,7 @@ namespace CustomContentCore.UI
     {
         private readonly Button EditorKeyButton;
         private readonly Cycler ScaleCycler;
+        private readonly Checkbox HoverTipsBox;
         private readonly TextField ExportFolderField;
         private readonly TextField BrowserFolderField;
         private readonly Button CloseButton;
@@ -26,7 +27,8 @@ namespace CustomContentCore.UI
                 new() { ("1", "The game's size"), ("2", "2x"), ("4", "4x"), ("8", "8x") },
                 Math.Clamp(CoreMod.Config.ExportScale, 1, 8).ToString(),
                 v => { CoreMod.Config.ExportScale = int.Parse(v); CoreMod.SaveConfig(); },
-                "How much bigger 'Export original' makes the image, so there's room to paint detail."));
+                "The size offered first when you export, and the one the console commands use. Every export asks, so this is only where it starts."));
+            this.HoverTipsBox = this.Add(new Checkbox("Show hover tips", CoreMod.Config.ShowHoverTips, v => { CoreMod.Config.ShowHoverTips = v; CoreMod.SaveConfig(); }, "The line of help that follows the mouse over buttons. Turn it off once you know your way around."));
             this.ExportFolderField = this.Add(new TextField(CoreMod.Config.ExportFolder, v => { CoreMod.Config.ExportFolder = v.Trim(); CoreMod.SaveConfig(); }, limit: 200));
             this.BrowserFolderField = this.Add(new TextField(CoreMod.Config.BrowserStartFolder, v => { CoreMod.Config.BrowserStartFolder = v.Trim(); CoreMod.SaveConfig(); }, limit: 200));
             this.CloseButton = this.Add(new Button("Close", () => this.Root.Pop()));
@@ -40,6 +42,8 @@ namespace CustomContentCore.UI
             this.EditorKeyButton.Bounds = new Rectangle(x + labelW, y, 200, 48);
             y += 76;
             this.ScaleCycler.Bounds = new Rectangle(x + labelW, y, 320, 48);
+            y += 76;
+            this.HoverTipsBox.Bounds = new Rectangle(x + labelW, y, 320, 48);
             y += 76;
             this.ExportFolderField.Bounds = new Rectangle(x + labelW, y, w - labelW, 48);
             y += 84;
@@ -56,6 +60,7 @@ namespace CustomContentCore.UI
 
             Gfx.Text(b, "Key that opens the editor", new Vector2(area.X + 36, this.EditorKeyButton.Bounds.Y + 12));
             Gfx.Text(b, "Export images at", new Vector2(area.X + 36, this.ScaleCycler.Bounds.Y + 12));
+            Gfx.Text(b, "Help on hover", new Vector2(area.X + 36, this.HoverTipsBox.Bounds.Y + 12));
             Gfx.Text(b, "Save exports in", new Vector2(area.X + 36, this.ExportFolderField.Bounds.Y + 12));
             Gfx.Text(b, "File browser starts in", new Vector2(area.X + 36, this.BrowserFolderField.Bounds.Y + 12));
 

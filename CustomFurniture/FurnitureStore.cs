@@ -197,11 +197,12 @@ namespace CustomFurniture
         }
 
         /// <summary>Export a template's frames as a PNG to paint over.</summary>
-        public static string ExportTemplate(FurnitureTemplate template)
+        /// <param name="scale">How many times to enlarge it; 1 is the game's own size.</param>
+        public static string ExportTemplate(FurnitureTemplate template, int scale)
         {
             Pixels frames = LoadTemplateFrames(template) ?? throw new InvalidOperationException("couldn't read the original sprite");
             using Texture2D texture = frames.ToTexture();
-            return ImageExport.Export(texture, null, $"Furniture - {template.Name}", ImageExport.DefaultScale);
+            return ImageExport.Export(texture, null, $"Furniture - {template.Name}", scale);
         }
 
         /// <summary>Check a sheet's size for a template, returning its detail factor or an error.</summary>

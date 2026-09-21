@@ -259,7 +259,7 @@ namespace CustomContentCore.UI
             }
             this.Top.Draw(b, mx, my);
 
-            string? tooltip = this.Top.GetTooltip(mx, my);
+            string? tooltip = CoreMod.Config.ShowHoverTips ? this.Top.GetTooltip(mx, my) : null;
             if (tooltip != null)
                 drawHoverText(b, Game1.parseText(tooltip, Game1.smallFont, 420), Game1.smallFont);
 

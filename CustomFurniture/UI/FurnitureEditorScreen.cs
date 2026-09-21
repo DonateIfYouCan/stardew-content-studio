@@ -248,10 +248,14 @@ namespace CustomFurniture.UI
                 return;
             try
             {
-                string path = FurnitureStore.ExportTemplate(this.Template);
-                this.Message = $"Exported to {path}";
-                this.MessageColor = Color.DarkGreen;
-                Game1.playSound("coin");
+                ImageExport.AskScale(this, scale =>
+                {
+                    string path = FurnitureStore.ExportTemplate(this.Template, scale);
+                    this.Message = $"Exported to {path}";
+                    this.MessageColor = Color.DarkGreen;
+                    Game1.playSound("coin");
+                    return path;
+                });
             }
             catch (Exception ex)
             {

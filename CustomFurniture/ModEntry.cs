@@ -57,7 +57,7 @@ namespace CustomFurniture
                     this.Monitor.Log("Usage: cfurn_export <furniture ID> (see cfurn_templates)", LogLevel.Warn);
                     return;
                 }
-                this.Monitor.Log($"Exported to {FurnitureStore.ExportTemplate(template)}", LogLevel.Info);
+                this.Monitor.Log($"Exported to {FurnitureStore.ExportTemplate(template, ImageExport.DefaultScale)}", LogLevel.Info);
             });
             helper.ConsoleCommands.Add("cfurn_give", "Puts custom furniture in your inventory.\nUsage: cfurn_give <name or id>", (_, args) =>
             {

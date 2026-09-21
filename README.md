@@ -16,7 +16,7 @@ in-game editor (press `K`), in HD where you want it.
 Each mod's folder has its own README with details and screenshots.
 
 **Status:** tested by hand on Linux only (Stardew Valley 1.6.15, SMAPI 4.5.2). Windows and macOS are untested. `dotnet test`
-runs 45 checks that don't need the game. See [test coverage](docs/TESTING.md) and [compatibility](docs/COMPATIBILITY.md) for
+runs 49 checks that don't need the game. See [test coverage](docs/TESTING.md) and [compatibility](docs/COMPATIBILITY.md) for
 exactly what was and wasn't tested.
 
 ## Screenshots

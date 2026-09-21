@@ -72,7 +72,7 @@ namespace CustomCrops
                     this.Monitor.Log($"No game crop matches '{name}'.", LogLevel.Warn);
                     return;
                 }
-                this.Monitor.Log($"Exported to {CropStore.ExportVanillaGrowth(match.SeedId, match.Name)}", LogLevel.Info);
+                this.Monitor.Log($"Exported to {CropStore.ExportVanillaGrowth(match.SeedId, match.Name, ImageExport.DefaultScale)}", LogLevel.Info);
             });
             helper.ConsoleCommands.Add("ccrop_reload", "Reloads crops.json and all images.", (_, _) => Store.Reload());
 

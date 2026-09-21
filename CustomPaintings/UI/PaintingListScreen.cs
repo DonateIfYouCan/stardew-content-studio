@@ -667,9 +667,13 @@ namespace CustomPaintings.UI
                 return;
             try
             {
-                string path = ExportOriginal(row.FurnitureId, row.Name);
-                this.ShowMessage($"Exported to {path}");
-                Game1.playSound("coin");
+                ImageExport.AskScale(this, scale =>
+                {
+                    string path = ExportOriginal(row.FurnitureId, row.Name, scale);
+                    this.ShowMessage($"Exported to {path}");
+                    Game1.playSound("coin");
+                    return path;
+                });
             }
             catch (Exception ex)
             {
@@ -678,7 +682,7 @@ namespace CustomPaintings.UI
         }
 
         /// <summary>Export a game painting's original art (ignoring any replacement), returning the file path.</summary>
-        public static string ExportOriginal(string furnitureId, string name)
+        public static string ExportOriginal(string furnitureId, string name, int scale)
         {
             Dictionary<string, string>? original = OriginalContent.LoadData<Dictionary<string, string>>("Data/Furniture");
             if (original == null || !original.TryGetValue(furnitureId, out string? raw))
@@ -694,7 +698,7 @@ namespace CustomPaintings.UI
 
             // same as the game's default furniture source rectangle
             Rectangle source = new(spriteIndex * 16 % texture.Width, spriteIndex * 16 / texture.Width * 16, w * 16, h * 16);
-            return ImageExport.Export(texture, source, $"Painting - {name}", ImageExport.DefaultScale);
+            return ImageExport.Export(texture, source, $"Painting - {name}", scale);
         }
 
         private void GiveSelected()

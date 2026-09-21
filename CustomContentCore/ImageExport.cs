@@ -66,8 +66,38 @@ namespace CustomContentCore
             }
         }
 
-        /// <summary>The configured enlargement for exports.</summary>
+        /// <summary>The enlargement offered first, and the one the console commands use.</summary>
         public static int DefaultScale => System.Math.Clamp(CoreMod.Config.ExportScale, 1, 16);
+
+        /// <summary>
+        /// Ask how big the export should be, then do it. The game's own size comes first, because that's what you want to
+        /// repaint pixel for pixel; enlarging is for making room to add detail, and it's remembered as the next first offer.
+        /// </summary>
+        /// <param name="screen">The screen asking, whose root the question is shown on.</param>
+        /// <param name="export">Writes the file at the chosen enlargement and returns where it went.</param>
+        public static void AskScale(UI.Screen screen, System.Func<int, string> export)
+        {
+            (string Label, string Description, int Scale)[] sizes =
+            {
+                ("The game's size", "The sheet exactly as the game has it, to repaint pixel for pixel.", 1),
+                ("2x", "Twice as big, for a little more detail than the game has.", 2),
+                ("4x", "Four times as big, for HD art.", 4)
+            };
+
+            screen.Root.Push(new UI.ChoiceScreen(
+                "How big should the exported image be?",
+                sizes
+                    .Select(size => (
+                        size.Scale == DefaultScale ? size.Label + " (last used)" : size.Label,
+                        size.Description,
+                        (System.Action)(() =>
+                        {
+                            CoreMod.Config.ExportScale = size.Scale;
+                            CoreMod.SaveConfig();
+                            export(size.Scale);
+                        })))
+                    .ToArray()));
+        }
 
         /// <summary>Export part of a texture as a PNG file. Must be called on the main thread.</summary>
         /// <param name="texture">The texture (as loaded by the game, i.e. premultiplied alpha).</param>

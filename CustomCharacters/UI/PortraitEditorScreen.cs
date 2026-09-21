@@ -418,10 +418,14 @@ namespace CustomCharacters.UI
             Rectangle source = Game1.getSourceRectForStandardTileSheet(this.Original, index, 64, 64);
             try
             {
-                string path = ImageExport.Export(this.Original, source, $"{this.Set.Npc} portrait - {this.SlotName(index)}", ImageExport.DefaultScale);
-                this.Message = $"Exported to {path}";
-                this.MessageColor = Color.DarkGreen;
-                Game1.playSound("coin");
+                ImageExport.AskScale(this, scale =>
+                {
+                    string path = ImageExport.Export(this.Original, source, $"{this.Set.Npc} portrait - {this.SlotName(index)}", scale);
+                    this.Message = $"Exported to {path}";
+                    this.MessageColor = Color.DarkGreen;
+                    Game1.playSound("coin");
+                    return path;
+                });
             }
             catch (Exception ex)
             {

@@ -524,10 +524,14 @@ namespace CustomCrops.UI
             string name = this.VanillaCrops.FirstOrDefault(v => v.SeedId == seedId).Name ?? seedId;
             try
             {
-                string path = CropStore.ExportVanillaGrowth(seedId, name);
-                this.Message = $"Exported to {path}";
-                this.MessageColor = Color.DarkGreen;
-                Game1.playSound("coin");
+                ImageExport.AskScale(this, scale =>
+                {
+                    string path = CropStore.ExportVanillaGrowth(seedId, name, scale);
+                    this.Message = $"Exported to {path}";
+                    this.MessageColor = Color.DarkGreen;
+                    Game1.playSound("coin");
+                    return path;
+                });
             }
             catch (Exception ex)
             {

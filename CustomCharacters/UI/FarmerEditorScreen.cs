@@ -328,10 +328,14 @@ namespace CustomCharacters.UI
                 return;
             try
             {
-                string path = ImageExport.Export(original, null, $"Farmer {this.Layer.Id}", ImageExport.DefaultScale);
-                this.Message = $"Exported to {path}";
-                this.MessageColor = Color.DarkGreen;
-                Game1.playSound("coin");
+                ImageExport.AskScale(this, scale =>
+                {
+                    string path = ImageExport.Export(original, null, $"Farmer {this.Layer.Id}", scale);
+                    this.Message = $"Exported to {path}";
+                    this.MessageColor = Color.DarkGreen;
+                    Game1.playSound("coin");
+                    return path;
+                });
             }
             catch (Exception ex)
             {

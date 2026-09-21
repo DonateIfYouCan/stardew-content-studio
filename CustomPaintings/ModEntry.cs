@@ -73,7 +73,7 @@ namespace CustomPaintings
                 }
                 try
                 {
-                    this.Monitor.Log($"Exported to {PaintingListScreen.ExportOriginal(id, target)}", LogLevel.Info);
+                    this.Monitor.Log($"Exported to {PaintingListScreen.ExportOriginal(id, target, ImageExport.DefaultScale)}", LogLevel.Info);
                 }
                 catch (Exception ex)
                 {
