@@ -250,9 +250,9 @@ namespace CustomContentCore
                 return;
 
             // adding something, or changing what they added, is theirs to do; the rest needs 'Let players change my content'
-            if (CoreMod.Sync?.MayPlayerChange(playerId, key) == false)
+            if (CoreMod.Sync?.MayPlayerChange(playerId, key) is { Allowed: false } verdict)
             {
-                this.SendTo(playerId, new LockReply { Key = key, Granted = false, Reason = "the host only lets players change what they added themselves" }, ReplyType);
+                this.SendTo(playerId, new LockReply { Key = key, Granted = false, Reason = verdict.Reason }, ReplyType);
                 return;
             }
 

@@ -830,22 +830,22 @@ namespace CustomContentCore
         /// <summary>As host: whether a player may change something of ours - anything they added, or anything at all if we allow it.</summary>
         /// <param name="playerId">The player asking.</param>
         /// <param name="lockKey">What they want to change, as "&lt;mod&gt;|item:&lt;id&gt;" or "&lt;mod&gt;|file:&lt;path&gt;".</param>
-        public bool MayPlayerChange(long playerId, string lockKey)
+        public ChangeRules.Verdict MayPlayerChange(long playerId, string lockKey)
         {
-            if (CoreMod.Config.LetOthersChangeMyContent)
-                return true;
-
+            bool open = CoreMod.Config.LetOthersChangeMyContent;
             int bar = lockKey.IndexOf('|');
             if (bar <= 0)
-                return false;
-            string modId = lockKey.Substring(0, bar), rest = lockKey.Substring(bar + 1);
-            if (!rest.StartsWith("item:", StringComparison.Ordinal))
-                return false; // a whole file is the host's own business unless they open it up
+                return ChangeRules.ForHolding(lockKey, itemExists: false, open, addedByThisPlayer: false);
 
-            string id = rest.Substring("item:".Length);
-            if (ContentPacks.GetEditing(modId)?.GetItemJson(id) == null)
-                return true; // nothing of ours by that name, so they're adding it
-            return this.AddedBy.TryGetValue($"{modId}|{id}", out long adder) && adder == playerId;
+            string modId = lockKey.Substring(0, bar), rest = lockKey.Substring(bar + 1);
+            bool exists = false, theirs = false;
+            if (rest.StartsWith("item:", StringComparison.Ordinal))
+            {
+                string id = rest.Substring("item:".Length);
+                exists = ContentPacks.GetEditing(modId)?.GetItemJson(id) != null;
+                theirs = this.AddedBy.TryGetValue($"{modId}|{id}", out long adder) && adder == playerId;
+            }
+            return ChangeRules.ForHolding(rest, exists, open, theirs);
         }
 
         /// <summary>As host: a player offers changes to our content.</summary>
@@ -857,10 +857,12 @@ namespace CustomContentCore
             string name = this.NameOf(playerId, null);
             IncomingChange pending = new();
             List<string> refused = new();
-            bool mineIsTheirs = CoreMod.Config.LetOthersChangeMyContent;
+            HashSet<string> reasons = new(); // said back to the player, so they know what to ask the host
+            bool open = CoreMod.Config.LetOthersChangeMyContent;
+            const string someoneElseHasIt = "someone else is changing that";
 
-            // items: anyone sharing may add something new or change what they added themselves; changing what was already
-            // here needs 'Let players change my content'. Either way, nobody writes over someone who's holding it.
+            // every decision below comes from ChangeRules, so a change is judged the same whether it arrives as a lock, an
+            // item or a file. Nobody writes over someone who's holding it, whatever the rules allow.
             foreach (ChangedItem item in offer.Items.Take(MaxFiles))
             {
                 string id = CleanId(item.Id);
@@ -870,14 +872,18 @@ namespace CustomContentCore
                 string key = $"{item.Mod}|{id}";
                 bool isNew = editing.GetItemJson(id) == null;
                 bool theirs = this.AddedBy.TryGetValue(key, out long adder) && adder == playerId;
-                if (!isNew && !mineIsTheirs && !theirs)
+                ChangeRules.Verdict verdict = ChangeRules.ForItem(!isNew, ChangeRules.IsGameItem(id), open, theirs);
+                if (!verdict.Allowed)
                 {
                     refused.Add($"{item.Mod}/{id}");
+                    reasons.Add(verdict.Reason);
                     continue;
                 }
-                if (!isNew && CoreMod.Locks?.MayChange(playerId, $"{item.Mod}|item:{id}") == false)
+                // checked for new items too: two players can both reach for the same game lamp before either has saved it
+                if (CoreMod.Locks?.MayChange(playerId, $"{item.Mod}|item:{id}") == false)
                 {
                     refused.Add($"{item.Mod}/{id}");
+                    reasons.Add(someoneElseHasIt);
                     continue;
                 }
                 if (isNew)
@@ -893,28 +899,36 @@ namespace CustomContentCore
                 if (id.Length == 0 || ContentPacks.GetEditing(modId) == null)
                     continue;
                 bool theirs = this.AddedBy.TryGetValue($"{modId}|{id}", out long adder) && adder == playerId;
-                if ((!mineIsTheirs && !theirs) || CoreMod.Locks?.MayChange(playerId, $"{modId}|item:{id}") == false)
+                ChangeRules.Verdict verdict = ChangeRules.ForRemoval(ChangeRules.IsGameItem(id), open, theirs);
+                if (!verdict.Allowed || CoreMod.Locks?.MayChange(playerId, $"{modId}|item:{id}") == false)
                 {
                     refused.Add(key);
+                    reasons.Add(verdict.Allowed ? someoneElseHasIt : verdict.Reason);
                     continue;
                 }
                 pending.Removed.Add($"{modId}/{id}");
             }
 
-            // files: the same checks as anything else we receive, but against our own content folders
+            // files: the same checks as anything else we receive, but against our own content folders. A new image only ever
+            // comes with an item, so if every item in this offer was refused there's nothing for one to belong to: take none,
+            // rather than leave images in the host's folder that nothing uses.
+            bool anythingKept = pending.Items.Count > 0 || pending.Removed.Count > 0;
             long total = 0;
             foreach (OfferedFile file in offer.Files.Take(MaxFiles))
             {
                 bool isJson = ContentPacks.IsDataFile(file.Path);
                 if (!this.IsSafeForOwnContent(file.Mod, file.Path) || file.Size <= 0 || file.Size > (isJson ? ContentValidator.MaxJsonBytes : MaxFileBytes) || !IsValidHash(file.Hash))
                     continue;
-                // a file we don't have yet is something they're adding; writing over one we have needs the host's say-so
                 bool haveIt = File.Exists(Path.Combine(ContentPacks.GetRegistrations().First(r => r.Mod.UniqueID == file.Mod).Folder, file.Path.Replace('/', Path.DirectorySeparatorChar)));
-                if (haveIt && (!mineIsTheirs || CoreMod.Locks?.MayChange(playerId, $"{file.Mod}|file:{file.Path}") == false))
+                ChangeRules.Verdict verdict = ChangeRules.ForFile(haveIt, open);
+                if (!verdict.Allowed || (haveIt && CoreMod.Locks?.MayChange(playerId, $"{file.Mod}|file:{file.Path}") == false))
                 {
                     refused.Add($"{file.Mod}/{file.Path}");
+                    reasons.Add(verdict.Allowed ? someoneElseHasIt : verdict.Reason);
                     continue;
                 }
+                if (!haveIt && !anythingKept && !isJson)
+                    continue; // an image with no item left to use it
                 total += file.Size;
                 pending.Files[$"{file.Mod}/{file.Path}"] = (file, 0, Array.Empty<byte[]?>());
             }
@@ -923,7 +937,7 @@ namespace CustomContentCore
 
             if (refused.Count > 0)
             {
-                string why = mineIsTheirs ? "someone else is changing that" : "the host only lets players change what they added themselves";
+                string why = string.Join("; ", reasons);
                 this.Monitor.Log($"Refused {refused.Count} change(s) from {name}: {why}.", LogLevel.Info);
                 this.SendTo(playerId, new ChangeRefusedMessage { Reason = why, Files = refused }, ChangeRefusedType);
             }
@@ -977,8 +991,10 @@ namespace CustomContentCore
         /// <summary>As host: part of a changed file from a player.</summary>
         private void OnChangeChunk(long playerId, ChunkMessage chunk)
         {
-            if (!CoreMod.Config.LetOthersChangeMyContent
-                || !this.PlayerTokens.TryGetValue(playerId, out string? token) || !TokensEqual(token, chunk.Token)
+            // no check of 'Let players change my content' here: whether this player may send this file was decided when they
+            // offered it (see OnChangeOffer), and only files decided then are in their pending set. Checking the switch again
+            // threw away the image of anything a player added while it was off, so the item never arrived at all.
+            if (!this.PlayerTokens.TryGetValue(playerId, out string? token) || !TokensEqual(token, chunk.Token)
                 || !this.IncomingChanges.TryGetValue(playerId, out IncomingChange? pending))
                 return;
 
