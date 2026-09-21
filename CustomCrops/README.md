@@ -8,10 +8,16 @@ A [SMAPI](https://smapi.io) mod for Stardew Valley 1.6 that adds your own crops 
 
 ## Screenshots
 
-![Crop editor with seeds, harvest and growth preview](../docs/screenshots/crops-editor.png)
-*Crop editor with seeds, harvest and growth preview.*
+![Crop editor with seeds, harvest and growth preview](../docs/screenshots/0.3.0-crop-editor-emily.png)
+*Crop editor with seeds, harvest and a preview of every growth stage.*
 
-![Your crops](../docs/screenshots/crops-list.png)
+![The pixel editor on a crop's growth sheet](../docs/screenshots/0.3.0-paint-crop-emily.png)
+*Paint the growing plant frame by frame, from seedling to ripe.*
+
+![A field of the demo crop growing on a farm](../docs/screenshots/0.3.0-emily-in-world.png)
+*The crop in the world.*
+
+![Your crops](../docs/screenshots/0.3.0-crop-list.png)
 *Your crops.*
 
 All images in the screenshots are made for the demo.

@@ -29,14 +29,17 @@ It provides:
 
 ## Screenshots
 
-![The editor start page (press K)](../docs/screenshots/core-start-page.png)
+![The editor start page (press K)](../docs/screenshots/0.3.0-editor-hub.png)
 *The editor start page (press K).*
+
+![The pixel editor on a crop's growth sheet](../docs/screenshots/0.3.0-paint-crop-emily.png)
+*The pixel editor: tools down the left, guides for what the game expects in the sheet you're editing.*
+
+![The multiplayer screen](../docs/screenshots/0.3.0-multiplayer.png)
+*Multiplayer: one content set per game, the host's, with a lock on whatever you have open.*
 
 ![Picking an image (the folder path is blurred)](../docs/screenshots/core-file-browser.png)
 *Picking an image (the folder path is blurred).*
-
-![Confirmation before accepting content from hosts](../docs/screenshots/core-accept-dialog.png)
-*Confirmation before accepting content from hosts.*
 
 All images in the screenshots are made for the demo.
 

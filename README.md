@@ -3,7 +3,7 @@
 [SMAPI](https://smapi.io) mods for Stardew Valley 1.6 that add your own content from your own images, made and edited in an
 in-game editor (press `K`), in HD where you want it.
 
-![Stardew Content Studio: make your own content in the game, including a pixel editor](docs/banner.png)
+![Stardew Content Studio: paint your own crops, paintings, furniture and villagers, inside the game](docs/header-0.3.0.png)
 
 | Mod | What it does |
 |---|---|
@@ -15,29 +15,35 @@ in-game editor (press `K`), in HD where you want it.
 
 Each mod's folder has its own README with details and screenshots.
 
-**Status:** tested by hand on Linux only (Stardew Valley 1.6.15, SMAPI 4.5.2). Windows and macOS are untested. There are no
-automated tests. See [test coverage](docs/TESTING.md) and [compatibility](docs/COMPATIBILITY.md) for exactly what was and
-wasn't tested.
+**Status:** tested by hand on Linux only (Stardew Valley 1.6.15, SMAPI 4.5.2). Windows and macOS are untested. `dotnet test`
+runs 45 checks that don't need the game. See [test coverage](docs/TESTING.md) and [compatibility](docs/COMPATIBILITY.md) for
+exactly what was and wasn't tested.
 
 ## Screenshots
 
-![The editor start page](docs/screenshots/core-start-page.png)
-*The editor's start page.*
+![The pixel editor on a crop's growth sheet](docs/screenshots/0.3.0-paint-crop-emily.png)
+*The pixel editor, here on a crop's growth sheet: every frame from seedling to ripe, with guides for what the game expects.*
 
-![The Characters menu](docs/screenshots/characters-menu.png)
-*Characters: villagers, your farmer, or the clothes and hats anyone can wear.*
+![The crop editor with seeds, harvest and a preview of every growth stage](docs/screenshots/0.3.0-crop-editor-emily.png)
+*A crop: seeds, harvest, seasons and price, with every growth stage previewed.*
+
+![A field of the demo crop growing on a farm](docs/screenshots/0.3.0-emily-in-world.png)
+*The same crop in the world. (The demo crop is the game's own Emily sprite as the flower of a leafy plant.)*
+
+![The editor start page](docs/screenshots/0.3.0-editor-hub.png)
+*The editor's start page (press `K`).*
+
+![Painting editor](docs/screenshots/0.3.0-painting-editor.png)
+*Painting editor: crop, frame, size, price and where to get it.*
+
+![The multiplayer screen](docs/screenshots/0.3.0-multiplayer.png)
+*Multiplayer: one content set per game, the host's, with a lock on whatever you have open.*
 
 ![Left: the game. Right: HD sprite sheets](docs/screenshots/characters-hd-comparison.png)
 *Left: the game. Right: HD sprite sheets (the game's own sprites upscaled with Scale2x, just to demonstrate).*
 
-![Painting editor](docs/screenshots/paintings-editor.png)
-*Painting editor.*
-
 ![Wallpaper and a floor made from images, in a farmhouse](docs/screenshots/world-wallpaper-floor.png)
 *Wallpaper and floor tiles made from your own images.*
-
-![The farmer editor comparing the game's hairstyle with an HD one](docs/screenshots/characters-farmer-compare.png)
-*The farmer editor: step through the sheet and compare each item with the game's own.*
 
 All images in the screenshots were made for the demo.
 

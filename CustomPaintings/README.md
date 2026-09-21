@@ -11,11 +11,14 @@ A [SMAPI](https://smapi.io) mod for Stardew Valley 1.6 that turns your own PNG/J
 ![Custom paintings in a shed (one of them replaces a game painting)](../docs/screenshots/world-paintings-wall.png)
 *Custom paintings in a shed (one of them replaces a game painting).*
 
-![Your paintings](../docs/screenshots/paintings-list.png)
+![Your paintings](../docs/screenshots/0.3.0-paintings-list.png)
 *Your paintings.*
 
-![Editing a painting: crop, frame, size, price, where to get it](../docs/screenshots/paintings-editor.png)
+![Editing a painting: crop, frame, size, price, where to get it](../docs/screenshots/0.3.0-painting-editor.png)
 *Editing a painting: crop, frame, size, price, where to get it.*
+
+![The pixel editor on a painting](../docs/screenshots/0.3.0-paint-screen.png)
+*Paint the picture itself, without leaving the game.*
 
 ![A photo frame with a slideshow of two images](../docs/screenshots/paintings-photo-frame-editor.png)
 *A photo frame with a slideshow of two images.*
