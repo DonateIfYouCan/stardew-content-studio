@@ -301,6 +301,10 @@ namespace CustomCrops.UI
             this.GiveButton.Bounds = this.ShowGame
                 ? new Rectangle(this.GameArtButton.Bounds.X, (replaced ? this.GameRestoreButton.Bounds : this.GameHideButton.Bounds).Bottom + 24, this.GameArtButton.Bounds.Width, this.GameArtButton.Bounds.Height)
                 : this.GiveMineBounds;
+            // set every time: a tooltip left over from a moment ago would say the wrong thing about the button now
+            this.GameArtButton.Tooltip = "Draw or pick a new harvest icon and growing plant. How it grows and what it sells for stay the game's.";
+            this.GameHideButton.Tooltip = hidden ? "Sell its seeds in the shops again." : "Take its seeds out of every shop and random sales. Crops already planted keep growing.";
+            this.GameRestoreButton.Tooltip = "Drop your art for this crop, so it looks as the game has it.";
             foreach (Button button in new[] { this.GameArtButton, this.GameHideButton, this.GameRestoreButton })
             {
                 button.Enabled = gameBusy == null;

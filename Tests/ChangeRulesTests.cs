@@ -220,6 +220,16 @@ namespace Tests
             Assert.DoesNotMatch(@"this\.AddedBy\.Clear\(\);\s*this\.HostAllowsChanges", code); // the reset on leaving a game mustn't wipe it
         }
 
+        [Fact]
+        public void APlayerIsNeverToldTheyreTheOneInTheWay()
+        {
+            // a list the host sent just before Player A let go still named A, so A was told "A is changing this" about the
+            // thing A had just closed; the list now says who holds each thing, and each player leaves their own out
+            string code = File.ReadAllText(Path.Combine(Root(), "CustomContentCore", "ContentLocks.cs"));
+            Assert.Matches(@"new LockEntry \{[^}]*PlayerId = ", code);
+            Assert.Matches(@"this\.Others = list\.Locks\s*\.Where\([^)]*PlayerId != me", code);
+        }
+
         private static string Root() => Path.GetFullPath(Path.Combine(System.AppContext.BaseDirectory, "..", "..", "..", ".."));
     }
 }

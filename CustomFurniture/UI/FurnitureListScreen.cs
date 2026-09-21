@@ -360,6 +360,10 @@ namespace CustomFurniture.UI
             this.GiveButton.Bounds = this.ShowGame
                 ? new Rectangle(this.GameArtButton.Bounds.X, (replaced ? this.GameRestoreButton.Bounds : this.GameHideButton.Bounds).Bottom + 24, this.GameArtButton.Bounds.Width, this.GameArtButton.Bounds.Height)
                 : this.GiveMineBounds;
+            // set every time: a tooltip left over from a moment ago would say the wrong thing about the button now
+            this.GameArtButton.Tooltip = "Draw or pick new art for this piece. Its type, size, name and price stay the game's.";
+            this.GameHideButton.Tooltip = hidden ? "Put it back in the Furniture Catalogue and the shops." : "Take it out of the Furniture Catalogue and every shop. Copies already placed stay where they are.";
+            this.GameRestoreButton.Tooltip = "Drop your art for this piece, so it looks as the game has it.";
             foreach (Button button in new[] { this.GameArtButton, this.GameHideButton, this.GameRestoreButton })
             {
                 button.Enabled = gameBusy == null;

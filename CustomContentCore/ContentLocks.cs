@@ -56,6 +56,9 @@ namespace CustomContentCore
             public string Key { get; set; } = "";
             public string Holder { get; set; } = "";
             public string Label { get; set; } = "";
+
+            /// <summary>Who holds it, so each player can leave their own holds out of "someone else is changing this". Names alone can match.</summary>
+            public long PlayerId { get; set; }
         }
 
 
@@ -323,8 +326,11 @@ namespace CustomContentCore
                 return;
 
             Version++;
+            // our own holds aren't someone else changing it: leave them out, or a list sent just before we let go would tell us
+            // we're busy with the thing we just closed
+            long me = Game1.player.UniqueMultiplayerID;
             this.Others = list.Locks
-                .Where(l => l.Key.Length > 0)
+                .Where(l => l.Key.Length > 0 && l.PlayerId != me)
                 .GroupBy(l => Clean(l.Key, 200), StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(g => g.Key, g => Clean(g.First().Holder, 40), StringComparer.OrdinalIgnoreCase);
 
@@ -395,7 +401,7 @@ namespace CustomContentCore
             LockList list = new()
             {
                 Locks = this.Held.Where(l => l.Value.Expires > DateTime.UtcNow)
-                    .Select(l => new LockEntry { Key = l.Key, Holder = l.Value.Holder, Label = l.Value.Label })
+                    .Select(l => new LockEntry { Key = l.Key, Holder = l.Value.Holder, Label = l.Value.Label, PlayerId = l.Value.Player })
                     .ToList()
             };
             this.Helper.Multiplayer.SendMessage(list, ListType, new[] { this.ModId });
