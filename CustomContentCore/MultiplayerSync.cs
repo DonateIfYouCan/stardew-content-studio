@@ -550,6 +550,19 @@ namespace CustomContentCore
                 .Where(f => !File.Exists(this.GetCachePath(f.Mod, f.Path)) || !this.Index.TryGetValue($"{f.Mod}/{f.Path}", out string? hash) || hash != f.Hash)
                 .Select(f => $"{f.Mod}/{f.Path}")
                 .ToList();
+
+            // files kept from an earlier visit to this host aren't downloaded again, so nothing records what they looked like
+            // before anyone here changed them - and a file with no record looks changed, so the first save sent every one of
+            // them back. With the host's 'Let players change my content' on, that wrote our re-encoded copies over the host's
+            // own images. Note them now, the same as a file that was just downloaded.
+            HashSet<string> downloading = new(needed, StringComparer.OrdinalIgnoreCase);
+            foreach (OfferedFile file in valid)
+            {
+                string key = $"{file.Mod}/{file.Path}";
+                string path = this.GetCachePath(file.Mod, file.Path);
+                if (!downloading.Contains(key) && File.Exists(path))
+                    this.Downloaded[key] = this.GetTransferInfo(path).Hash;
+            }
             this.Incoming.Clear();
             this.Generation++;
             this.ReceivedBytes = 0;

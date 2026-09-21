@@ -196,6 +196,20 @@ namespace Tests
             Assert.DoesNotContain("LetOthersChangeMyContent", Regex.Replace(chunk, @"//.*", ""));
         }
 
+        [Fact]
+        public void AFileKeptFromAnEarlierVisitIsntMistakenForAChange()
+        {
+            // rejoining a host reuses the files already here instead of downloading them again, so nothing recorded what they
+            // looked like - and a file with no record looked changed, so Player A's first save sent all of them back
+            string code = File.ReadAllText(Path.Combine(Root(), "CustomContentCore", "MultiplayerSync.cs"));
+            int needed = code.IndexOf("List<string> needed = valid", System.StringComparison.Ordinal);
+            int request = code.IndexOf("new RequestMessage", needed, System.StringComparison.Ordinal);
+            Assert.True(needed > 0 && request > needed, "couldn't find where a player decides what to download; move this check to wherever it went");
+
+            string decide = Regex.Replace(code[needed..request], @"//.*", "");
+            Assert.Matches(@"this\.Downloaded\[[^\]]+\]\s*=", decide);
+        }
+
         private static string Root() => Path.GetFullPath(Path.Combine(System.AppContext.BaseDirectory, "..", "..", "..", ".."));
     }
 }
