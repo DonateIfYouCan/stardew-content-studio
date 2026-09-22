@@ -29,6 +29,10 @@ feel about them as a gift. It can also give the game's own new art, or stop one 
   can't be finished.
 - **Make my own copy** starts one of yours from the game's: its picture, kind, price, colour, geodes, dig spots and gift
   tastes, all yours to change. The game's stays as it is.
+- Editor section **Rocks** (press `K`): rocks of your own that turn up in the mines in place of the game's, with a
+  picture, how many hits they take, the mining experience they give, which parts of the mines they appear in and how
+  often, and what they give when broken (any of your minerals, the game's minerals, gems and artefacts, or ores and
+  other bits). What they give is on top of what any rock gives.
 - What you add is real to the game: minerals and artefacts can be donated to the museum and count towards its rewards,
   gems count as gems (so the gemologist profession pays out), and everything sells and ships like the game's own.
 
@@ -36,7 +40,7 @@ feel about them as a gift. It can also give the game's own new art, or stop one 
 
 | Path | What it is |
 |---|---|
-| `minerals.json` | Your minerals and changes to the game's (written by the editor; reloads automatically when edited). |
+| `minerals.json` | Your minerals, your rocks and changes to the game's (written by the editor; reloads automatically when edited). |
 | `images/` | Images picked or painted in the editor. |
 
 ## Console commands
@@ -46,12 +50,16 @@ feel about them as a gift. It can also give the game's own new art, or stop one 
 | `cmine_editor [name]` | Open the editor, optionally straight into one. |
 | `cmine_list` | List your minerals, gems and artefacts. |
 | `cmine_give <name> [count]` | Put one in your inventory. |
+| `cmine_rocks` | List your rocks. |
+| `cmine_rock <name>` | Put one of your rocks on the ground next to you. |
 | `cmine_reload` | Reload `minerals.json` and images. |
 
 ## Notes
 
 - Don't delete something you've found: ones in your world, in chests or donated to the museum become Error Items.
 - A gem is kept out of the museum by the game, so "Can be donated to the museum" lets one in on purpose.
+- Rocks only turn up in the mines and Skull Cavern for now; the quarry and the farm spawn their rocks another way.
+- The game calls every rock "Stone", so a rock's name is only ever seen in the editor.
 - In multiplayer, every player needs the mod. With the Core's content sharing on, everyone uses the Host's set.
 
 ## Building

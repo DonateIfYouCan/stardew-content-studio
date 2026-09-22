@@ -9,8 +9,55 @@ namespace CustomMining
         /// <summary>Your own minerals, gems and artefacts.</summary>
         public List<CustomMineral> Minerals { get; set; } = new();
 
+        /// <summary>Your own rocks, found and broken in the mines.</summary>
+        public List<CustomRock> Rocks { get; set; } = new();
+
         /// <summary>Changes to the game's own: new art, or no longer found. One per game item.</summary>
         public List<GameMineralChange> GameChanges { get; set; } = new();
+    }
+
+    /// <summary>A rock of your own: where it turns up in the mines, how long it takes to break, and what it gives.</summary>
+    internal sealed class CustomRock
+    {
+        /// <summary>A unique ID within this mod. Don't change it once it's in a mine level, or the rocks in your save break.</summary>
+        public string Id { get; set; } = "";
+
+        /// <summary>What the editor calls it. The game calls every rock "Stone", so this is only ever seen in the editor.</summary>
+        public string Name { get; set; } = "";
+
+        /// <summary>Its picture and the square crop of it to use.</summary>
+        public ImageRef? Image { get; set; }
+
+        /// <summary>How detailed it looks: 16 (pixel art), 32 (sharp), 64 (HD), or 0 (auto = HD).</summary>
+        public int Resolution { get; set; }
+
+        /// <summary>How many hits with a starter pickaxe it takes to break.</summary>
+        public int Hits { get; set; } = 1;
+
+        /// <summary>The mining experience breaking it gives.</summary>
+        public int Experience { get; set; } = 5;
+
+        /// <summary>Where it turns up, by part of the mines (see <see cref="RockData.Areas"/>), with the chance a rock there is this one (0 to 1).</summary>
+        public Dictionary<string, double> Places { get; set; } = new();
+
+        /// <summary>What it gives when it's broken, on top of what any rock gives.</summary>
+        public List<RockDrop> Drops { get; set; } = new();
+    }
+
+    /// <summary>Something a rock gives when it's broken.</summary>
+    internal sealed class RockDrop
+    {
+        /// <summary>The item, as the game's qualified ID, like <c>(O)378</c> for copper ore.</summary>
+        public string Item { get; set; } = "";
+
+        /// <summary>The fewest it gives.</summary>
+        public int Min { get; set; } = 1;
+
+        /// <summary>The most it gives.</summary>
+        public int Max { get; set; } = 1;
+
+        /// <summary>How often it gives this at all (0 to 1).</summary>
+        public double Chance { get; set; } = 1;
     }
 
     /// <summary>A mineral, gem or artefact of your own: how it looks, where it's found, and what it's good for.</summary>

@@ -13,12 +13,12 @@ in-game editor (press `K`), in HD where you want it.
 | [Content Studio: Crops](CustomCrops) | Your own crops: seeds, growth stages and harvest. |
 | [Content Studio: Furniture](CustomFurniture) | Furniture based on a game piece: lamps that turn on, fireplaces, beds, animated decor and more. Also wallpaper and floors from your images. |
 | [Content Studio: Fish](CustomFish) | Your own fish: where and when they bite, rod or crab pot, fish tanks, ponds and gifts. New art for the game's fish, or stop one biting. |
-| [Content Studio: Mining & Museum](CustomMining) | Your own minerals, gems and artefacts: which geodes give them, where they're dug up, the museum and gifts. New art for the game's, or stop one being found. |
+| [Content Studio: Mining & Museum](CustomMining) | Your own minerals, gems and artefacts: which geodes give them, where they're dug up, the museum and gifts. Rocks of your own in the mines. New art for the game's, or stop one being found. |
 
 Each mod's folder has its own README with details and screenshots.
 
 **Status:** tested by hand on Linux only (Stardew Valley 1.6.15, SMAPI 4.5.2). Windows and macOS are untested. `dotnet test`
-runs 243 checks that don't need the game. See [test coverage](docs/TESTING.md) and [compatibility](docs/COMPATIBILITY.md) for
+runs 260 checks that don't need the game. See [test coverage](docs/TESTING.md) and [compatibility](docs/COMPATIBILITY.md) for
 exactly what was and wasn't tested.
 
 ## Screenshots

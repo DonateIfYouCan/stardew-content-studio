@@ -3,6 +3,7 @@
   <PropertyGroup>
     <AssemblyName>CustomMining</AssemblyName>
     <RootNamespace>CustomMining</RootNamespace>
+    <EnableHarmony>true</EnableHarmony>
     <Version>0.5.0</Version>
     <TargetFramework>net6.0</TargetFramework>
     <LangVersion>latest</LangVersion>

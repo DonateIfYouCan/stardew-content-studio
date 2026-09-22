@@ -36,7 +36,7 @@ namespace Tests
         public void ItemPrefixesDontClash()
         {
             // each mod that keeps several kinds of thing in one file marks them apart, or a wallpaper could land on a chair
-            string[] prefixes = { "w:", "p:", "s:", "f:", CustomContent.GameItemPrefix };
+            string[] prefixes = { "w:", "p:", "s:", "f:", "r:", CustomContent.GameItemPrefix };
             Assert.Equal(prefixes.Length, prefixes.Distinct().Count());
             Assert.All(prefixes, prefix => Assert.EndsWith(":", prefix));
         }

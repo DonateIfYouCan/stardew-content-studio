@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using CustomContentCore;
 using CustomMining.UI;
+using Microsoft.Xna.Framework;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
@@ -25,8 +26,11 @@ namespace CustomMining
 
             // plug into Content Studio: Core
             CustomContent.RegisterEditor(this.ModManifest, "Minerals", "Your own minerals, gems and artefacts: geodes, dig spots, the museum and gifts", () => new MineralListScreen(Store));
+            CustomContent.RegisterEditor(this.ModManifest, "Rocks", "Your own rocks in the mines: where they turn up and what they give", () => new RockListScreen(Store));
             ContentPacks.Register(this.ModManifest, helper.DirectoryPath, new[] { MiningStore.DataFileName, MiningStore.ImageFolderName }, Store.Reload, Store.GetSharedFiles,
                 new ContentPacks.ContentEditing(Store.GetItemIds, Store.GetItemJson, Store.ApplyItemJson, Store.RemoveItem));
+
+            RockPatches.Apply(new HarmonyLib.Harmony(this.ModManifest.UniqueID), this.Monitor);
 
             helper.Events.GameLoop.GameLaunched += (_, _) => Store.Reload();
             helper.Events.GameLoop.UpdateTicked += this.OnUpdateTicked;
@@ -66,6 +70,26 @@ namespace CustomMining
                 }
                 Game1.player.addItemToInventoryBool(ItemRegistry.Create("(O)" + Store.GetItemId(item.Id), count));
                 this.Monitor.Log($"Added {count} {item.Name}.", LogLevel.Info);
+            });
+            helper.ConsoleCommands.Add("cmine_rocks", "Lists the custom rocks.", (_, _) =>
+            {
+                foreach (CustomRock rock in Store.File.Rocks)
+                    this.Monitor.Log($"  {Store.GetRockItemId(rock.Id)}: \"{rock.Name}\", {RockData.Describe(rock)}", LogLevel.Info);
+                this.Monitor.Log($"{Store.File.Rocks.Count} rock(s).", LogLevel.Info);
+            });
+            helper.ConsoleCommands.Add("cmine_rock", "Puts a custom rock on the ground next to you.\nUsage: cmine_rock <id or name>", (_, args) =>
+            {
+                CustomRock? rock = args.Length > 0
+                    ? Store.File.Rocks.FirstOrDefault(r => r.Id.Equals(string.Join(" ", args), StringComparison.OrdinalIgnoreCase) || r.Name.Equals(string.Join(" ", args), StringComparison.OrdinalIgnoreCase))
+                    : null;
+                if (!Context.IsWorldReady || rock == null)
+                {
+                    this.Monitor.Log("Load a save first; usage: cmine_rock <id or name>", LogLevel.Warn);
+                    return;
+                }
+                Vector2 tile = Game1.player.Tile + new Vector2(1, 0);
+                Game1.player.currentLocation.objects[tile] = new StardewValley.Object(Store.GetRockItemId(rock.Id), 1) { MinutesUntilReady = RockData.CleanHits(rock.Hits) };
+                this.Monitor.Log($"Put '{rock.Name}' at {tile.X}, {tile.Y}.", LogLevel.Info);
             });
             helper.ConsoleCommands.Add("cmine_reload", "Reloads minerals.json and all images.", (_, _) => Store.Reload());
 

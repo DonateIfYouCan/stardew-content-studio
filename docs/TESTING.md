@@ -1,6 +1,6 @@
 # Test coverage
 
-All six mods (Core, Paintings, Characters, Crops, Furniture, Fish) were tested by hand in the game. **There are no automated
+All seven mods (Core, Paintings, Characters, Crops, Furniture, Fish, Mining) were tested by hand in the game, except Mining, which is new in 0.5.0 and **not yet tested in the game**. **There are no automated
 tests.** Testing used a throwaway save, a temporary test-helper mod (console commands to load a save, place items, roll
 fish and so on), and mouse clicks on the real UI, checked with screenshots.
 
@@ -66,6 +66,8 @@ Tested on one setup only: **Linux, Stardew Valley 1.6.15, SMAPI 4.5.2**, 1920×1
 | Lists notice a change | A list that doesn't rebuild when another player's change arrives (this check found four screens that had lost it) |
 | Themes | A switch that leaves the old theme's files behind, drops a mod's image folder, or copies anything but content (a DLL, the manifest) out of a theme; a pack that climbs out of its theme folder; theme names that can't be folders |
 | Fish data | A fishing, crab pot or tank entry that doesn't match the game's own (checked against the game's pufferfish, lobster and crab), seasons written where the game doesn't read them, a tank sprite cut off when turned |
+| Mining data | A mineral written as the wrong type or category, so the museum won't take it or the gemologist profession skips it; a gem quietly let into the museum (or kept out) by the wrong tag; dig spots set on something the game never digs up; odds the game can't use |
+| Rock data | A rock on a mine level it was never meant for (including level 120, which the game fills itself), a rock that can't be broken because it isn't named "Stone" in the litter category, a drop range that gives nothing or never reaches its biggest |
 
 Run them before pushing:
 
