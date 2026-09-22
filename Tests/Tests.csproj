@@ -28,11 +28,14 @@
     <ProjectReference Include="..\CustomFish\CustomFish.csproj" AdditionalProperties="EnableModDeploy=false" />
     <!-- copied next to the tests: the image code uses the game's colour type -->
     <Reference Include="MonoGame.Framework" HintPath="$(GamePath)/MonoGame.Framework.dll" Private="False" />
+    <Reference Include="SkiaSharp" HintPath="$(GamePath)/SkiaSharp.dll" Private="False" />
   </ItemGroup>
 
   <!-- the game's own references aren't copied next to a build, but the tests have to load this one to run -->
   <Target Name="CopyGameAssemblies" AfterTargets="Build">
-    <Copy SourceFiles="$(GamePath)/MonoGame.Framework.dll;$(GamePath)/smapi-internal/SMAPI.Toolkit.CoreInterfaces.dll" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(GamePath)/MonoGame.Framework.dll;$(GamePath)/smapi-internal/SMAPI.Toolkit.CoreInterfaces.dll;$(GamePath)/SkiaSharp.dll" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+    <!-- SkiaSharp's native library, for the JPEG checks (on Linux it sits in the game folder) -->
+    <Copy SourceFiles="$(GamePath)/libSkiaSharp.so" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" Condition="Exists('$(GamePath)/libSkiaSharp.so')" />
   </Target>
 
 </Project>

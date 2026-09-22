@@ -18,6 +18,8 @@
     <InternalsVisibleTo Include="Tests" />
     <PackageReference Include="Pathoschild.Stardew.ModBuildConfig" Version="4.4.0" />
     <Reference Include="Newtonsoft.Json" HintPath="$(GamePath)/smapi-internal/Newtonsoft.Json.dll" Private="False" />
+    <!-- SMAPI's own image library (it decodes the game's images with it), used to write JPEG files -->
+    <Reference Include="SkiaSharp" HintPath="$(GamePath)/SkiaSharp.dll" Private="False" />
   </ItemGroup>
 
   <!--

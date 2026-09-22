@@ -43,7 +43,8 @@ namespace CustomContentCore
 
         /// <summary>
         /// Rebuild a received file from scratch, so only its actual content survives: images are decoded (in managed code, within
-        /// the size limits) and re-encoded as a plain PNG; JSON is parsed and written out again without comments or metadata.
+        /// the size limits) and re-encoded as a plain PNG, or a plain JPEG for a .jpg; JSON is parsed and written out again without
+        /// comments or metadata.
         /// </summary>
         /// <param name="extension">The file extension (lowercase, with dot). Images of any allowed extension must be sent as PNG data.</param>
         /// <param name="bytes">The received file.</param>
@@ -57,9 +58,13 @@ namespace CustomContentCore
                 switch (extension)
                 {
                     case ".png":
+                        clean = SafePng.Encode(SafePng.Decode(bytes, MaxImageSide, MaxImagePixels));
+                        break;
                     case ".jpg":
                     case ".jpeg":
-                        clean = SafePng.Encode(SafePng.Decode(bytes, MaxImageSide, MaxImagePixels));
+                        // stored as a real JPEG, so a file called .jpg is one; if JPEG can't be written here, as PNG data like before
+                        Pixels image = SafePng.Decode(bytes, MaxImageSide, MaxImagePixels);
+                        clean = ImageEncoding.TryEncodeJpeg(image) ?? SafePng.Encode(image);
                         break;
                     case ".json":
                         clean = RewriteJson(bytes);

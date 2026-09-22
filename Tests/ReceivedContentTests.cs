@@ -81,6 +81,20 @@ namespace Tests
             Assert.Equal(4, rebuilt.Height);
         }
 
+        [Theory]
+        [InlineData(".jpg")]
+        [InlineData(".jpeg")]
+        public void AJpegIsStoredAsAJpeg(string extension)
+        {
+            // images always travel as PNG data; one called photo.jpg is written back as a real JPEG, so the name tells the truth
+            byte[] sent = MakePng(16, 8);
+            Assert.True(ContentValidator.TrySanitize(extension, sent, out byte[] clean, out string error), error);
+            Assert.True(clean.Length > 3 && clean[0] == 0xFF && clean[1] == 0xD8 && clean[2] == 0xFF, "not a JPEG");
+
+            using SkiaSharp.SKBitmap back = SkiaSharp.SKBitmap.Decode(clean);
+            Assert.Equal((16, 8), (back.Width, back.Height));
+        }
+
         [Fact]
         public void DropsAnythingHiddenAfterTheImage()
         {
