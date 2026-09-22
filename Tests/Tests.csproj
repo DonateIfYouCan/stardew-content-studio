@@ -26,6 +26,8 @@
     <ProjectReference Include="..\CustomContentCore\CustomContentCore.csproj" AdditionalProperties="EnableModDeploy=false" />
     <!-- only its pure data helpers are tested (FishData), which touch nothing from the game -->
     <ProjectReference Include="..\CustomFish\CustomFish.csproj" AdditionalProperties="EnableModDeploy=false" />
+    <!-- same again (MiningData): what counts as a gem, mineral or artefact, and the odds of finding one -->
+    <ProjectReference Include="..\CustomMining\CustomMining.csproj" AdditionalProperties="EnableModDeploy=false" />
     <!-- copied next to the tests: the image code uses the game's colour type -->
     <Reference Include="MonoGame.Framework" HintPath="$(GamePath)/MonoGame.Framework.dll" Private="False" />
     <Reference Include="SkiaSharp" HintPath="$(GamePath)/SkiaSharp.dll" Private="False" />

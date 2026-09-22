@@ -46,6 +46,7 @@ namespace Tests
         [InlineData("CustomCrops", "CropStore.cs")]
         [InlineData("CustomPaintings", "PaintingStore.cs")]
         [InlineData("CustomFish", "FishStore.cs")]
+        [InlineData("CustomMining", "MiningStore.cs")]
         public void AChangeToAGameItemTravelsOnItsOwn(string mod, string store)
         {
             // each change to one of the game's items is its own item, marked with the Core's prefix so the Host knows it
@@ -62,6 +63,7 @@ namespace Tests
         [InlineData("CustomCrops", "CropListScreen.cs")]
         [InlineData("CustomPaintings", "PaintingListScreen.cs")]
         [InlineData("CustomFish", "FishListScreen.cs")]
+        [InlineData("CustomMining", "MineralListScreen.cs")]
         public void GameItemsAreHeldOneAtATime(string mod, string screen)
         {
             // Player A giving the game's lamp new art mustn't stop Player B hiding a game table, so no game-item button takes
@@ -78,6 +80,7 @@ namespace Tests
         [InlineData("CustomCrops", "CropListScreen.cs")]
         [InlineData("CustomPaintings", "PaintingListScreen.cs")]
         [InlineData("CustomFish", "FishListScreen.cs")]
+        [InlineData("CustomMining", "MineralListScreen.cs")]
         public void EveryGameItemCanBeCopied(string mod, string screen)
         {
             // each list of the game's own items offers a copy to make your own from, opened as a new item (so it's never a lock on the game's)

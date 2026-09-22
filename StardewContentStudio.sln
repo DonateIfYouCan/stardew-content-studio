@@ -17,6 +17,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tests", "Tests\Tests.csproj
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CustomFish", "CustomFish\CustomFish.csproj", "{FDCFFEFD-63E7-46D2-AF7A-DE0434250C4D}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CustomMining", "CustomMining\CustomMining.csproj", "{7C4B5B1A-2E6D-4F3B-9A11-5D2C8E0F1B44}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -54,5 +56,9 @@ Global
 		{FDCFFEFD-63E7-46D2-AF7A-DE0434250C4D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{FDCFFEFD-63E7-46D2-AF7A-DE0434250C4D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{FDCFFEFD-63E7-46D2-AF7A-DE0434250C4D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7C4B5B1A-2E6D-4F3B-9A11-5D2C8E0F1B44}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7C4B5B1A-2E6D-4F3B-9A11-5D2C8E0F1B44}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7C4B5B1A-2E6D-4F3B-9A11-5D2C8E0F1B44}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7C4B5B1A-2E6D-4F3B-9A11-5D2C8E0F1B44}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

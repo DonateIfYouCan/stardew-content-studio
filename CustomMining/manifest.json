@@ -1,0 +1,18 @@
+{
+  "Name": "Content Studio: Mining & Museum",
+  "Author": "DonateIfYouCan",
+  "Version": "0.5.0",
+  "Description": "Add your own minerals, gems and artefacts with an in-game editor: what geodes give, where they're dug up, the museum, and gifts.",
+  "UniqueID": "DonateIfYouCan.CustomMining",
+  "EntryDll": "CustomMining.dll",
+  "MinimumApiVersion": "4.0.0",
+  "Dependencies": [
+    {
+      "UniqueID": "DonateIfYouCan.CustomContentCore",
+      "MinimumVersion": "0.4.3"
+    }
+  ],
+  "UpdateKeys": [
+    "Nexus:52609"
+  ]
+}
