@@ -251,7 +251,7 @@ namespace CustomFish
             result.TankHd = new Pixels(ImageProcessor.Premultiply(tank.Data), tank.Width, tank.Height);
             result.TankLow = Downscale(result.TankHd, TankCell, TankRow);
 
-            result.RoeColor = FishData.Colors.Any(c => c.Name == fish.RoeColor) ? fish.RoeColor : AverageColorName(icon);
+            result.RoeColor = ColorTags.IsKnown(fish.RoeColor) ? fish.RoeColor : ColorTags.Of(icon);
             return result;
         }
 
@@ -287,7 +287,7 @@ namespace CustomFish
             {
                 fish.Price = objectData.Price;
                 fish.Energy = objectData.Edibility > 0 ? (int)Math.Round(objectData.Edibility * 2.5) : 0;
-                fish.RoeColor = objectData.ContextTags?.Select(t => t.StartsWith("color_") ? t["color_".Length..] : null).FirstOrDefault(c => c != null && FishData.Colors.Any(k => k.Name == c)) ?? "";
+                fish.RoeColor = ColorTags.FromTags(objectData.ContextTags) ?? "";
             }
 
             // where and when it bites, from the game's spawns (a crab pot fish has none: crab pots go by water)
@@ -308,6 +308,8 @@ namespace CustomFish
             fish.SwimStyle = style switch { "front_crawl" => "crawl", "static" or "cephalopod" => "float", _ when FishData.SwimStyles.Contains(style) => style, _ => "fish" };
             fish.TankTurn = 45; // the game's fish icons lie diagonally, head up and to the right; turned, they swim level
             fish.InPond = StardewValley.Buildings.FishPond.GetRawData(itemId) != null;
+            if (OriginalContent.LoadData<Dictionary<string, string>>("Data/NPCGiftTastes") is { } tastes)
+                fish.GiftTastes = GiftTastes.Read(tastes, itemId); // who loves or hates the game's fish by name
 
             // the game's picture as your own image, four times the size with sharp pixels, so it looks the same and can be painted in detail
             if (GetVanillaIcon(itemId, 4) is { } icon)
@@ -316,19 +318,7 @@ namespace CustomFish
         }
 
         /// <summary>A game fish's own icon, straight alpha, enlarged with sharp pixels.</summary>
-        public static Pixels? GetVanillaIcon(string itemId, int scale)
-        {
-            if (ItemRegistry.GetData("(O)" + itemId) is not { } data)
-                return null;
-            using Texture2D? sheet = OriginalContent.LoadTexture(data.TextureName);
-            Rectangle area = data.GetSourceRect();
-            if (sheet == null || !sheet.Bounds.Contains(area))
-                return null;
-            Color[] pixels = new Color[area.Width * area.Height];
-            sheet.GetData(0, area, pixels, 0, pixels.Length);
-            Pixels icon = new(ImageProcessor.Unpremultiply(pixels), area.Width, area.Height);
-            return scale > 1 ? ImageProcessor.Enlarge(icon, scale) : icon;
-        }
+        public static Pixels? GetVanillaIcon(string itemId, int scale) => OriginalContent.LoadItemSprite("(O)" + itemId, scale);
 
         /// <summary>Handle the game requesting an asset.</summary>
         public void OnAssetRequested(AssetRequestedEventArgs e)
@@ -657,12 +647,7 @@ namespace CustomFish
         private void EditGiftTastes(IDictionary<string, string> data)
         {
             foreach (RenderedFish rendered in this.Rendered.Values)
-            {
-                string itemId = "(O)" + this.GetItemId(rendered.Data.Id);
-                foreach ((string villager, string taste) in rendered.Data.GiftTastes)
-                    if (data.TryGetValue(villager, out string? entry))
-                        data[villager] = FishData.SetGiftTaste(entry, itemId, taste);
-            }
+                GiftTastes.Apply(data, "(O)" + this.GetItemId(rendered.Data.Id), rendered.Data.GiftTastes);
         }
 
         /// <summary>Whether a fish lives in salt water.</summary>
@@ -716,22 +701,6 @@ namespace CustomFish
                 }
             }
             return new Pixels(data, width, height);
-        }
-
-        /// <summary>The game colour name nearest the average colour of an image's visible pixels.</summary>
-        private static string AverageColorName(Pixels image)
-        {
-            long r = 0, g = 0, b = 0, count = 0;
-            foreach (Color c in image.Data)
-            {
-                if (c.A < 128)
-                    continue;
-                r += c.R;
-                g += c.G;
-                b += c.B;
-                count++;
-            }
-            return count == 0 ? "gray" : FishData.NearestColor((byte)(r / count), (byte)(g / count), (byte)(b / count));
         }
 
         private static Pixels Downscale(Pixels premultipliedHd, int width, int height)

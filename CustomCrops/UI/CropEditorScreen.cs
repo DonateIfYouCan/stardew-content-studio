@@ -73,6 +73,8 @@ namespace CustomCrops.UI
         private readonly Checkbox JojaBox;
         private readonly Checkbox TravelerBox;
         private readonly Cycler DetailCycler;
+        private readonly Cycler ColorCycler;
+        private readonly Button GiftsButton;
         private readonly Button SaveButton;
         private readonly Button CancelButton;
 
@@ -142,6 +144,13 @@ namespace CustomCrops.UI
             this.DetailCycler = this.Add(new Cycler(new() { ("0", "Auto (HD)"), ("16", "Pixel art"), ("32", "Sharp"), ("64", "HD") }, c.Resolution <= 0 ? "0" : c.Resolution.ToString(), v => { c.Resolution = int.Parse(v); this.ArtDirty = true; },
                 "How detailed the icons and plant look. Pixel art matches the game's style."));
 
+            List<(string, string)> colours = ColorTags.Colors.Select(k => (k.Name, ColorTags.Label(k.Name))).ToList();
+            colours.Insert(0, ("", "From the harvest image"));
+            this.ColorCycler = this.Add(new Cycler(colours, c.Color, v => c.Color = v,
+                "The harvest's colour. The game uses it for dyeing, flower honey, and the colour of the wine, jelly, juice or pickles made from it."));
+            this.GiftsButton = this.Add(new Button("Gifts...", () => this.Root.Push(new GiftTastesScreen(string.IsNullOrWhiteSpace(c.Name) ? "the harvest" : c.Name, c.GiftTastes)),
+                "Which villagers love, like, dislike or hate the harvest as a gift. Those left alone feel about it as the game decides for its type."));
+
             this.SaveButton = this.Add(new Button("Save", this.Save));
             this.CancelButton = this.Add(new Button("Cancel", () => this.Root.Pop()));
 
@@ -157,7 +166,7 @@ namespace CustomCrops.UI
         {
             this.GameChange = change;
             // what makes it that crop stays the game's; only the art is yours
-            List<Widget> gameOwns = new() { this.ImageCycler, this.AutoPacketButton, this.LookCycler, this.NameField, this.DescriptionField, this.DaysField, this.RegrowField,
+            List<Widget> gameOwns = new() { this.ColorCycler, this.GiftsButton, this.ImageCycler, this.AutoPacketButton, this.LookCycler, this.NameField, this.DescriptionField, this.DaysField, this.RegrowField,
                 this.CategoryCycler, this.EnergyField, this.SellField, this.SeedPriceField, this.HarvestCountField, this.TrellisBox, this.ScytheBox, this.PierreBox, this.JojaBox, this.TravelerBox };
             gameOwns.AddRange(this.SeasonBoxes);
             foreach (Widget widget in gameOwns)
@@ -249,6 +258,7 @@ namespace CustomCrops.UI
                 this.ScytheBox.Bounds = new Rectangle(this.TrellisBox.Bounds.X + 160, this.TrellisBox.Bounds.Y, 160, 44);
                 this.TrellisBox.Bounds = new Rectangle(this.TrellisBox.Bounds.X, this.TrellisBox.Bounds.Y, 150, 44);
                 Boxes("Seeds sold", this.PierreBox, this.JojaBox, this.TravelerBox);
+                Pair("Colour", this.ColorCycler, "", this.GiftsButton, 0);
             }
             Full("Detail", this.DetailCycler);
 
@@ -259,6 +269,7 @@ namespace CustomCrops.UI
 
         public override void Draw(SpriteBatch b, int mouseX, int mouseY)
         {
+            this.GiftsButton.Label = this.Crop.GiftTastes.Count > 0 ? $"Gifts: {this.Crop.GiftTastes.Count} set" : "Gifts...";
             Rectangle area = this.Area;
             Gfx.Panel(b, area);
             string title = this.GameChange != null ? $"New art for the game's {this.Crop.Name}" : this.IsNew ? "New crop" : $"Edit '{this.Crop.Name}'";

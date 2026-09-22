@@ -27,6 +27,7 @@ namespace CustomFurniture.UI
         private readonly Button GameArtButton;
         private readonly Button GameHideButton;
         private readonly Button GameRestoreButton;
+        private readonly Button GameCopyButton;
         private readonly Button CloseButton;
         private readonly Dictionary<string, Texture2D> Thumbnails = new();
         private readonly Dictionary<string, Texture2D> GameThumbnails = new();
@@ -78,6 +79,7 @@ namespace CustomFurniture.UI
             this.GameArtButton = this.Add(new Button("New art", this.EditGameArt, "Draw or pick new art for this piece. Its type, size, name and price stay the game's."));
             this.GameHideButton = this.Add(new Button("Hide from shops", this.ToggleGameHidden, "Take it out of the Furniture Catalogue and every shop. Copies already placed stay where they are."));
             this.GameRestoreButton = this.Add(new Button("Put the game's art back", this.RestoreGameArt, "Drop your art for this piece, so it looks as the game has it."));
+            this.GameCopyButton = this.Add(new Button("Make my own copy", this.CopyGameItem, "Start a piece of furniture of your own from this one, with its art ready to paint over. The game's own stays as it is."));
             this.CloseButton = this.Add(new Button("Close", () => this.Root.Pop()));
             this.Refresh();
         }
@@ -195,6 +197,7 @@ namespace CustomFurniture.UI
                 button.Bounds = new Rectangle(bx, by, sideW, 56);
                 by += 64;
             }
+            this.GameCopyButton.Bounds = new Rectangle(bx, this.List.Bounds.Bottom - 56, sideW, 56); // apart from the buttons that change the game's own
             this.SyncButtons(); // the give button moves with the tab
             this.CloseButton.Bounds = new Rectangle(area.Right - pad - 180, area.Bottom - 84, 180, 60);
         }
@@ -355,6 +358,7 @@ namespace CustomFurniture.UI
             this.GameHideButton.Visible = game != null;
             this.GameHideButton.Label = hidden ? "Show in shops again" : "Hide from shops";
             this.GameRestoreButton.Visible = replaced;
+            this.GameCopyButton.Visible = game != null; // adding your own needs nobody's say-so, so it's never greyed out
 
             // on the game's list the give button goes under whichever of that list's buttons are showing, not over one
             this.GiveButton.Bounds = this.ShowGame
@@ -373,6 +377,26 @@ namespace CustomFurniture.UI
 
             this.GiveButton.Visible = item != null || game != null;
             this.GiveButton.Enabled = Context.IsWorldReady;
+        }
+
+        /// <summary>Open the editor on a new furniture of your own that starts as a copy of the selected game one.</summary>
+        private void CopyGameItem()
+        {
+            if (this.GameList.Selected is not { } g)
+                return;
+            try
+            {
+                if (this.Store.CopyOfGameFurniture(g) is not { } copy)
+                {
+                    this.ShowMessage($"Couldn't read the game's {g.Name}.", error: true);
+                    return;
+                }
+                this.Root.Push(new FurnitureEditorScreen(this.Store, copy, isNew: true, saved => { this.SwitchTab(false); this.ShowMessage($"Saved '{saved}'."); }));
+            }
+            catch (Exception ex)
+            {
+                this.ShowMessage($"Couldn't copy it: {ex.Message}", error: true);
+            }
         }
 
         private void SwitchTab(bool game)

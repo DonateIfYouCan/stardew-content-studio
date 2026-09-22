@@ -29,6 +29,7 @@ namespace CustomCrops.UI
         private readonly Button GameArtButton;
         private readonly Button GameHideButton;
         private readonly Button GameRestoreButton;
+        private readonly Button GameCopyButton;
         private readonly Button CloseButton;
         private readonly Dictionary<string, Texture2D> Icons = new();
 
@@ -66,6 +67,7 @@ namespace CustomCrops.UI
             this.GameArtButton = this.Add(new Button("New art", this.EditGameArt, "Draw or pick a new harvest icon and growing plant. How it grows and what it sells for stay the game's."));
             this.GameHideButton = this.Add(new Button("Hide from shops", this.ToggleGameHidden, "Take its seeds out of every shop and random sales. Crops already planted keep growing."));
             this.GameRestoreButton = this.Add(new Button("Put the game's art back", this.RestoreGameArt, "Drop your art for this crop, so it looks as the game has it."));
+            this.GameCopyButton = this.Add(new Button("Make my own copy", this.CopyGameCrop, "Start a crop of your own from this one: its harvest, growing plant, seasons, prices and the rest, all yours to change. The game's crop stays as it is."));
             this.CloseButton = this.Add(new Button("Close", () => this.Root.Pop()));
             this.Refresh();
         }
@@ -132,6 +134,7 @@ namespace CustomCrops.UI
                 button.Bounds = new Rectangle(bx, by, sideW, 56);
                 by += 64;
             }
+            this.GameCopyButton.Bounds = new Rectangle(bx, this.List.Bounds.Bottom - 56, sideW, 56); // apart from the buttons that change the game's crop
             this.SyncButtons(); // the give button moves with the tab
             this.CloseButton.Bounds = new Rectangle(area.Right - pad - 180, area.Bottom - 84, 180, 60);
         }
@@ -296,6 +299,7 @@ namespace CustomCrops.UI
             this.GameHideButton.Visible = gamePicked;
             this.GameHideButton.Label = hidden ? "Sell the seeds again" : "Hide from shops";
             this.GameRestoreButton.Visible = replaced;
+            this.GameCopyButton.Visible = gamePicked; // adding a crop of your own needs nobody's say-so, so it's never greyed out
 
             // on the game's list the give button goes under whichever of that list's buttons are showing, not over one
             this.GiveButton.Bounds = this.ShowGame
@@ -415,6 +419,27 @@ namespace CustomCrops.UI
                 GameCropChange change = CopyOf(this.Store.GetGameChange(seedId)) ?? new GameCropChange { Target = seedId };
                 this.Root.Push(new CropEditorScreen(this.Store, change, saved => this.ShowMessage($"Saved new art for the game's {saved}.")));
             });
+        }
+
+        /// <summary>Open the editor on a new crop of your own that starts as a copy of the selected game crop.</summary>
+        private void CopyGameCrop()
+        {
+            if (this.GameList.SelectedIndex < 0)
+                return;
+            (string seedId, string name) = this.GameList.Selected;
+            try
+            {
+                if (this.Store.CopyOfGameCrop(seedId) is not { } copy)
+                {
+                    this.ShowMessage($"Couldn't read the game's {name}.", error: true);
+                    return;
+                }
+                this.Root.Push(new CropEditorScreen(this.Store, copy, isNew: true, saved => { this.SwitchTab(false); this.ShowMessage($"Saved '{saved}'."); }));
+            }
+            catch (Exception ex)
+            {
+                this.ShowMessage($"Couldn't copy it: {ex.Message}", error: true);
+            }
         }
 
         /// <summary>Take the selected game crop's seeds out of the shops, or put them back.</summary>

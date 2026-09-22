@@ -237,6 +237,37 @@ namespace CustomFurniture
             return new Pixels(Unpremultiply(data), area.Width, area.Height);
         }
 
+        /// <summary>Furniture of your own that starts as a copy of a game piece: the same kind and size, its price, and its art saved as your own sheet to paint over.</summary>
+        /// <param name="template">The game piece.</param>
+        /// <returns>The new furniture, not saved yet, or null if its art can't be read.</returns>
+        public CustomFurnitureItem? CopyOfGameFurniture(FurnitureTemplate template)
+        {
+            if (LoadTemplateFrames(template) is not { } frames)
+                return null;
+            string? raw = OriginalContent.LoadData<Dictionary<string, string>>("Data/Furniture")?.GetValueOrDefault(template.Id);
+            int price = raw?.Split('/') is { Length: > 5 } fields && int.TryParse(fields[5], out int p) && p > 0 ? p : 1000;
+            CustomFurnitureItem item = new()
+            {
+                Name = $"{template.Name} copy",
+                BasedOn = template.Id,
+                AnimationFrames = 1,
+                Price = price,
+                InCatalogue = true
+            };
+            item.Sheet = CustomContent.SaveImage(this.ImageFolder, item.Name, ImageProcessor.Enlarge(frames, 4)); // four times the size, sharp pixels
+            return item;
+        }
+
+        /// <summary>A wallpaper or floor of your own that starts as a copy of one of the game's, with its art saved as your own image to paint over.</summary>
+        public CustomWallpaper? CopyOfGameWallpaper(GameWallpaper game)
+        {
+            if (GameWallpapers.LoadOriginal(game) is not { } art)
+                return null;
+            CustomWallpaper item = new() { Name = $"{game.Label} copy", IsFloor = game.IsFloor };
+            item.Image = CustomContent.SaveImage(this.ImageFolder, item.Name, ImageProcessor.Enlarge(art, 4));
+            return item;
+        }
+
         /// <summary>Export a template's frames as a PNG to paint over.</summary>
         /// <param name="scale">How many times to enlarge it; 1 is the game's own size.</param>
         public static string ExportTemplate(FurnitureTemplate template, int scale)

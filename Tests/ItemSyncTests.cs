@@ -72,6 +72,21 @@ namespace Tests
             Assert.Contains("GameThing(", code);
         }
 
+        [Theory]
+        [InlineData("CustomFurniture", "FurnitureListScreen.cs")]
+        [InlineData("CustomFurniture", "WallpaperListScreen.cs")]
+        [InlineData("CustomCrops", "CropListScreen.cs")]
+        [InlineData("CustomPaintings", "PaintingListScreen.cs")]
+        [InlineData("CustomFish", "FishListScreen.cs")]
+        public void EveryGameItemCanBeCopied(string mod, string screen)
+        {
+            // each list of the game's own items offers a copy to make your own from, opened as a new item (so it's never a lock on the game's)
+            string code = System.IO.File.ReadAllText(System.IO.Path.Combine(Root(), mod, "UI", screen));
+            Assert.Contains("\"Make my own copy\"", code);
+            Assert.Matches(@"CopyOfGame\w+\(", code);
+            Assert.Contains("isNew: true", code);
+        }
+
         private static string Root() => System.IO.Path.GetFullPath(System.IO.Path.Combine(System.AppContext.BaseDirectory, "..", "..", "..", ".."));
 
         /// <summary>The mods in this repo and whether they let their items be sent one at a time.</summary>

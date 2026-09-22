@@ -60,6 +60,7 @@ namespace CustomPaintings.UI
         private readonly Button RestoreButton;
         private readonly Button HideButton;
         private readonly Button ExportButton;
+        private readonly Button CopyButton;
         private readonly Button CloseButton;
         private readonly Checkbox AutoAddBox;
 
@@ -94,6 +95,7 @@ namespace CustomPaintings.UI
             this.RestoreButton = this.Add(new Button("Restore original", () => this.WhenNobodyElseIsChangingGamePainting(this.RestoreSelected)));
             this.HideButton = this.Add(new Button("Hide from shops", () => this.WhenNobodyElseIsChangingGamePainting(this.ToggleHidden), "Take it out of shops, the catalogue and fishing. Placed copies stay."));
             this.ExportButton = this.Add(new Button("Export original", this.ExportSelected, "Save the game's original art as a PNG, to edit in another program and use as a replacement."));
+            this.CopyButton = this.Add(new Button("Make my own copy", this.CopySelected, "Start a painting of your own from this one, with its art ready to paint over. The game's painting stays as it is."));
             this.CloseButton = this.Add(new Button("Close", () => this.Root.Pop()));
             this.AutoAddBox = this.Add(new Checkbox("Auto-add images dropped into the paintings folder", this.Store.File.AutoAddImages, value => this.WhenNobodyElseIsChangingTheList(() => this.SetAutoAdd(value))));
 
@@ -167,7 +169,7 @@ namespace CustomPaintings.UI
                 by += button.Visible ? 64 : 0;
             }
             by += 24;
-            foreach (Button button in new[] { this.EditButton, this.ReplaceButton, this.ExportButton, this.GiveButton, this.DuplicateButton, this.RestoreButton, this.HideButton, this.DeleteButton })
+            foreach (Button button in new[] { this.EditButton, this.ReplaceButton, this.ExportButton, this.CopyButton, this.GiveButton, this.DuplicateButton, this.RestoreButton, this.HideButton, this.DeleteButton })
             {
                 button.Bounds = new Rectangle(bx, by, sideW, 56);
                 if (button.Visible)
@@ -421,6 +423,7 @@ namespace CustomPaintings.UI
             this.RestoreButton.Visible = !mine && replaced;
             this.HideButton.Visible = !mine && row != null;
             this.ExportButton.Visible = !mine && row != null;
+            this.CopyButton.Visible = !mine && row != null; // adding your own needs nobody's say-so, so it's never greyed out
             this.HideButton.Label = hidden ? "Show in shops again" : "Hide from shops";
 
             if (this.Root != null)
@@ -723,21 +726,29 @@ namespace CustomPaintings.UI
         /// <summary>Export a game painting's original art (ignoring any replacement), returning the file path.</summary>
         public static string ExportOriginal(string furnitureId, string name, int scale)
         {
-            Dictionary<string, string>? original = OriginalContent.LoadData<Dictionary<string, string>>("Data/Furniture");
-            if (original == null || !original.TryGetValue(furnitureId, out string? raw))
-                throw new InvalidOperationException("couldn't find the original data for this painting");
+            Pixels art = PaintingStore.LoadOriginalArt(furnitureId) ?? throw new InvalidOperationException("couldn't read this painting's original art");
+            using Texture2D texture = art.ToTexture();
+            return ImageExport.Export(texture, null, $"Painting - {name}", scale);
+        }
 
-            string[] fields = raw.Split('/');
-            string textureName = fields.Length > 9 && !string.IsNullOrWhiteSpace(fields[9]) ? fields[9] : "TileSheets/furniture";
-            int spriteIndex = fields.Length > 8 && int.TryParse(fields[8], out int parsed) ? parsed : int.TryParse(furnitureId, out int id) ? id : 0;
-            (int w, int h) = PaintingStore.GetFurnitureSize(raw);
-
-            using Texture2D? texture = OriginalContent.LoadTexture(textureName)
-                ?? throw new InvalidOperationException($"couldn't read the original texture '{textureName}'");
-
-            // same as the game's default furniture source rectangle
-            Rectangle source = new(spriteIndex * 16 % texture.Width, spriteIndex * 16 / texture.Width * 16, w * 16, h * 16);
-            return ImageExport.Export(texture, source, $"Painting - {name}", scale);
+        /// <summary>Open the editor on a new painting of your own that starts as a copy of the selected game painting.</summary>
+        private void CopySelected()
+        {
+            if (this.List.Selected is not { } row)
+                return;
+            try
+            {
+                if (this.Store.CopyOfGamePainting(row.FurnitureId, row.Name) is not { } copy)
+                {
+                    this.ShowMessage($"Couldn't read the game's {row.Name}.", error: true);
+                    return;
+                }
+                this.Root.Push(new PaintingEditorScreen(this.Store, copy, isNew: true, saved => { this.SwitchTab(false); this.ShowMessage($"Saved '{saved}'."); }));
+            }
+            catch (Exception ex)
+            {
+                this.ShowMessage($"Couldn't copy it: {ex.Message}", error: true);
+            }
         }
 
         private void GiveSelected()

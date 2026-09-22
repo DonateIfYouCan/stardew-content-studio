@@ -33,7 +33,7 @@ namespace CustomFish
             new("Sewer", "The sewers", new[] { ("Sewer", (string?)null) }),
             new("WitchSwamp", "Witch's swamp", new[] { ("WitchSwamp", (string?)null) }),
             new("BugLand", "Mutant Bug Lair", new[] { ("BugLand", (string?)null) }),
-            new("UndergroundMine", "The mines", new[] { ("UndergroundMine", (string?)null) }),
+            new("UndergroundMine", "The mines (floors 20 and 60)", new[] { ("UndergroundMine", (string?)null) }),
             new("Submarine", "Night market submarine", new[] { ("Submarine", (string?)null) }),
             new("Island:Ocean", "Ginger Island ocean", new[] { ("IslandSouth", (string?)null), ("IslandSouthEast", null), ("IslandWest", "Ocean") }),
             new("Island:River", "Ginger Island river", new[] { ("IslandWest", (string?)"Freshwater"), ("IslandNorth", null) }),
@@ -45,15 +45,6 @@ namespace CustomFish
 
         /// <summary>The ways a fish can swim in a tank.</summary>
         public static readonly string[] SwimStyles = { "fish", "float", "ground", "crawl", "eel" };
-
-        /// <summary>The colour names the game reads from a <c>color_*</c> context tag (used for roe), with roughly what they look like.</summary>
-        public static readonly (string Name, byte R, byte G, byte B)[] Colors =
-        {
-            ("black", 45, 45, 45), ("gray", 128, 128, 128), ("white", 240, 240, 240), ("pink", 255, 150, 190),
-            ("red", 220, 40, 40), ("orange", 250, 140, 30), ("yellow", 250, 220, 50), ("green", 60, 170, 60),
-            ("blue", 50, 100, 220), ("purple", 140, 60, 180), ("brown", 130, 80, 40), ("sea_green", 60, 180, 150),
-            ("dark_blue", 30, 50, 120), ("cyan", 70, 200, 220)
-        };
 
         /// <summary>The <c>Data/Fish</c> entry for a fish caught with a rod.</summary>
         /// <remarks>
@@ -220,29 +211,6 @@ namespace CustomFish
                 ? new List<string>()
                 : order.Where(season => list.Any(s => string.Equals(s.Season, season, StringComparison.OrdinalIgnoreCase))).ToList();
             return (places, seasons);
-        }
-
-        /// <summary>Put an item in one villager's gift tastes, taking it out of whichever list it was in before.</summary>
-        /// <param name="entry">The villager's <c>Data/NPCGiftTastes</c> entry: love text / loved IDs / like text / liked IDs / dislike text / disliked IDs / hate text / hated IDs / neutral text / neutral IDs.</param>
-        /// <param name="itemId">The item's ID as the game writes it there.</param>
-        /// <param name="taste"><c>love</c>, <c>like</c>, <c>dislike</c>, <c>hate</c> or <c>neutral</c>.</param>
-        public static string SetGiftTaste(string entry, string itemId, string taste)
-        {
-            List<string> fields = entry.Split('/').ToList();
-            while (fields.Count < 10)
-                fields.Add("");
-            foreach (int list in new[] { 1, 3, 5, 7, 9 })
-                fields[list] = string.Join(" ", fields[list].Split(' ', StringSplitOptions.RemoveEmptyEntries).Where(id => id != itemId));
-            int target = taste switch { "love" => 1, "like" => 3, "dislike" => 5, "hate" => 7, "neutral" => 9, _ => -1 };
-            if (target > 0)
-                fields[target] = (fields[target] + " " + itemId).Trim();
-            return string.Join("/", fields);
-        }
-
-        /// <summary>The game colour name closest to a colour, for the roe of a fish whose colour wasn't chosen.</summary>
-        public static string NearestColor(byte r, byte g, byte b)
-        {
-            return Colors.OrderBy(c => (c.R - r) * (c.R - r) + (c.G - g) * (c.G - g) + (c.B - b) * (c.B - b)).First().Name;
         }
 
         /// <summary>The seasons as the game writes them, or all four if none were picked.</summary>

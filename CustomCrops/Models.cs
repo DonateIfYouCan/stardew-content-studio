@@ -96,6 +96,15 @@ namespace CustomCrops
         /// <summary>The vanilla crop (seed item ID, like <c>472</c> for parsnip) whose growing plant to copy when there's no growth sheet.</summary>
         public string LooksLike { get; set; } = "472";
 
+        /// <summary>
+        /// The harvest's colour, as one of the game's colour names, or empty to work it out from the harvest image. The game
+        /// uses it for dyeing, flower honey, and the colour of the wine, jelly, juice or pickles made from it.
+        /// </summary>
+        public string Color { get; set; } = "";
+
+        /// <summary>How villagers feel about the harvest as a gift, by villager: <c>love</c>, <c>like</c>, <c>dislike</c> or <c>hate</c>.</summary>
+        public Dictionary<string, string> GiftTastes { get; set; } = new();
+
         /// <summary>How detailed the icons and plant look: 16 (pixel art), 32 (sharp), 64 (HD), or 0 (auto = HD).</summary>
         public int Resolution { get; set; } = 0;
     }

@@ -660,6 +660,48 @@ namespace CustomPaintings
             return null;
         }
 
+        /// <summary>A game painting's own art as the game has it without mods (straight alpha, the game's size), frame and all.</summary>
+        public static Pixels? LoadOriginalArt(string furnitureId)
+        {
+            string? raw = OriginalContent.LoadData<Dictionary<string, string>>("Data/Furniture")?.GetValueOrDefault(furnitureId);
+            if (raw == null)
+                return null;
+            string[] fields = raw.Split('/');
+            string textureName = fields.Length > 9 && !string.IsNullOrWhiteSpace(fields[9]) ? fields[9] : "TileSheets/furniture";
+            int spriteIndex = fields.Length > 8 && int.TryParse(fields[8], out int parsed) ? parsed : int.TryParse(furnitureId, out int id) ? id : 0;
+            (int w, int h) = GetFurnitureSize(raw);
+            using Texture2D? texture = OriginalContent.LoadTexture(textureName);
+            if (texture == null)
+                return null;
+            // same as the game's default furniture source rectangle
+            Rectangle source = Rectangle.Intersect(new Rectangle(spriteIndex * 16 % texture.Width, spriteIndex * 16 / texture.Width * 16, w * 16, h * 16), texture.Bounds);
+            Color[] data = new Color[source.Width * source.Height];
+            texture.GetData(0, source, data, 0, data.Length);
+            return new Pixels(ImageProcessor.Unpremultiply(data), source.Width, source.Height);
+        }
+
+        /// <summary>A painting of your own that starts as a copy of one of the game's: its size, price and art (with the game's frame, so no frame is added), saved as your own image to paint over.</summary>
+        public CustomPainting? CopyOfGamePainting(string furnitureId, string name)
+        {
+            string? raw = OriginalContent.LoadData<Dictionary<string, string>>("Data/Furniture")?.GetValueOrDefault(furnitureId);
+            if (raw == null || LoadOriginalArt(furnitureId) is not { } art)
+                return null;
+            (int w, int h) = GetFurnitureSize(raw);
+            string[] fields = raw.Split('/');
+            CustomPainting painting = new()
+            {
+                Name = $"{name} copy",
+                Size = $"{w}x{h}",
+                Price = fields.Length > 5 && int.TryParse(fields[5], out int price) && price > 0 ? price : 1000,
+                Frame = "none",
+                Scaling = "stretch",
+                InCatalogue = true
+            };
+            painting.Image = CustomContent.SaveImage(Path.Combine(this.ImageFolder, "imported"), painting.Name, ImageProcessor.Enlarge(art, 4));
+            painting.Image = "imported/" + painting.Image;
+            return painting;
+        }
+
         public static (int W, int H) GetFurnitureSize(string raw)
         {
             string[] fields = raw.Split('/');

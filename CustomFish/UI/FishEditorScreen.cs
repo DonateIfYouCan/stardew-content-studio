@@ -160,17 +160,12 @@ namespace CustomFish.UI
                 "Fish pictures are often drawn diagonally. Turn it so it swims level in the tank."));
             this.FlipBox = this.On(Page.Tank, new Checkbox("Mirror it", f.TankFlip, v => { f.TankFlip = v; this.ArtDirty = true; }, "Tank fish face right. Mirror it if it would swim backwards."));
             this.PondBox = this.On(Page.Tank, new Checkbox("Can live in a fish pond", f.InPond, v => { f.InPond = v; this.SyncPage(); }, "Whether it can go in a fish pond, where it multiplies and makes roe."));
-            List<(string, string)> colours = FishData.Colors.Select(c => (c.Name, char.ToUpper(c.Name[0]) + c.Name[1..].Replace('_', ' '))).ToList();
+            List<(string, string)> colours = ColorTags.Colors.Select(c => (c.Name, ColorTags.Label(c.Name))).ToList();
             colours.Insert(0, ("", "The fish's own colour"));
             this.RoeCycler = this.On(Page.Tank, new Cycler(colours, f.RoeColor, v => f.RoeColor = v, "The colour of the roe it makes in a fish pond."));
 
             // gifts
-            this.GiftList = this.On(Page.Gifts, new ScrollList<(string Name, string Label)>(56, this.DrawGiftRow)
-            {
-                OnSelect = (v, _) => this.CycleTaste(v.Name),
-                OnDoubleClick = v => this.CycleTaste(v.Name),
-                Items = GetVillagers()
-            });
+            this.GiftList = this.On(Page.Gifts, GiftTasteList.Create(f.GiftTastes));
 
             this.SaveButton = this.Add(new Button("Save", this.Save));
             this.CancelButton = this.Add(new Button("Cancel", () => this.Root.Pop()));
@@ -411,46 +406,6 @@ namespace CustomFish.UI
         {
             int hour = time / 100 % 24;
             return hour switch { 0 => "midnight", 12 => "noon", < 12 => $"{hour}am", _ => $"{hour - 12}pm" } + (time >= 2400 ? " (night)" : "");
-        }
-
-        /// <summary>The villagers who can be given gifts, as (internal name, display name).</summary>
-        private static List<(string Name, string Label)> GetVillagers()
-        {
-            IDictionary<string, string> tastes = Game1.content.Load<Dictionary<string, string>>("Data\\NPCGiftTastes");
-            var characters = DataLoader.Characters(Game1.content);
-            return tastes.Keys
-                .Where(name => !name.StartsWith("Universal_") && characters.ContainsKey(name))
-                .Select(name => (name, NPC.GetDisplayName(name) ?? name))
-                .OrderBy(v => v.Item2, StringComparer.CurrentCultureIgnoreCase)
-                .ToList();
-        }
-
-        private static readonly string[] Tastes = { "", "love", "like", "dislike", "hate" };
-
-        private void CycleTaste(string villager)
-        {
-            string current = this.Fish.GiftTastes.GetValueOrDefault(villager, "");
-            string next = Tastes[(Array.IndexOf(Tastes, current) + 1) % Tastes.Length];
-            if (next.Length == 0)
-                this.Fish.GiftTastes.Remove(villager);
-            else
-                this.Fish.GiftTastes[villager] = next;
-        }
-
-        private void DrawGiftRow(SpriteBatch b, (string Name, string Label) villager, Rectangle bounds, bool selected, bool hover)
-        {
-            Gfx.Text(b, villager.Label, new Vector2(bounds.X + 12, bounds.Y + (bounds.Height - Gfx.LineHeight) / 2));
-            string taste = this.Fish.GiftTastes.GetValueOrDefault(villager.Name, "");
-            (string text, Color color) = taste switch
-            {
-                "love" => ("Loves it", new Color(180, 40, 90)),
-                "like" => ("Likes it", new Color(40, 120, 40)),
-                "dislike" => ("Dislikes it", new Color(150, 90, 20)),
-                "hate" => ("Hates it", Color.DarkRed),
-                _ => ("As the game decides", Color.DimGray)
-            };
-            Vector2 size = Gfx.Font.MeasureString(text);
-            Gfx.Text(b, text, new Vector2(bounds.Right - size.X - 16, bounds.Y + (bounds.Height - Gfx.LineHeight) / 2), color);
         }
 
         private void SyncImage()

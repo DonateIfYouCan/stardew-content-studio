@@ -82,9 +82,9 @@ namespace Tests
         {
             // Willy's own entry, shortened: love text / loved / like text / liked / dislike text / disliked / hate text / hated / neutral text / neutral
             string willy = "Great!/72 143/Thanks./66 340/Huh./-7/Chum.//A gift!/-4 227/";
-            string loved = FishData.SetGiftTaste(willy, "Mod_Fish", "love");
+            string loved = GiftTastes.Set(willy, "Mod_Fish", "love");
             Assert.Equal("72 143 Mod_Fish", loved.Split('/')[1]);
-            string liked = FishData.SetGiftTaste(loved, "Mod_Fish", "like");
+            string liked = GiftTastes.Set(loved, "Mod_Fish", "like");
             Assert.Equal("72 143", liked.Split('/')[1]); // moved, not copied
             Assert.Equal("66 340 Mod_Fish", liked.Split('/')[3]);
             Assert.Equal("Huh.", liked.Split('/')[4]); // the texts are left alone
@@ -93,7 +93,7 @@ namespace Tests
         [Fact]
         public void AnEmptyGiftTasteListWorks()
         {
-            Assert.Equal("Mod_Fish", FishData.SetGiftTaste("a//b//c//d//e//", "Mod_Fish", "hate").Split('/')[7]);
+            Assert.Equal("Mod_Fish", GiftTastes.Set("a//b//c//d//e//", "Mod_Fish", "hate").Split('/')[7]);
         }
 
         [Theory]
@@ -102,7 +102,7 @@ namespace Tests
         [InlineData(230, 50, 40, "red")]
         public void RoeTakesTheNearestGameColour(byte r, byte g, byte b, string expected)
         {
-            Assert.Equal(expected, FishData.NearestColor(r, g, b));
+            Assert.Equal(expected, ColorTags.Nearest(r, g, b));
         }
 
         [Fact]

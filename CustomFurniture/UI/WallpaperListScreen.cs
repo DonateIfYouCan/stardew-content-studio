@@ -21,6 +21,7 @@ namespace CustomFurniture.UI
         private readonly Button GameArtButton;
         private readonly Button GameHideButton;
         private readonly Button GameRestoreButton;
+        private readonly Button GameCopyButton;
 
         /// <summary>Whether the page shows the game's wallpapers and floors instead of yours.</summary>
         private bool ShowGame;
@@ -75,6 +76,7 @@ namespace CustomFurniture.UI
             this.GiveButton = this.Add(new Button("Put in inventory", this.GiveSelected, "Adds one to your inventory, so you can hang or lay it."));
             this.DuplicateButton = this.Add(new Button("Duplicate", this.DuplicateSelected, "Make a copy to tweak, keeping the original."));
             this.DeleteButton = this.Add(new Button("Delete", () => this.WhenNobodyElseIsChangingIt(this.DeleteSelected)));
+            this.GameCopyButton = this.Add(new Button("Make my own copy", this.CopyGameItem, "Start a wallpaper or floor of your own from this one, with its art ready to paint over. The game's own stays as it is."));
             this.CloseButton = this.Add(new Button("Close", () => this.Root.Pop()));
             this.WritingButtons = new[] { this.NewButton, this.EditButton, this.DuplicateButton, this.DeleteButton }.Select(b => (b, b.Tooltip)).ToArray();
             this.Refresh();
@@ -172,6 +174,7 @@ namespace CustomFurniture.UI
                 button.Bounds = new Rectangle(bx, by, sideW, 56);
                 by += 64;
             }
+            this.GameCopyButton.Bounds = new Rectangle(bx, this.List.Bounds.Bottom - 56, sideW, 56); // apart from the buttons that change the game's own
             this.SyncButtons(); // the give button moves with the tab
             this.CloseButton.Bounds = new Rectangle(area.Right - pad - 180, area.Bottom - 84, 180, 60);
         }
@@ -294,6 +297,7 @@ namespace CustomFurniture.UI
             this.GameHideButton.Visible = game != null;
             this.GameHideButton.Label = hidden ? "Sell it again" : "Hide from shops";
             this.GameRestoreButton.Visible = replaced;
+            this.GameCopyButton.Visible = game != null; // adding your own needs nobody's say-so, so it's never greyed out
             this.GameArtButton.Tooltip = "Draw or pick new art for it. Rooms, the catalogue and its icon all show it.";
             this.GameHideButton.Tooltip = hidden ? "Put it back in the catalogue and the shops." : "Take it out of the catalogue and every shop. Rooms already using it keep it.";
             this.GameRestoreButton.Tooltip = "Drop your art for it, so it looks as the game has it.";
@@ -329,6 +333,26 @@ namespace CustomFurniture.UI
         {
             if (this.List.Selected is { } item)
                 this.Root.Push(new WallpaperEditorScreen(this.Store, item, isNew: false, name => this.ShowMessage($"Saved '{name}'.")));
+        }
+
+        /// <summary>Open the editor on a new wallpaper of your own that starts as a copy of the selected game one.</summary>
+        private void CopyGameItem()
+        {
+            if (this.GameList.Selected is not { } g)
+                return;
+            try
+            {
+                if (this.Store.CopyOfGameWallpaper(g) is not { } copy)
+                {
+                    this.ShowMessage($"Couldn't read the game's {g.Label}.", error: true);
+                    return;
+                }
+                this.Root.Push(new WallpaperEditorScreen(this.Store, copy, isNew: true, saved => { this.SwitchTab(false); this.ShowMessage($"Saved '{saved}'."); }));
+            }
+            catch (Exception ex)
+            {
+                this.ShowMessage($"Couldn't copy it: {ex.Message}", error: true);
+            }
         }
 
         private void SwitchTab(bool game)

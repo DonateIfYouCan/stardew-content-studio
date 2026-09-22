@@ -57,6 +57,9 @@ namespace CustomCrops
             public CustomCrop Data = null!;
             public int Scale = 1;
 
+            /// <summary>The harvest's colour, as one of the game's colour names.</summary>
+            public string Color = "gray";
+
             /// <summary>Seed (left) and harvest (right) icons, 32x16 at the game's resolution.</summary>
             public Pixels ObjectsLow = null!;
             public Pixels ObjectsHd = null!;
@@ -208,6 +211,7 @@ namespace CustomCrops
                 asset.Name.IsEquivalentTo("Data/Objects")
                 || asset.Name.IsEquivalentTo("Data/Crops")
                 || asset.Name.IsEquivalentTo("Data/Shops")
+                || asset.Name.IsEquivalentTo("Data/NPCGiftTastes")
                 || asset.Name.StartsWith($"Mods/{this.Manifest.UniqueID}/")
             );
             this.Monitor.Log($"Loaded {this.Rendered.Count} custom crop(s)"
@@ -250,6 +254,7 @@ namespace CustomCrops
             if (harvest == null && crop.HarvestImage != null)
                 warning = $"harvest image '{crop.HarvestImage.File}' not found.";
             harvest ??= Placeholder(16 * scale);
+            result.Color = ColorTags.IsKnown(crop.Color) ? crop.Color : ColorTags.Of(harvest);
 
             // seed icon
             Pixels seed = this.LoadSquare(crop.SeedImage, 16 * scale) ?? MakePacket(harvest, scale);
@@ -301,6 +306,62 @@ namespace CustomCrops
             return result.OrderBy(r => r.Item2, StringComparer.OrdinalIgnoreCase).ToList();
         }
 
+        /// <summary>A crop of your own that starts as a copy of one of the game's: how it grows, its harvest, prices, where the seeds are sold, colour and gift tastes, with its harvest icon and growth sheet saved as your own images.</summary>
+        /// <param name="seedId">The game crop's seed ID.</param>
+        /// <returns>The new crop, not saved yet, or null if there's no such game crop.</returns>
+        /// <remarks>Read from the game's own data, so a game crop you changed or hid is copied as the game has it.</remarks>
+        public CustomCrop? CopyOfGameCrop(string seedId)
+        {
+            if (OriginalContent.LoadData<Dictionary<string, CropData>>("Data/Crops")?.GetValueOrDefault(seedId) is not { } data || data.HarvestItemId is not { } rawHarvest)
+                return null;
+            string harvestId = ItemRegistry.ManuallyQualifyItemId(rawHarvest, "(O)")[3..];
+            Dictionary<string, ObjectData>? objects = OriginalContent.LoadData<Dictionary<string, ObjectData>>("Data/Objects");
+            ObjectData? harvest = objects?.GetValueOrDefault(harvestId);
+            string name = ItemRegistry.GetData("(O)" + harvestId)?.DisplayName ?? harvestId;
+
+            CustomCrop crop = new()
+            {
+                Name = $"{name} copy",
+                Description = ItemRegistry.GetData("(O)" + harvestId)?.Description ?? "",
+                Seasons = data.Seasons.Select(season => season.ToString().ToLowerInvariant()).ToList(),
+                DaysInPhase = data.DaysInPhase.Take(5).ToList(),
+                RegrowDays = data.RegrowDays,
+                Trellis = data.IsRaised,
+                Scythe = data.HarvestMethod == HarvestMethod.Scythe,
+                HarvestMin = Math.Max(1, data.HarvestMinStack),
+                HarvestMax = Math.Max(1, data.HarvestMaxStack),
+                LooksLike = seedId,
+                Category = harvest?.Category switch
+                {
+                    StardewValley.Object.FruitsCategory => "fruit",
+                    StardewValley.Object.flowersCategory => "flower",
+                    StardewValley.Object.VegetableCategory => "vegetable",
+                    _ => "other"
+                },
+                SellPrice = harvest?.Price ?? 100,
+                Energy = harvest is { Edibility: > 0 } ? (int)Math.Round(harvest.Edibility * 2.5) : 0,
+                SeedPrice = Math.Max(1, (objects?.GetValueOrDefault(seedId)?.Price ?? 25) * 2), // the game sells seeds for twice what they sell back for
+                Color = ColorTags.FromTags(harvest?.ContextTags) ?? ""
+            };
+
+            // sold where the game sells its seeds
+            Dictionary<string, ShopData>? shops = OriginalContent.LoadData<Dictionary<string, ShopData>>("Data/Shops");
+            bool Sells(string shop) => shops?.GetValueOrDefault(shop)?.Items?.Any(i => i.ItemId == "(O)" + seedId || i.ItemId == seedId) == true;
+            crop.SoldAtPierre = Sells("SeedShop");
+            crop.SoldAtJoja = Sells("Joja");
+            crop.SoldAtTraveler = false;
+
+            if (OriginalContent.LoadData<Dictionary<string, string>>("Data/NPCGiftTastes") is { } tastes)
+                crop.GiftTastes = GiftTastes.Read(tastes, harvestId);
+
+            // the game's art as your own images, four times the size with sharp pixels, ready to paint over
+            if (OriginalContent.LoadItemSprite("(O)" + harvestId, 4) is { } icon)
+                crop.HarvestImage = new ImageRef { File = CustomContent.SaveImage(this.ImageFolder, crop.Name, icon) };
+            if (LoadVanillaGrowth(seedId, 4) is { } growth)
+                crop.GrowthSheet = CustomContent.SaveImage(this.ImageFolder, $"{crop.Name} growth", growth);
+            return crop;
+        }
+
         /// <summary>Export a vanilla crop's growth sheet (as a template to paint over).</summary>
         /// <summary>Get a game crop's growth sheet to paint over, at the given size.</summary>
         /// <param name="seedId">The game crop's seed ID.</param>
@@ -344,6 +405,13 @@ namespace CustomCrops
                 e.Edit(asset => this.EditCrops(asset.AsDictionary<string, CropData>().Data), AssetEditPriority.Late);
             else if (e.Name.IsEquivalentTo("Data/Shops"))
                 e.Edit(asset => this.EditShops(asset.AsDictionary<string, ShopData>().Data), AssetEditPriority.Late);
+            else if (e.Name.IsEquivalentTo("Data/NPCGiftTastes"))
+                e.Edit(asset =>
+                {
+                    IDictionary<string, string> data = asset.AsDictionary<string, string>().Data;
+                    foreach (RenderedCrop rendered in this.Rendered.Values)
+                        GiftTastes.Apply(data, "(O)" + this.GetHarvestId(rendered.Data.Id), rendered.Data.GiftTastes);
+                }, AssetEditPriority.Late);
         }
 
         /// <summary>Copy an image from anywhere into the images folder, returning its path relative to that folder.</summary>
@@ -610,7 +678,7 @@ namespace CustomCrops
                     Edibility = crop.Energy > 0 ? (int)Math.Ceiling(crop.Energy / 2.5) : -300,
                     Texture = this.GetObjectsAsset(crop.Id),
                     SpriteIndex = 1,
-                    ContextTags = new List<string> { "custom_crop" }
+                    ContextTags = new List<string> { "custom_crop", "color_" + rendered.Color }
                 };
             }
         }
