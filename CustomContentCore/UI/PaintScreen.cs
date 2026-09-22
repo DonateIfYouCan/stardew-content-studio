@@ -210,7 +210,9 @@ namespace CustomContentCore.UI
         private const long MaxUndoBytes = 48L * 1024 * 1024;
 
         private readonly List<(Tool Tool, Button Button)> ToolButtons = new();
-        private readonly Dropdown SizeCycler;
+        private readonly Button SizeDownButton;
+        private readonly Button SizeUpButton;
+        private readonly TextField SizeField;
         private readonly Dropdown ShapeCycler;
         private readonly Button UndoButton;
         private readonly Button RedoButton;
@@ -305,11 +307,9 @@ namespace CustomContentCore.UI
                 this.ToolButtons.Add((chosen, this.Add(new Button(label, () => this.SetTool(chosen), tip))));
             }
 
-            this.SizeCycler = this.Add(new Dropdown(
-                new() { ("1", "1 pixel"), ("2", "2 pixels"), ("3", "3 pixels"), ("4", "4 pixels"), ("6", "6 pixels"), ("8", "8 pixels"), ("12", "12 pixels"), ("16", "16 pixels") },
-                "1",
-                v => this.BrushSize = int.Parse(v),
-                "How wide the tip is.", prefix: "Size"));
+            this.SizeDownButton = this.Add(new Button("-", () => this.SetBrushSize(this.BrushSize - 1), "A pixel narrower. Key: [."));
+            this.SizeField = this.Add(new TextField("1", v => { if (int.TryParse(v, out int n) && n > 0) this.BrushSize = n; }, numbersOnly: true, limit: 4));
+            this.SizeUpButton = this.Add(new Button("+", () => this.SetBrushSize(this.BrushSize + 1), "A pixel wider. Key: ]."));
             this.ShapeCycler = this.Add(new Dropdown(
                 new() { ("square", "square"), ("round", "round"), ("diamond", "diamond") },
                 "square",
@@ -444,6 +444,7 @@ namespace CustomContentCore.UI
             // rather than running over the Save button below, which used to make saving impossible.
             foreach (Widget widget in this.AllColumnWidgets)
                 widget.Visible = false;
+            this.SizeRow = Rectangle.Empty;
             List<Widget> column = this.ColumnWidgets();
             int columnBottom = area.Bottom - 96 - 8;
             this.ColumnArea = new Rectangle(area.Right - pad - actionW, this.CanvasArea.Y, actionW, columnBottom - this.CanvasArea.Y);
@@ -454,6 +455,16 @@ namespace CustomContentCore.UI
             {
                 widget.Visible = true;
                 widget.Bounds = new Rectangle(this.ColumnArea.X, ay, actionW, rowH);
+                if (widget == this.SizeField)
+                {
+                    // "Size  [-] [ 12 ] [+]": arrows for a step at a time, the field for any number
+                    int labelW = 60, buttonW = 44;
+                    this.SizeDownButton.Visible = this.SizeUpButton.Visible = true;
+                    this.SizeDownButton.Bounds = new Rectangle(this.ColumnArea.X + labelW, ay, buttonW, rowH);
+                    this.SizeUpButton.Bounds = new Rectangle(this.ColumnArea.Right - buttonW, ay, buttonW, rowH);
+                    this.SizeField.Bounds = new Rectangle(this.SizeDownButton.Bounds.Right + 6, ay, this.SizeUpButton.Bounds.X - 6 - this.SizeDownButton.Bounds.Right - 6, rowH);
+                    this.SizeRow = new Rectangle(this.ColumnArea.X, ay, labelW, rowH);
+                }
                 ay += step;
             }
 
@@ -479,11 +490,21 @@ namespace CustomContentCore.UI
         /// <summary>The column beside the canvas where the chosen tool's settings go.</summary>
         private Rectangle ColumnArea;
 
+        /// <summary>Where the word "Size" goes, left of its arrows and field; empty when the tool has no size.</summary>
+        private Rectangle SizeRow;
+
+        /// <summary>Change the tip's size, keeping the field in step. There's no top limit: a tip as big as you like just covers more.</summary>
+        private void SetBrushSize(int size)
+        {
+            this.BrushSize = Math.Max(1, size);
+            this.SizeField.Text = this.BrushSize.ToString();
+        }
+
         /// <summary>Everything that can go in the column beside the canvas; only the chosen tool's ones are shown.</summary>
         private IEnumerable<Widget> AllColumnWidgets => new Widget[]
         {
             this.SpriteButton, this.CopyButton, this.PasteButton, this.ClearButton, this.FlipButton, this.FlipDownButton, this.TurnButton,
-            this.SizeCycler, this.ShapeCycler, this.PixelPerfectBox, this.FillBox, this.MirrorCycler, this.GradientCycler, this.DirectionDropdown, this.CentreDropdown, this.BlendCycler
+            this.SizeDownButton, this.SizeField, this.SizeUpButton, this.ShapeCycler, this.PixelPerfectBox, this.FillBox, this.MirrorCycler, this.GradientCycler, this.DirectionDropdown, this.CentreDropdown, this.BlendCycler
         };
 
         /// <summary>The settings to show beside the canvas for the chosen tool, top to bottom (see <see cref="PaintOptions"/>).</summary>
@@ -494,7 +515,7 @@ namespace CustomContentCore.UI
             {
                 switch (option)
                 {
-                    case PaintOptions.Size: column.Add(this.SizeCycler); break;
+                    case PaintOptions.Size: column.Add(this.SizeField); break; // laid out with its - and + either side
                     case PaintOptions.Shape: column.Add(this.ShapeCycler); break;
                     case PaintOptions.FillShape: column.Add(this.FillBox); break;
                     case PaintOptions.PixelPerfect: column.Add(this.PixelPerfectBox); break;
@@ -538,6 +559,8 @@ namespace CustomContentCore.UI
             {
                 string toolName = this.ToolButtons.FirstOrDefault(t => t.Tool == this.Current).Button?.Label ?? "";
                 Gfx.Text(b, Gfx.Fit(toolName, this.ColumnArea.Width), new Vector2(this.ColumnArea.X, this.ColumnArea.Y));
+                if (!this.SizeRow.IsEmpty && this.SizeField.Visible)
+                    Gfx.Text(b, "Size", new Vector2(this.SizeRow.X, this.SizeRow.Y + (this.SizeRow.Height - Gfx.LineHeight) / 2));
                 if (this.ToolHint is { } hint)
                     Gfx.Text(b, Game1.parseText(hint, Gfx.Font, this.ColumnArea.Width), new Vector2(this.ColumnArea.X, this.ColumnArea.Y + 34), Color.DimGray);
             }
@@ -667,12 +690,11 @@ namespace CustomContentCore.UI
                 }
                 else
                 {
-                    Point shapeEnd = this.Constrain(shapeStart, this.ShapeEnd);
-                    foreach (Point dot in this.ShapePixels(shapeStart, this.ShapeEnd))
+                    foreach ((Point dot, Color colour) in this.ShapePreview(shapeStart, this.ShapeEnd))
                     {
                         int sx = dest.X + (dot.X - view.X) * this.Zoom, sy = dest.Y + (dot.Y - view.Y) * this.Zoom;
                         if (sx >= dest.X && sy >= dest.Y && sx < dest.Right && sy < dest.Bottom)
-                            Gfx.Rect(b, new Rectangle(sx, sy, this.Zoom, this.Zoom), this.ShapeColourAt(dot, shapeStart, shapeEnd));
+                            Gfx.Rect(b, new Rectangle(sx, sy, this.Zoom, this.Zoom), colour);
                     }
                 }
             }
@@ -987,6 +1009,8 @@ namespace CustomContentCore.UI
             Add("copy", "Copy the selection", Keys.C, this.CopySelection);
             Add("paste", "Paste", Keys.V, this.PasteClipboard);
             Add("swap", "Swap the two colours", Keys.X, this.SwapColours);
+            Add("smaller", "Tip a pixel narrower", Keys.OemOpenBrackets, () => this.SetBrushSize(this.BrushSize - 1));
+            Add("bigger", "Tip a pixel wider", Keys.OemCloseBrackets, () => this.SetBrushSize(this.BrushSize + 1));
             Add("clear", "Clear the selection", Keys.Delete, this.ClearSelection);
             Add("undo", "Undo", Keys.Z, this.Undo);
             Add("redo", "Redo", Keys.Y, this.Redo);
@@ -1239,6 +1263,54 @@ namespace CustomContentCore.UI
                 this.PaintBrush(mirrored.X, mirrored.Y, colour);
         }
 
+        /// <summary>
+        /// Every pixel a line or shape being dragged will cover when it's let go, with its colour: the tip at each point of it
+        /// (unless it's a filled shape) and the mirrored copies, exactly as letting go paints them.
+        /// </summary>
+        /// <remarks>The preview used to show the shape one pixel wide, so a 16-pixel line looked like a hairline until it was drawn.</remarks>
+        private Dictionary<Point, Color> ShapePreview(Point start, Point rawEnd)
+        {
+            Point end = this.Constrain(start, rawEnd);
+            bool filled = this.FillShapes && this.Current is Tool.Rectangle or Tool.Ellipse;
+            Dictionary<Point, Color> pixels = new();
+            foreach (Point point in this.ShapePixels(start, rawEnd))
+            {
+                Color colour = this.ShapeColourAt(point, start, end);
+                foreach (Point spot in new[] { point }.Concat(this.MirrorsOf(point.X, point.Y)))
+                {
+                    if (filled)
+                        pixels[spot] = colour;
+                    else
+                        foreach (Point covered in this.TipPixels(spot.X, spot.Y))
+                            pixels[covered] = colour;
+                }
+            }
+            return pixels;
+        }
+
+        /// <summary>The pixels one dab of the tip covers, with its top left at the given spot.</summary>
+        private IEnumerable<Point> TipPixels(int x, int y)
+        {
+            int size = this.BrushSize;
+            double middle = (size - 1) / 2.0, radius = size / 2.0;
+            // only the part of the tip that's on the image, so a huge tip costs no more than the image itself
+            for (int dy = Math.Max(0, -y); dy < Math.Min(size, this.Height - y); dy++)
+            {
+                for (int dx = Math.Max(0, -x); dx < Math.Min(size, this.Width - x); dx++)
+                {
+                    int px = x + dx, py = y + dy;
+                    double away = this.BrushShape switch
+                    {
+                        "round" => Math.Sqrt((dx - middle) * (dx - middle) + (dy - middle) * (dy - middle)) / Math.Max(0.5, radius),
+                        "diamond" => (Math.Abs(dx - middle) + Math.Abs(dy - middle)) / Math.Max(0.5, radius),
+                        _ => 0
+                    };
+                    if (away <= 1.001)
+                        yield return new Point(px, py);
+                }
+            }
+        }
+
         /// <summary>Paint one dab of the tip, with its top left at the given spot.</summary>
         private void PaintBrush(int x, int y, Color colour)
         {
@@ -1246,13 +1318,12 @@ namespace CustomContentCore.UI
             double middle = (size - 1) / 2.0;
             double radius = size / 2.0;
 
-            for (int dy = 0; dy < size; dy++)
+            // only the part of the tip that's on the image, so a huge tip costs no more than the image itself
+            for (int dy = Math.Max(0, -y); dy < Math.Min(size, this.Height - y); dy++)
             {
-                for (int dx = 0; dx < size; dx++)
+                for (int dx = Math.Max(0, -x); dx < Math.Min(size, this.Width - x); dx++)
                 {
                     int px = x + dx, py = y + dy;
-                    if (px < 0 || py < 0 || px >= this.Width || py >= this.Height)
-                        continue;
 
                     // how much of this pixel the tip covers: 0 outside the shape, 1 inside, in between at a brush's edge
                     double away = this.BrushShape switch

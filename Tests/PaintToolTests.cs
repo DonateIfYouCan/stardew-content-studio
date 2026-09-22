@@ -421,6 +421,28 @@ namespace Tests
             Assert.Contains("this.TintCycler.Visible = this.Greyscale;", code);
         }
 
+        [Fact]
+        public void TheShapePreviewShowsTheTipWidthAndMirrors()
+        {
+            // a 16-pixel line was previewed a pixel wide and only became 16 pixels when let go
+            string code = ReadCore("UI", "PaintScreen.cs");
+            Assert.Contains("this.ShapePreview(shapeStart, this.ShapeEnd)", code);
+            int start = code.IndexOf("private Dictionary<Point, Color> ShapePreview(", System.StringComparison.Ordinal);
+            string preview = code[start..code.IndexOf("\n        }", start, System.StringComparison.Ordinal)];
+            Assert.Contains("this.TipPixels(", preview);
+            Assert.Contains("this.MirrorsOf(", preview);
+        }
+
+        [Fact]
+        public void TheTipHasNoTopLimitButOnlyTouchesTheImage()
+        {
+            // any size is allowed; a huge tip mustn't loop over millions of pixels off the image
+            string code = ReadCore("UI", "PaintScreen.cs");
+            Assert.Contains("this.BrushSize = Math.Max(1, size);", code);
+            Assert.DoesNotContain("for (int dy = 0; dy < size; dy++)", code);
+            Assert.Contains("for (int dy = Math.Max(0, -y); dy < Math.Min(size, this.Height - y); dy++)", code);
+        }
+
         private static string ReadCore(params string[] path)
         {
             string root = System.IO.Path.GetFullPath(System.IO.Path.Combine(System.AppContext.BaseDirectory, "..", "..", "..", ".."));
