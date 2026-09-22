@@ -15,5 +15,9 @@ image, exactly as they look; hidden layers aren't saved. Layers last while the e
 
 ## Fixes
 
+- **Typing a K in a name closed the editor.** The editor key is ignored while you're typing in a text field; press Escape or
+  click elsewhere to stop typing, and K works again.
+- The editor has a close button (the game's red X) in its top-right corner, which does what the editor key does.
+
 - A JPEG shared in a multiplayer game is stored as a real JPEG. Images travel as PNG data, and a received `photo.jpg` used to
   be written as PNG data under that name. (#20)

@@ -179,7 +179,21 @@ namespace CustomContentCore.UI
             Game1.keyboardDispatcher.Subscriber = null;
         }
 
-        private static bool IsTyping => Game1.keyboardDispatcher.Subscriber is TextBox { Selected: true };
+        /// <summary>Whether a text field in the editor is being typed in, so keys are letters rather than shortcuts.</summary>
+        internal static bool IsTyping => Game1.keyboardDispatcher.Subscriber is TextBox { Selected: true };
+
+        /// <summary>The close button in the top-right corner of the editor, which puts it aside like the editor key does.</summary>
+        internal static Rectangle CloseButtonBounds
+        {
+            get
+            {
+                Rectangle area = GetArea();
+                return new Rectangle(area.Right - 60, area.Y + 12, 48, 48);
+            }
+        }
+
+        /// <summary>What the close button does; set by the Core so it does exactly what the editor key does.</summary>
+        internal static Action? CloseRequested;
 
         public override void gameWindowSizeChanged(Rectangle oldBounds, Rectangle newBounds)
         {
@@ -194,6 +208,13 @@ namespace CustomContentCore.UI
         {
             if (Dropdown.Open is { } open && open.ClickList(x, y))
                 return; // an open list hangs over whatever is under it, so it gets the click first
+            if (CloseButtonBounds.Contains(x, y) && CloseRequested != null)
+            {
+                ClearTextInput();
+                Game1.playSound("bigDeSelect");
+                CloseRequested();
+                return;
+            }
             if (this.Stack.Count > 0)
                 this.Top.LeftClick(x, y);
         }
@@ -305,7 +326,14 @@ namespace CustomContentCore.UI
                     Dropdown.CloseAll(); // its screen hid it
             }
 
-            string? tooltip = CoreMod.Config.ShowHoverTips && Dropdown.Open == null ? this.Top.GetTooltip(mx, my) : null;
+            // the close button, the game's own red X, over whatever screen is open
+            Rectangle close = CloseButtonBounds;
+            bool overClose = close.Contains(mx, my);
+            b.Draw(Game1.mouseCursors, close, new Rectangle(337, 494, 12, 12), overClose ? Color.White : Color.White * 0.85f);
+
+            string? tooltip = CoreMod.Config.ShowHoverTips && Dropdown.Open == null
+                ? (overClose ? $"Close the editor. {CoreMod.Config.EditorKey} opens it again where you left off." : this.Top.GetTooltip(mx, my))
+                : null;
             if (tooltip != null)
                 drawHoverText(b, Game1.parseText(tooltip, Game1.smallFont, 420), Game1.smallFont);
 

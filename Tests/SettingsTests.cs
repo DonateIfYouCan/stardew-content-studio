@@ -63,6 +63,23 @@ namespace Tests
             Assert.Contains("ShowHoverTips", before);
         }
 
+        [Fact]
+        public void TypingTheEditorKeyInANameDoesntCloseTheEditor()
+        {
+            // K opens and closes the editor; typed into a name ("Kale") it has to stay a letter. This closed the editor mid-name once.
+            string root = Path.GetFullPath(Path.Combine(System.AppContext.BaseDirectory, "..", "..", "..", ".."));
+            string code = File.ReadAllText(Path.Combine(root, "CustomContentCore", "CoreMod.cs"));
+            int handler = code.IndexOf("private void OnButtonPressed", System.StringComparison.Ordinal);
+            int keyCheck = code.IndexOf("Config.EditorKey.JustPressed()", handler, System.StringComparison.Ordinal);
+            int toggle = code.IndexOf("PauseEditor()", keyCheck, System.StringComparison.Ordinal);
+            Assert.True(handler > 0 && keyCheck > 0 && toggle > 0, "the editor key handler moved; move this check with it");
+            Assert.Contains("EditorRoot.IsTyping", code[keyCheck..toggle]);
+
+            // and there's always a way out with the mouse: the close button
+            string root2 = File.ReadAllText(Path.Combine(root, "CustomContentCore", "UI", "EditorRoot.cs"));
+            Assert.Contains("CloseButtonBounds.Contains(x, y)", root2);
+        }
+
         private static IEnumerable<string> ScreenFiles()
         {
             string root = Path.GetFullPath(Path.Combine(System.AppContext.BaseDirectory, "..", "..", "..", ".."));

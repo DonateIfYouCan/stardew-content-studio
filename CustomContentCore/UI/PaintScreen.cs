@@ -623,7 +623,7 @@ namespace CustomContentCore.UI
                 Gfx.Text(b, "Layers", new Vector2(this.LayersArea.X, this.LayersArea.Y));
 
             string where = this.Describe(mouseX, mouseY);
-            Gfx.Text(b, where, new Vector2(area.Right - 36 - Gfx.Font.MeasureString(where).X, area.Y + 30), Color.DimGray);
+            Gfx.Text(b, where, new Vector2(area.Right - 76 - Gfx.Font.MeasureString(where).X, area.Y + 30), Color.DimGray);
 
             this.DrawCanvas(b, mouseX, mouseY);
             if (this.SpriteField.Visible)

@@ -110,7 +110,7 @@ namespace CustomContentCore.UI
             if (ContentPacks.Any && CoreMod.Sync?.UsingHostContent != true)
             {
                 string theme = Gfx.Fit($"Theme: {Themes.Active}", 420);
-                Gfx.Text(b, theme, new Vector2(this.Area.Right - 36 - Gfx.Font.MeasureString(theme).X, this.Area.Y + 34), Color.DimGray);
+                Gfx.Text(b, theme, new Vector2(this.Area.Right - 76 - Gfx.Font.MeasureString(theme).X, this.Area.Y + 34), Color.DimGray);
             }
             base.Draw(b, mouseX, mouseY);
             if (CoreMod.Sync?.UsingHostContent == true)

@@ -104,6 +104,7 @@ namespace CustomContentCore
             helper.Events.Display.WindowResized += (_, _) => WarnIfWindowIsSmall();
             helper.Events.GameLoop.GameLaunched += (_, _) => WarnIfWindowIsSmall();
             helper.Events.Input.ButtonPressed += this.OnButtonPressed;
+            EditorRoot.CloseRequested = () => PauseEditor(); // the [X] does what the editor key does
             helper.Events.GameLoop.ReturnedToTitle += (_, _) => DropPausedEditor();
             helper.Events.GameLoop.SaveLoaded += (_, _) => DropPausedEditor();
             helper.Events.Content.AssetReady += (_, e) => HdTextures.OnAssetReady(e.NameWithoutLocale, name =>
@@ -255,6 +256,8 @@ namespace CustomContentCore
 
             if (!Config.EditorKey.JustPressed())
                 return;
+            if (EditorRoot.IsTyping && (Game1.activeClickableMenu is EditorRoot || TitleMenu.subMenu is EditorRoot))
+                return; // it's a letter in a name, not the editor key; Escape stops typing, then the key works again
             // the editor key flips between the game and the editor, which comes back on the screen it was left on
             bool onTitle = Game1.activeClickableMenu is TitleMenu && TitleMenu.subMenu == null;
             bool handled = PauseEditor() || ((Context.IsPlayerFree || onTitle) && (ResumeEditor() || OpenEditor()));
