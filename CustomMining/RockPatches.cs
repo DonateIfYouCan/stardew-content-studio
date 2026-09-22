@@ -36,6 +36,10 @@ namespace CustomMining
                 postfix: new HarmonyMethod(typeof(RockPatches), nameof(After_OnStoneDestroyed))
             );
             harmony.Patch(
+                AccessTools.Method(typeof(VolcanoDungeon), "createStone"),
+                postfix: new HarmonyMethod(typeof(RockPatches), nameof(After_CreateStone))
+            );
+            harmony.Patch(
                 AccessTools.Method(typeof(GameLocation), nameof(GameLocation.DayUpdate)),
                 prefix: new HarmonyMethod(typeof(RockPatches), nameof(Before_DayUpdate)),
                 postfix: new HarmonyMethod(typeof(RockPatches), nameof(After_DayUpdate))
@@ -92,6 +96,43 @@ namespace CustomMining
             catch (Exception ex)
             {
                 Monitor?.LogOnce($"Couldn't put custom rocks in the mine: {ex.Message}", LogLevel.Error);
+            }
+        }
+
+        /// <summary>Swap a rock the volcano picked for one of yours, now and then.</summary>
+        /// <param name="__instance">The volcano level being built.</param>
+        /// <param name="tile">The tile the rock goes on.</param>
+        /// <param name="__result">The rock the game picked, which this may replace.</param>
+        /// <remarks>The volcano builds its levels its own way, so it needs its own swap; the rest works as in the mines.</remarks>
+        private static void After_CreateStone(VolcanoDungeon __instance, Vector2 tile, ref Object __result)
+        {
+            try
+            {
+                if ((Rocks.Count == 0 && Hidden.Count == 0) || __result == null || !__result.IsBreakableStone())
+                    return;
+
+                // one the player stopped turning up: a plain volcano rock stands in, as in the mines
+                if (Hidden.Contains(__result.ItemId) && RockData.PlainRockForArea(RockData.VolcanoKey, Hidden.Contains) is { } plain)
+                    __result = new Object(plain, 1) { MinutesUntilReady = 6 };
+
+                Random random = Utility.CreateDaySaveRandom(tile.X * 2000, tile.Y * 77, __instance.level.Value * 31 + 5);
+                double roll = random.NextDouble();
+                foreach ((string itemId, CustomRock rock) in Rocks)
+                {
+                    double chance = RockData.ChanceInVolcano(rock);
+                    if (chance <= 0)
+                        continue;
+                    if (roll < chance)
+                    {
+                        __result = new Object(itemId, 1) { MinutesUntilReady = RockData.CleanHits(rock.Hits) };
+                        return;
+                    }
+                    roll -= chance;
+                }
+            }
+            catch (Exception ex)
+            {
+                Monitor?.LogOnce($"Couldn't put custom rocks in the volcano: {ex.Message}", LogLevel.Error);
             }
         }
 

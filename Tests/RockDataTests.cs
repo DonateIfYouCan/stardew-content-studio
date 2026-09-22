@@ -16,9 +16,42 @@ namespace Tests
         [InlineData(119, "lava")]
         [InlineData(121, "skull")]
         [InlineData(500, "skull")]
+        [InlineData(77377, "quarrymine")]
         public void EachMineLevelBelongsToThePartOfTheMinesItLooksLike(int level, string area)
         {
             Assert.Equal(area, RockData.AreaOf(level)?.Key);
+        }
+
+        [Fact]
+        public void TheQuarryMineIsntMistakenForSkullCavern()
+        {
+            // its level number is far past Skull Cavern's first floor, so a plain range check would put Skull Cavern's rocks there
+            Assert.Equal("quarrymine", RockData.AreaOf(RockData.QuarryMineLevel)?.Key);
+            CustomRock skull = new() { Places = { ["skull"] = 0.5 } };
+            Assert.Equal(0, RockData.ChanceOn(skull, RockData.QuarryMineLevel));
+            Assert.Equal(0.5, RockData.ChanceOn(skull, 130));
+        }
+
+        [Fact]
+        public void TheVolcanoIsItsOwnPlaceAndNeverAMineLevel()
+        {
+            // the volcano is built by its own code, so it's matched on its own and never answers a mine-level question
+            Assert.DoesNotContain(RockData.VolcanoKey, new[] { RockData.AreaOf(1)?.Key, RockData.AreaOf(130)?.Key, RockData.AreaOf(int.MaxValue)?.Key });
+            Assert.Contains(RockData.VolcanoKey, RockData.Areas.Select(a => a.Key));
+
+            CustomRock rock = new() { Places = { [RockData.VolcanoKey] = 0.3 } };
+            Assert.Equal(0.3, RockData.ChanceInVolcano(rock));
+            Assert.Equal(0, RockData.ChanceOn(rock, 5));
+
+            CustomRock mineRock = new() { Places = { ["mines"] = 0.3 } };
+            Assert.Equal(0, RockData.ChanceInVolcano(mineRock));
+        }
+
+        [Fact]
+        public void TheVolcanoHasItsOwnPlainRockToStandIn()
+        {
+            Assert.Equal("845", RockData.PlainRockForArea(RockData.VolcanoKey, _ => false));
+            Assert.Equal("31", RockData.PlainRockForArea("quarrymine", _ => false)); // filled with the mines' own rocks
         }
 
         [Fact]

@@ -30,8 +30,8 @@ feel about them as a gift. It can also give the game's own new art, or stop one 
 - **Make my own copy** starts one of yours from the game's: its picture, kind, price, colour, geodes, dig spots and gift
   tastes, all yours to change. The game's stays as it is.
 - Editor section **Rocks** (press `K`): rocks of your own that turn up in place of the game's, with a picture, how many
-  hits they take, the mining experience they give, where they appear and how often - the four parts of the mines, and
-  above ground on the farm, the forest, the mountain and quarry, the backwoods, the bus stop, the railroad, town, Secret
+  hits they take, the mining experience they give, where they appear and how often - the mines' three stretches, Skull
+  Cavern, the Quarry Mine, the volcano on Ginger Island, and above ground on the farm, the forest, the mountain and quarry, the backwoods, the bus stop, the railroad, town, Secret
   Woods and Ginger Island, in the seasons you pick - and what they give when broken (any of your minerals, the game's minerals, gems and artefacts, or ores and
   other bits). What they give is on top of what any rock gives.
 - **The game's rocks** (second tab of Rocks): every rock and ore node the mines are filled with, from copper and iridium
@@ -65,8 +65,8 @@ feel about them as a gift. It can also give the game's own new art, or stop one 
   "Can be donated to the museum" is what keeps one out.
 - Above ground, a rock of yours takes the place of one the game spawned overnight, so it follows the game's own rules
   about where rocks can appear (and nothing spawns on the beach, in the desert, or anywhere in winter).
-- Stopping one of the game's rocks turning up only covers the mines; the quarry, the farm and the volcano fill
-  themselves another way.
+- Stopping one of the game's rocks turning up covers the caves (the mines, Skull Cavern, the Quarry Mine and the
+  volcano), where a plain rock of that cave stands in. It doesn't reach rocks spawned above ground.
 - The game calls every rock "Stone", so a rock's name is only ever seen in the editor.
 - In multiplayer, every player needs the mod. With the Core's content sharing on, everyone uses the Host's set.
 

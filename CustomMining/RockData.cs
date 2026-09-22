@@ -30,14 +30,26 @@ namespace CustomMining
         /// <summary>The game's category for litter you break: rocks, twigs and weeds.</summary>
         public const int StoneCategory = -999;
 
-        /// <summary>The parts of the mines, as the game splits them by level.</summary>
-        /// <remarks>Level 121 and below is Skull Cavern; the quarry and the farm spawn their rocks elsewhere, so they aren't offered yet.</remarks>
+        /// <summary>The level number the game gives the Quarry Mine, which sits outside the mines' own numbering.</summary>
+        public const int QuarryMineLevel = 77377;
+
+        /// <summary>The levels of the volcano, which is its own place with its own numbering.</summary>
+        public const string VolcanoKey = "volcano";
+
+        /// <summary>The caves rocks can be found in, as the game splits them by level.</summary>
+        /// <remarks>
+        /// The mines run 1-119 in three stretches, Skull Cavern is 121 and below, and the Quarry Mine is a level of its own
+        /// with a number far outside that range. The volcano isn't a mine level at all - it's its own place, built by its
+        /// own code - so it's listed here but matched separately.
+        /// </remarks>
         public static readonly MineArea[] Areas =
         {
             new("mines", "The mines (1-39)", 1, 39),
             new("frost", "The frozen floors (40-79)", 40, 79),
             new("lava", "The lava floors (80-119)", 80, 119),
-            new("skull", "Skull Cavern (121+)", 121, int.MaxValue)
+            new("skull", "Skull Cavern (121+)", 121, int.MaxValue - 1),
+            new("quarrymine", "The Quarry Mine", QuarryMineLevel, QuarryMineLevel),
+            new(VolcanoKey, "The volcano (Ginger Island)", int.MaxValue, int.MaxValue)
         };
 
         /// <summary>
@@ -68,6 +80,11 @@ namespace CustomMining
                 new("816", "Bone node", "Ore nodes"),
                 new("817", "Bone node (2)", "Ore nodes"),
                 new("25", "Mussel node", "Ore nodes"),
+                new("VolcanoGoldNode", "Gold node (volcano)", "Ore nodes", VolcanoKey),
+                new("BasicCoalNode0", "Coal node", "Ore nodes"),
+                new("BasicCoalNode1", "Coal node 2", "Ore nodes"),
+                new("VolcanoCoalNode0", "Coal node (volcano)", "Ore nodes", VolcanoKey),
+                new("VolcanoCoalNode1", "Coal node (volcano) 2", "Ore nodes", VolcanoKey),
 
                 new("2", "Diamond node", "Gem nodes"),
                 new("4", "Ruby node", "Gem nodes"),
@@ -91,7 +108,7 @@ namespace CustomMining
             AddPlain(rocks, "Lava rock", "The lava floors' rocks", "lava", 55, 57);
             rocks.Add(new GameRock("760", "Lava rock 4", "The lava floors' rocks", "lava"));
             rocks.Add(new GameRock("762", "Lava rock 5", "The lava floors' rocks", "lava"));
-            AddPlain(rocks, "Dark rock", "The dark floors' rocks", "", 845, 847);
+            AddPlain(rocks, "Dark rock", "The dark floors' rocks", VolcanoKey, 845, 847);
             rocks.Add(new GameRock("668", "Quarry rock", "The dark floors' rocks"));
             rocks.Add(new GameRock("670", "Quarry rock 2", "The dark floors' rocks"));
             return rocks.ToArray();
@@ -109,7 +126,17 @@ namespace CustomMining
         /// <returns>The game's item ID for a plain rock that's still turning up, or null if every one of them is hidden.</returns>
         public static string? PlainRockFor(int mineLevel, Func<string, bool> isHidden)
         {
-            string area = AreaOf(mineLevel)?.Key ?? "mines";
+            return PlainRockForArea(AreaOf(mineLevel)?.Key ?? "mines", isHidden);
+        }
+
+        /// <summary>The plain rock a hidden one is swapped for in a cave.</summary>
+        /// <param name="area">The cave (see <see cref="Areas"/>).</param>
+        /// <param name="isHidden">Whether a rock is one the player stopped turning up.</param>
+        /// <returns>The game's item ID for a plain rock that's still turning up, or null if every one of them is hidden.</returns>
+        public static string? PlainRockForArea(string area, Func<string, bool> isHidden)
+        {
+            if (area is "quarrymine" or "skull")
+                area = "mines"; // neither has rocks of its own in the list; they're filled with the mines' own
             IEnumerable<GameRock> plain = GameRocks.Where(rock => rock.Group.EndsWith("rocks"));
             return plain.FirstOrDefault(rock => rock.Area == area && !isHidden(rock.Id))?.Id
                 ?? plain.FirstOrDefault(rock => !isHidden(rock.Id))?.Id;
@@ -164,8 +191,22 @@ namespace CustomMining
             return rock.Seasons.Count == 0 || rock.Seasons.Any(s => s.Equals(season, StringComparison.OrdinalIgnoreCase));
         }
 
-        /// <summary>The part of the mines a level belongs to, or null for a level no rock is offered on (like level 120).</summary>
-        public static MineArea? AreaOf(int mineLevel) => Areas.FirstOrDefault(area => mineLevel >= area.FirstLevel && mineLevel <= area.LastLevel);
+        /// <summary>The cave a mine level belongs to, or null for a level no rock is offered on (like level 120).</summary>
+        /// <remarks>The volcano is never a mine level, so it's never the answer here; see <see cref="ChanceInVolcano"/>.</remarks>
+        public static MineArea? AreaOf(int mineLevel)
+        {
+            if (mineLevel == QuarryMineLevel)
+                return Areas.First(area => area.Key == "quarrymine"); // its number is far past Skull Cavern's, so it has to be checked first
+            return Areas.FirstOrDefault(area => area.Key != VolcanoKey && area.Key != "quarrymine" && mineLevel >= area.FirstLevel && mineLevel <= area.LastLevel);
+        }
+
+        /// <summary>How often a rock takes the place of one in the volcano, or 0 if it isn't found there.</summary>
+        public static double ChanceInVolcano(CustomRock rock)
+        {
+            return rock.Places.TryGetValue(VolcanoKey, out double chance) && chance > 0
+                ? MiningData.CleanChance(chance)
+                : 0;
+        }
 
         /// <summary>How many hits a rock takes, kept to something a pickaxe can finish.</summary>
         /// <remarks>The game takes off the pickaxe's level plus one per hit, so this is the hits with a starter pickaxe.</remarks>
