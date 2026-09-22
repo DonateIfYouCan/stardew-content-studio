@@ -316,12 +316,58 @@ namespace CustomPaintings
         }
 
         /// <summary>The IDs of the paintings in the content this mod is using now.</summary>
-        public IEnumerable<string> GetItemIds() => this.ReadFile().Paintings.Select(p => p.Id).Where(id => !string.IsNullOrWhiteSpace(id)).ToList();
+        public IEnumerable<string> GetItemIds()
+        {
+            PaintingsFile file = this.ReadFile();
+            return file.Paintings.Select(p => p.Id).Where(id => !string.IsNullOrWhiteSpace(id))
+                .Concat(GameTargets(file).Select(GameItemId)) // one per game painting, so each is held on its own
+                .ToList();
+        }
+
+        /// <summary>The item ID another player's game uses for a change to one of the game's paintings.</summary>
+        internal static string GameItemId(string furnitureId) => CustomContent.GameItemPrefix + furnitureId;
+
+        /// <summary>The game paintings the file changes (new art or taken out of the shops), by furniture ID.</summary>
+        private static HashSet<string> GameTargets(PaintingsFile file)
+        {
+            IDictionary<string, string> furniture = DataLoader.Furniture(Game1.content);
+            HashSet<string> ids = new(StringComparer.OrdinalIgnoreCase);
+            foreach (string target in file.Replace.Select(r => r.Target).Concat(file.Remove))
+            {
+                if (ResolveFurnitureId(target, furniture) is { } id)
+                    ids.Add(id);
+            }
+            return ids;
+        }
+
+        /// <summary>The change the file makes to one game painting, or null if it makes none.</summary>
+        private static GamePaintingChange? GetGameChange(PaintingsFile file, string furnitureId)
+        {
+            IDictionary<string, string> furniture = DataLoader.Furniture(Game1.content);
+            Replacement? replace = file.Replace.FirstOrDefault(r => ResolveFurnitureId(r.Target, furniture) == furnitureId);
+            bool removed = file.Remove.Any(r => ResolveFurnitureId(r, furniture) == furnitureId);
+            return replace == null && !removed ? null : new GamePaintingChange { Replace = replace, Removed = removed };
+        }
+
+        /// <summary>Take a game painting's change out of the file, returning whether there was one.</summary>
+        private static bool RemoveGameChange(PaintingsFile file, string furnitureId)
+        {
+            IDictionary<string, string> furniture = DataLoader.Furniture(Game1.content);
+            int removed = file.Replace.RemoveAll(r => ResolveFurnitureId(r.Target, furniture) == furnitureId);
+            removed += file.Remove.RemoveAll(r => ResolveFurnitureId(r, furniture) == furnitureId);
+            return removed > 0;
+        }
 
         /// <summary>Get one painting as JSON, for sending to the player whose content this is.</summary>
         /// <param name="itemId">The painting's ID in the content being used.</param>
         public string? GetItemJson(string itemId)
         {
+            if (itemId.StartsWith(CustomContent.GameItemPrefix, StringComparison.Ordinal))
+            {
+                GamePaintingChange? change = GetGameChange(this.ReadFile(), itemId.Substring(CustomContent.GameItemPrefix.Length));
+                return change == null ? null : JsonConvert.SerializeObject(change, new JsonSerializerSettings { Formatting = Formatting.Indented, NullValueHandling = NullValueHandling.Ignore });
+            }
+
             CustomPainting? painting = this.ReadFile().Paintings.FirstOrDefault(p => string.Equals(p.Id, itemId, StringComparison.OrdinalIgnoreCase));
             return painting == null
                 ? null
@@ -335,27 +381,15 @@ namespace CustomPaintings
         /// <returns>Whether it was written.</returns>
         public bool ApplyItemJson(string itemId, string json, IDictionary<string, string> files)
         {
+            if (itemId.StartsWith(CustomContent.GameItemPrefix, StringComparison.Ordinal))
+                return this.ApplyGameChangeJson(itemId.Substring(CustomContent.GameItemPrefix.Length), json, files);
+
             CustomPainting? painting = JsonConvert.DeserializeObject<CustomPainting>(json);
             if (painting == null || string.IsNullOrWhiteSpace(itemId))
                 return false;
 
             painting.Id = itemId;
-            List<Slide> slides = painting.GetSlides();
-            foreach (Slide slide in slides)
-            {
-                // a plain path inside this content's own images folder, keeping the sub-folder it's in (often 'imported/')
-                string name = CustomContent.SafeContentPath(slide.File);
-                if (name.Length == 0)
-                    continue;
-                slide.File = name;
-                if (files.TryGetValue(Path.GetFileName(name), out string? sent) && System.IO.File.Exists(sent))
-                {
-                    string target = Path.Combine(this.ImageFolder, name.Replace('/', Path.DirectorySeparatorChar));
-                    Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-                    System.IO.File.Copy(sent, target, overwrite: true);
-                }
-            }
-            painting.SetSlides(slides);
+            this.TakeSlides(painting, files);
 
             PaintingsFile file = this.ReadFile();
             int index = file.Paintings.FindIndex(p => string.Equals(p.Id, itemId, StringComparison.OrdinalIgnoreCase));
@@ -371,6 +405,14 @@ namespace CustomPaintings
         public bool RemoveItem(string itemId)
         {
             PaintingsFile file = this.ReadFile();
+            if (itemId.StartsWith(CustomContent.GameItemPrefix, StringComparison.Ordinal))
+            {
+                // taking out a change to a game painting puts it back as the game has it
+                if (!RemoveGameChange(file, itemId.Substring(CustomContent.GameItemPrefix.Length)))
+                    return false;
+                this.Save(file);
+                return true;
+            }
             int index = file.Paintings.FindIndex(p => string.Equals(p.Id, itemId, StringComparison.OrdinalIgnoreCase));
             if (index < 0)
                 return false;
@@ -378,6 +420,49 @@ namespace CustomPaintings
             file.Paintings.RemoveAt(index);
             this.Save(file);
             return true;
+        }
+
+        /// <summary>Write one change to a game painting that a player made.</summary>
+        /// <param name="furnitureId">The game painting's furniture ID; a change can't move to another painting.</param>
+        private bool ApplyGameChangeJson(string furnitureId, string json, IDictionary<string, string> files)
+        {
+            GamePaintingChange? change = JsonConvert.DeserializeObject<GamePaintingChange>(json);
+            if (change == null || ResolveFurnitureId(furnitureId, DataLoader.Furniture(Game1.content)) == null)
+                return false; // only the game's own paintings
+
+            PaintingsFile file = this.ReadFile();
+            RemoveGameChange(file, furnitureId);
+            if (change.Replace is { } replace)
+            {
+                replace.Target = furnitureId;
+                this.TakeSlides(replace, files);
+                file.Replace.Add(replace);
+            }
+            if (change.Removed)
+                file.Remove.Add(furnitureId);
+            this.Save(file);
+            return true;
+        }
+
+        /// <summary>Make the images a changed painting names safe, and copy in any that came with the change.</summary>
+        private void TakeSlides(ImageSettings settings, IDictionary<string, string> files)
+        {
+            List<Slide> slides = settings.GetSlides();
+            foreach (Slide slide in slides)
+            {
+                // a plain path inside this content's own images folder, keeping the sub-folder it's in (often 'imported/')
+                string name = CustomContent.SafeContentPath(slide.File);
+                if (name.Length == 0)
+                    continue;
+                slide.File = name;
+                if (files.TryGetValue(Path.GetFileName(name), out string? sent) && System.IO.File.Exists(sent))
+                {
+                    string target = Path.Combine(this.ImageFolder, name.Replace('/', Path.DirectorySeparatorChar));
+                    Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                    System.IO.File.Copy(sent, target, overwrite: true);
+                }
+            }
+            settings.SetSlides(slides);
         }
 
         /// <summary>Get the files in use (data file, images and custom frames), which are the only ones shared in multiplayer.</summary>

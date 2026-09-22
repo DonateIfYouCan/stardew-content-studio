@@ -44,13 +44,14 @@ namespace Tests
         [Theory]
         [InlineData("CustomFurniture", "FurnitureStore.cs")]
         [InlineData("CustomCrops", "CropStore.cs")]
+        [InlineData("CustomPaintings", "PaintingStore.cs")]
         public void AChangeToAGameItemTravelsOnItsOwn(string mod, string store)
         {
             // each change to one of the game's items is its own item, marked with the Core's prefix so the Host knows it
             // changes the game (and needs the Host's say-so even the first time), and sent one by one like everything else
             string code = System.IO.File.ReadAllText(System.IO.Path.Combine(Root(), mod, store));
             Assert.Contains("CustomContent.GameItemPrefix + ", code);
-            Assert.Matches(@"GetItemIds\(\)[\s\S]*?GameChanges", code);
+            Assert.Matches(@"GetItemIds\(\)[\s\S]*?(GameChanges|GameTargets)", code);
             Assert.Matches(@"ApplyItemJson[\s\S]*?GameItemPrefix", code);
             Assert.Matches(@"RemoveItem[\s\S]*?GameItemPrefix", code);
         }
@@ -58,12 +59,14 @@ namespace Tests
         [Theory]
         [InlineData("CustomFurniture", "FurnitureListScreen.cs")]
         [InlineData("CustomCrops", "CropListScreen.cs")]
+        [InlineData("CustomPaintings", "PaintingListScreen.cs")]
         public void GameItemsAreHeldOneAtATime(string mod, string screen)
         {
-            // Player A giving the game's lamp new art mustn't stop Player B hiding a game table, so nothing on these lists
-            // takes the whole file: that's the per-list lock that was asked to go
+            // Player A giving the game's lamp new art mustn't stop Player B hiding a game table, so no game-item button takes
+            // the whole file: that's the per-list lock that was asked to go (paintings' auto-add setting still does, rightly)
             string code = System.IO.File.ReadAllText(System.IO.Path.Combine(Root(), mod, "UI", screen));
-            Assert.DoesNotContain("TakeLock(this.Store.Manifest, ListLockThing", code);
+            foreach (string action in new[] { "EditSelected, keepHolding", "RestoreSelected", "ToggleHidden", "EditGameArt", "ToggleGameHidden", "RestoreGameArt" })
+                Assert.DoesNotContain($"WhenNobodyElseIsChangingTheList(this.{action}", code);
             Assert.Contains("GameThing(", code);
         }
 

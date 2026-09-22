@@ -90,9 +90,9 @@ namespace CustomPaintings.UI
             this.DeleteButton = this.Add(new Button("Delete", () => this.WhenNobodyElseIsChangingIt(this.DeleteSelected)));
             this.DuplicateButton = this.Add(new Button("Duplicate", this.DuplicateSelected, "Make a copy to tweak, keeping the original."));
             this.GiveButton = this.Add(new Button("Put in inventory", this.GiveSelected, "Adds one to your inventory, for testing."));
-            this.ReplaceButton = this.Add(new Button("Replace image", () => this.WhenNobodyElseIsChangingTheList(this.EditSelected, keepHolding: true), "Show your own image instead of this painting."));
-            this.RestoreButton = this.Add(new Button("Restore original", () => this.WhenNobodyElseIsChangingTheList(this.RestoreSelected)));
-            this.HideButton = this.Add(new Button("Hide from shops", () => this.WhenNobodyElseIsChangingTheList(this.ToggleHidden), "Take it out of shops, the catalogue and fishing. Placed copies stay."));
+            this.ReplaceButton = this.Add(new Button("Replace image", () => this.WhenNobodyElseIsChangingGamePainting(this.EditSelected, keepHolding: true), "Show your own image instead of this painting."));
+            this.RestoreButton = this.Add(new Button("Restore original", () => this.WhenNobodyElseIsChangingGamePainting(this.RestoreSelected)));
+            this.HideButton = this.Add(new Button("Hide from shops", () => this.WhenNobodyElseIsChangingGamePainting(this.ToggleHidden), "Take it out of shops, the catalogue and fishing. Placed copies stay."));
             this.ExportButton = this.Add(new Button("Export original", this.ExportSelected, "Save the game's original art as a PNG, to edit in another program and use as a replacement."));
             this.CloseButton = this.Add(new Button("Close", () => this.Root.Pop()));
             this.AutoAddBox = this.Add(new Checkbox("Auto-add images dropped into the paintings folder", this.Store.File.AutoAddImages, value => this.WhenNobodyElseIsChangingTheList(() => this.SetAutoAdd(value))));
@@ -233,8 +233,8 @@ namespace CustomPaintings.UI
             Gfx.Text(b, Gfx.Fit(row.Name, bounds.Right - textX - 140), new Vector2(textX, bounds.Y + 12));
             Gfx.Text(b, Gfx.Fit(row.Details, bounds.Right - textX - 16), new Vector2(textX, bounds.Y + 46), Color.DimGray);
             // in a game where everyone uses one set, say on the row itself who's changing this painting
-            string? rowId = row.Painting?.Id ?? row.FurnitureId;
-            string? rowBusy = rowId != null ? CustomContent.WhoIsChanging(this.Store.Manifest, ItemThing(rowId)) : null;
+            string? rowThing = this.ShowGamePaintings ? GameThing(row.FurnitureId) : (row.Painting?.Id ?? row.FurnitureId) is { } rowId ? ItemThing(rowId) : null;
+            string? rowBusy = rowThing != null ? CustomContent.WhoIsChanging(this.Store.Manifest, rowThing) : null;
             string? badge = rowBusy != null ? $"{rowBusy} is changing this" : row.Badge;
             if (badge != null)
             {
@@ -393,7 +393,8 @@ namespace CustomPaintings.UI
             // in a game where everyone uses one set, say who's changing this painting instead of letting two people write over each other
             string? id = row?.Painting?.Id ?? row?.FurnitureId;
             string? busy = id != null ? CustomContent.WhoIsChanging(this.Store.Manifest, ItemThing(id)) : null;
-            string? listBusy = CustomContent.WhoIsChanging(this.Store.Manifest, ListLockThing);
+            // on the game's list each painting is held on its own, so Player A replacing one doesn't stop Player B hiding another
+            string? gameBusy = !mine && row != null ? CustomContent.WhoIsChanging(this.Store.Manifest, GameThing(row.FurnitureId)) : null;
             foreach (Button button in new[] { this.EditButton, this.DeleteButton })
             {
                 button.Enabled = busy == null;
@@ -402,8 +403,8 @@ namespace CustomPaintings.UI
             this.NormalTooltips ??= new[] { this.ReplaceButton, this.RestoreButton, this.HideButton }.Select(b => (b, b.Tooltip)).ToArray();
             foreach ((Button button, string? tooltip) in this.NormalTooltips)
             {
-                button.Enabled = listBusy == null;
-                button.Tooltip = listBusy != null ? $"{listBusy} is changing the paintings list right now." : tooltip;
+                button.Enabled = gameBusy == null;
+                button.Tooltip = gameBusy != null ? $"{gameBusy} is changing '{row?.Name}' right now." : tooltip;
             }
 
             this.EditButton.Visible = mine && row != null;
@@ -478,6 +479,36 @@ namespace CustomPaintings.UI
                 }
                 this.HeldItem = ItemThing(id);
                 action();
+            });
+        }
+
+        /// <summary>What a game painting is called when asking to be the only one changing it: one per painting.</summary>
+        private static string GameThing(string furnitureId) => ItemThing(PaintingStore.GameItemId(furnitureId));
+
+        /// <summary>Change the selected game painting, unless another player is changing it or the Host doesn't allow it.</summary>
+        /// <param name="action">What to do once it's ours to change.</param>
+        /// <param name="keepHolding">Whether to keep holding it afterwards, for an action that opens an editor rather than saving straight away.</param>
+        /// <remarks>
+        /// In a Host's game, changing the game's own paintings needs the Host's 'Let players change my content' even the first
+        /// time, since it changes the game for everyone; asking to hold it gets that answer up front.
+        /// </remarks>
+        private void WhenNobodyElseIsChangingGamePainting(Action action, bool keepHolding = false)
+        {
+            if (this.List.Selected is not { } row)
+                return;
+            string thing = GameThing(row.FurnitureId);
+            CustomContent.TakeLock(this.Store.Manifest, thing, $"the game's '{row.Name}'", (granted, why) =>
+            {
+                if (!granted)
+                {
+                    this.ShowMessage(why, error: true);
+                    return;
+                }
+                if (keepHolding)
+                    this.HeldItem = thing;
+                action();
+                if (!keepHolding)
+                    CustomContent.ReleaseLock(this.Store.Manifest, thing); // saved already, so let the others have it back
             });
         }
 

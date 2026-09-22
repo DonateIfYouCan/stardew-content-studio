@@ -154,6 +154,16 @@ namespace CustomPaintings
         public List<Source> Sources { get; set; } = new();
     }
 
+    /// <summary>
+    /// A change to one of the game's paintings, as one item in a shared game: its new art, whether it's taken out of the shops,
+    /// or both. The file keeps these in its <c>Replace</c> and <c>Remove</c> lists; this is how one travels on its own.
+    /// </summary>
+    internal sealed class GamePaintingChange
+    {
+        public Replacement? Replace { get; set; }
+        public bool Removed { get; set; }
+    }
+
     internal sealed class Source
     {
         /// <summary><c>Shop</c> or <c>Fishing</c>.</summary>
