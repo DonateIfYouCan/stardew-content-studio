@@ -137,6 +137,7 @@ namespace CustomContentCore.UI
         public void Push(Screen screen)
         {
             ClearTextInput();
+            Dropdown.CloseAll(); // a list belongs to the screen it was opened on
             screen.Root = this;
             this.Stack.Add(screen);
             screen.Layout(GetArea());
@@ -146,6 +147,7 @@ namespace CustomContentCore.UI
         public void Pop()
         {
             ClearTextInput();
+            Dropdown.CloseAll(); // a list belongs to the screen it was opened on
             Screen top = this.Top;
             this.Stack.RemoveAt(this.Stack.Count - 1);
             top.Dispose();
@@ -190,6 +192,8 @@ namespace CustomContentCore.UI
 
         public override void receiveLeftClick(int x, int y, bool playSound = true)
         {
+            if (Dropdown.Open is { } open && open.ClickList(x, y))
+                return; // an open list hangs over whatever is under it, so it gets the click first
             if (this.Stack.Count > 0)
                 this.Top.LeftClick(x, y);
         }
@@ -208,6 +212,11 @@ namespace CustomContentCore.UI
 
         public override void receiveRightClick(int x, int y, bool playSound = true)
         {
+            if (Dropdown.Open != null)
+            {
+                Dropdown.CloseAll();
+                return;
+            }
             if (this.Stack.Count == 0)
                 return;
             this.RightDown = true;
@@ -236,6 +245,11 @@ namespace CustomContentCore.UI
                 return;
             }
 
+            if (Dropdown.Open != null && key == Keys.Escape)
+            {
+                Dropdown.CloseAll(); // Escape closes the list, not the screen
+                return;
+            }
             if (this.Top.KeyPress(key))
                 return;
 
@@ -283,8 +297,15 @@ namespace CustomContentCore.UI
                 b.Draw(Game1.fadeToBlackRect, new Rectangle(0, 0, Game1.uiViewport.Width, Game1.uiViewport.Height), Color.Black * 0.4f);
             }
             this.Top.Draw(b, mx, my);
+            if (Dropdown.Open is { } open)
+            {
+                if (open.Visible)
+                    open.DrawList(b, mx, my);
+                else
+                    Dropdown.CloseAll(); // its screen hid it
+            }
 
-            string? tooltip = CoreMod.Config.ShowHoverTips ? this.Top.GetTooltip(mx, my) : null;
+            string? tooltip = CoreMod.Config.ShowHoverTips && Dropdown.Open == null ? this.Top.GetTooltip(mx, my) : null;
             if (tooltip != null)
                 drawHoverText(b, Game1.parseText(tooltip, Game1.smallFont, 420), Game1.smallFont);
 

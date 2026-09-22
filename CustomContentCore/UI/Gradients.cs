@@ -17,6 +17,45 @@ namespace CustomContentCore.UI
         /// <remarks>Bands and dithering are what pixel art usually uses: a smooth gradient adds a new colour on nearly every pixel.</remarks>
         public const string Smooth = "smooth", ThreeBands = "3", FiveBands = "5", Dither = "dither";
 
+        /// <summary>Which way a straight gradient runs: along the drag, or a fixed way across the area it covers.</summary>
+        public const string AlongDrag = "drag", LeftToRight = "lr", RightToLeft = "rl", TopToBottom = "tb", BottomToTop = "bt", DownRight = "dr", UpRight = "ur";
+
+        /// <summary>Where a round gradient is centred: where you press (reaching where you let go), or the middle of the area.</summary>
+        public const string FromPress = "press", FromMiddle = "middle";
+
+        /// <summary>Whether a gradient needs a drag to say where it goes, rather than being worked out from the area it covers.</summary>
+        public static bool FollowsDrag(string shape, string direction, string centre) =>
+            shape == Round ? centre == FromPress : direction == AlongDrag;
+
+        /// <summary>Where a gradient starts (the first colour) and ends (the second).</summary>
+        /// <param name="shape"><see cref="Straight"/> or <see cref="Round"/>.</param>
+        /// <param name="direction">For a straight one: <see cref="AlongDrag"/>, or a fixed way like <see cref="LeftToRight"/>.</param>
+        /// <param name="centre">For a round one: <see cref="FromPress"/> or <see cref="FromMiddle"/>.</param>
+        /// <param name="area">The pixels being painted, from the leftmost/topmost to the rightmost/bottommost (inclusive).</param>
+        /// <param name="pressed">Where the drag started.</param>
+        /// <param name="released">Where it ended.</param>
+        public static (Point Start, Point End) Endpoints(string shape, string direction, string centre, Rectangle area, Point pressed, Point released)
+        {
+            int left = area.X, top = area.Y, right = area.X + Math.Max(0, area.Width - 1), bottom = area.Y + Math.Max(0, area.Height - 1);
+            int middleX = (left + right) / 2, middleY = (top + bottom) / 2;
+
+            if (shape == Round)
+                return centre == FromMiddle
+                    ? (new Point(middleX, middleY), new Point(right, bottom)) // out to the corners
+                    : (pressed, released);
+
+            return direction switch
+            {
+                LeftToRight => (new Point(left, middleY), new Point(right, middleY)),
+                RightToLeft => (new Point(right, middleY), new Point(left, middleY)),
+                TopToBottom => (new Point(middleX, top), new Point(middleX, bottom)),
+                BottomToTop => (new Point(middleX, bottom), new Point(middleX, top)),
+                DownRight => (new Point(left, top), new Point(right, bottom)),
+                UpRight => (new Point(left, bottom), new Point(right, top)),
+                _ => (pressed, released)
+            };
+        }
+
         /// <summary>A 4x4 ordered-dither pattern: which pixels switch to the second colour first as the gradient goes on.</summary>
         private static readonly int[,] Bayer =
         {
@@ -72,6 +111,26 @@ namespace CustomContentCore.UI
             }
         }
 
+        /// <summary>Whether an image is shades of grey, like the hair sheets the game colours in.</summary>
+        /// <remarks>
+        /// Only those are worth previewing in a colour; on anything else the preview only muddies the art. Some coloured pixels
+        /// still count: the game's hairstyles sheet is 6.6% coloured, mostly its dark outline, which the game leaves alone.
+        /// Its accessories sheet (glasses and all) is 55%, and isn't grey.
+        /// </remarks>
+        public static bool IsGreyscale(Color[] pixels)
+        {
+            int solid = 0, coloured = 0;
+            foreach (Color c in pixels)
+            {
+                if (c.A == 0)
+                    continue;
+                solid++;
+                if (Math.Abs(c.R - c.G) > 3 || Math.Abs(c.G - c.B) > 3 || Math.Abs(c.R - c.B) > 3)
+                    coloured++;
+            }
+            return solid > 0 && coloured * 100 <= solid * 15; // at most 15% with colour in it
+        }
+
         /// <summary>Mix two colours, weighting each by how see-through it is.</summary>
         /// <remarks>
         /// A plain mix of red and see-through gives dark half-see-through red, since see-through is stored as black. Weighting by
@@ -98,13 +157,13 @@ namespace CustomContentCore.UI
     internal static class PaintOptions
     {
         /// <summary>The settings a tool uses.</summary>
-        public const string Size = "size", Shape = "shape", Mirror = "mirror", FillShape = "fill", Gradient = "gradient", Blend = "blend", Selection = "selection";
+        public const string Size = "size", Shape = "shape", Mirror = "mirror", FillShape = "fill", Gradient = "gradient", Direction = "direction", Centre = "centre", Blend = "blend", Selection = "selection";
 
         /// <summary>The settings to show for a tool, in the order they go down the side.</summary>
         /// <param name="tool">The tool's name, like <c>Pencil</c>.</param>
         /// <param name="fillShapes">Whether rectangles and ellipses are drawn filled in (then the tip's size and shape don't apply).</param>
-        /// <param name="gradientOn">Whether a gradient is chosen (then how it blends matters).</param>
-        public static IReadOnlyList<string> For(string tool, bool fillShapes, bool gradientOn)
+        /// <param name="gradient">The chosen gradient (<see cref="Gradients.Off"/>, <see cref="Gradients.Straight"/> or <see cref="Gradients.Round"/>), which decides what else about it can be set.</param>
+        public static IReadOnlyList<string> For(string tool, bool fillShapes, string gradient)
         {
             List<string> options = new();
             void Tip()
@@ -115,7 +174,11 @@ namespace CustomContentCore.UI
             void Gradients()
             {
                 options.Add(Gradient);
-                if (gradientOn)
+                if (gradient == UI.Gradients.Straight)
+                    options.Add(Direction);
+                else if (gradient == UI.Gradients.Round)
+                    options.Add(Centre);
+                if (gradient != UI.Gradients.Off)
                     options.Add(Blend);
             }
 

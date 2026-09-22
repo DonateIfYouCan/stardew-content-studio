@@ -109,6 +109,95 @@ namespace Tests
         }
 
         /*********
+        ** Where a gradient goes
+        *********/
+        private static readonly Rectangle Box = new(10, 20, 11, 5); // x 10..20, y 20..24
+
+        [Theory]
+        [InlineData(Gradients.LeftToRight, 10, 22, 20, 22)]
+        [InlineData(Gradients.RightToLeft, 20, 22, 10, 22)]
+        [InlineData(Gradients.TopToBottom, 15, 20, 15, 24)]
+        [InlineData(Gradients.BottomToTop, 15, 24, 15, 20)]
+        [InlineData(Gradients.DownRight, 10, 20, 20, 24)]
+        [InlineData(Gradients.UpRight, 10, 24, 20, 20)]
+        public void AFixedDirectionRunsAcrossTheWholeArea(string direction, int x1, int y1, int x2, int y2)
+        {
+            // wherever the drag went, a fixed direction goes edge to edge of what's painted
+            (Point start, Point end) = Gradients.Endpoints(Gradients.Straight, direction, Gradients.FromPress, Box, new Point(13, 21), new Point(14, 21));
+            Assert.Equal(new Point(x1, y1), start);
+            Assert.Equal(new Point(x2, y2), end);
+        }
+
+        [Fact]
+        public void AlongTheDragFollowsTheDrag()
+        {
+            (Point start, Point end) = Gradients.Endpoints(Gradients.Straight, Gradients.AlongDrag, Gradients.FromPress, Box, new Point(12, 21), new Point(18, 23));
+            Assert.Equal(new Point(12, 21), start);
+            Assert.Equal(new Point(18, 23), end);
+        }
+
+        [Fact]
+        public void ARoundGradientFromTheMiddleReachesTheCorners()
+        {
+            (Point start, Point end) = Gradients.Endpoints(Gradients.Round, Gradients.AlongDrag, Gradients.FromMiddle, Box, new Point(11, 21), new Point(11, 22));
+            Assert.Equal(new Point(15, 22), start);
+            Assert.Equal(Blue, Gradients.At(Gradients.Round, Gradients.Smooth, new Point(20, 24), start, end, Red, Blue)); // a corner is the second colour
+            Assert.Equal(Red, Gradients.At(Gradients.Round, Gradients.Smooth, new Point(15, 22), start, end, Red, Blue));  // the middle is the first
+        }
+
+        [Fact]
+        public void ARoundGradientFromThePressIsCentredWhereYouPressed()
+        {
+            (Point start, Point end) = Gradients.Endpoints(Gradients.Round, Gradients.AlongDrag, Gradients.FromPress, Box, new Point(12, 21), new Point(16, 21));
+            Assert.Equal(new Point(12, 21), start);
+            Assert.Equal(new Point(16, 21), end);
+        }
+
+        [Theory]
+        [InlineData(Gradients.Straight, Gradients.AlongDrag, Gradients.FromMiddle, true)]
+        [InlineData(Gradients.Straight, Gradients.LeftToRight, Gradients.FromPress, false)]
+        [InlineData(Gradients.Round, Gradients.AlongDrag, Gradients.FromPress, true)]
+        [InlineData(Gradients.Round, Gradients.AlongDrag, Gradients.FromMiddle, false)]
+        public void OnlyGradientsThatFollowTheDragNeedOne(string shape, string direction, string centre, bool needsDrag)
+        {
+            // a fill with a fixed direction is a plain click; one that follows the drag is dragged
+            Assert.Equal(needsDrag, Gradients.FollowsDrag(shape, direction, centre));
+        }
+
+        /*********
+        ** Colour preview
+        *********/
+        [Fact]
+        public void AGreySheetIsGreyscale()
+        {
+            Color[] hair = { Color.Transparent, new Color(40, 40, 40), new Color(200, 201, 200), new Color(128, 128, 129) };
+            Assert.True(Gradients.IsGreyscale(hair));
+        }
+
+        [Theory]
+        [InlineData(934, 66, true)]   // the game's hairstyles sheet: 6.6% coloured, mostly its dark outline
+        [InlineData(969, 31, true)]   // hairstyles2: 3.1%
+        [InlineData(450, 550, false)] // accessories: 55%, glasses and all
+        public void AGreySheetWithSomeColouredPixelsStillCounts(int grey, int coloured, bool isGrey)
+        {
+            Color[] sheet = Enumerable.Repeat(new Color(120, 120, 120), grey).Concat(Enumerable.Repeat(new Color(60, 13, 35), coloured)).ToArray();
+            Assert.Equal(isGrey, Gradients.IsGreyscale(sheet));
+        }
+
+        [Fact]
+        public void AColouredImageIsNot()
+        {
+            Assert.False(Gradients.IsGreyscale(new[] { new Color(40, 40, 40), new Color(200, 120, 60) }));
+        }
+
+        [Fact]
+        public void AnEmptySheetIsNotGreyscale()
+        {
+            // nothing drawn yet says nothing about whether it's meant to be coloured by the game
+            Assert.False(Gradients.IsGreyscale(new[] { Color.Transparent, Color.Transparent }));
+        }
+
+        /*********
         ** Settings beside the image
         *********/
         [Theory]
@@ -117,7 +206,7 @@ namespace Tests
         [InlineData("Eraser")]
         public void DrawingToolsShowTheirTipAndNothingThatDoesntApply(string tool)
         {
-            IReadOnlyList<string> options = PaintOptions.For(tool, fillShapes: false, gradientOn: false);
+            IReadOnlyList<string> options = PaintOptions.For(tool, fillShapes: false, Gradients.Off);
             Assert.Contains(PaintOptions.Size, options);
             Assert.Contains(PaintOptions.Shape, options);
             Assert.Contains(PaintOptions.Mirror, options);
@@ -130,8 +219,8 @@ namespace Tests
         public void OnlyTheSelectToolShowsCopyAndPaste()
         {
             foreach (string tool in new[] { "Pencil", "Brush", "Eraser", "Picker", "Fill", "Line", "Rectangle", "Ellipse", "ReplaceAll", "ReplaceBrush", "Pan" })
-                Assert.DoesNotContain(PaintOptions.Selection, PaintOptions.For(tool, false, false));
-            Assert.Equal(new[] { PaintOptions.Selection }, PaintOptions.For("Select", false, false));
+                Assert.DoesNotContain(PaintOptions.Selection, PaintOptions.For(tool, false, Gradients.Off));
+            Assert.Equal(new[] { PaintOptions.Selection }, PaintOptions.For("Select", false, Gradients.Off));
         }
 
         [Theory]
@@ -139,16 +228,16 @@ namespace Tests
         [InlineData("Ellipse")]
         public void OnlyShapesShowFillShape(string tool)
         {
-            Assert.Contains(PaintOptions.FillShape, PaintOptions.For(tool, false, false));
+            Assert.Contains(PaintOptions.FillShape, PaintOptions.For(tool, false, Gradients.Off));
             foreach (string other in new[] { "Pencil", "Brush", "Eraser", "Fill", "Line", "Select" })
-                Assert.DoesNotContain(PaintOptions.FillShape, PaintOptions.For(other, false, false));
+                Assert.DoesNotContain(PaintOptions.FillShape, PaintOptions.For(other, false, Gradients.Off));
         }
 
         [Fact]
         public void AFilledShapeDoesntShowTheTip()
         {
             // a filled rectangle covers exactly what was dragged, so the tip's size would do nothing
-            IReadOnlyList<string> options = PaintOptions.For("Rectangle", fillShapes: true, gradientOn: false);
+            IReadOnlyList<string> options = PaintOptions.For("Rectangle", fillShapes: true, Gradients.Off);
             Assert.DoesNotContain(PaintOptions.Size, options);
             Assert.DoesNotContain(PaintOptions.Shape, options);
         }
@@ -160,14 +249,26 @@ namespace Tests
         [InlineData("Ellipse")]
         public void ToolsThatCoverAnAreaOfferGradients(string tool)
         {
-            Assert.Contains(PaintOptions.Gradient, PaintOptions.For(tool, true, false));
+            Assert.Contains(PaintOptions.Gradient, PaintOptions.For(tool, true, Gradients.Off));
+        }
+
+        [Fact]
+        public void AStraightGradientOffersADirectionAndARoundOneACentre()
+        {
+            IReadOnlyList<string> straight = PaintOptions.For("Fill", false, Gradients.Straight);
+            IReadOnlyList<string> round = PaintOptions.For("Fill", false, Gradients.Round);
+            Assert.Contains(PaintOptions.Direction, straight);
+            Assert.DoesNotContain(PaintOptions.Centre, straight);
+            Assert.Contains(PaintOptions.Centre, round);
+            Assert.DoesNotContain(PaintOptions.Direction, round);
+            Assert.DoesNotContain(PaintOptions.Direction, PaintOptions.For("Fill", false, Gradients.Off));
         }
 
         [Fact]
         public void HowAGradientBlendsOnlyShowsWhenThereIsOne()
         {
-            Assert.DoesNotContain(PaintOptions.Blend, PaintOptions.For("Fill", false, gradientOn: false));
-            Assert.Contains(PaintOptions.Blend, PaintOptions.For("Fill", false, gradientOn: true));
+            Assert.DoesNotContain(PaintOptions.Blend, PaintOptions.For("Fill", false, Gradients.Off));
+            Assert.Contains(PaintOptions.Blend, PaintOptions.For("Fill", false, Gradients.Straight));
         }
 
         [Theory]
@@ -176,7 +277,7 @@ namespace Tests
         [InlineData("Pan")]
         public void ToolsWithNoSettingsShowNone(string tool)
         {
-            Assert.Empty(PaintOptions.For(tool, false, false));
+            Assert.Empty(PaintOptions.For(tool, false, Gradients.Off));
         }
     
         /*********
@@ -206,6 +307,25 @@ namespace Tests
             string code = ReadCore("UI", "EditorRoot.cs");
             Assert.Contains("this.Top.RightHeld(", code);
             Assert.Contains("this.Top.ReleaseRight(", code);
+        }
+
+        [Fact]
+        public void TheViewCanBeMovedPastTheImagesEdges()
+        {
+            // clamping the view to 0..(image - view) meant a small image could never be dragged to the middle
+            string code = ReadCore("UI", "PaintScreen.cs");
+            int start = code.IndexOf("private void ClampView()", System.StringComparison.Ordinal);
+            Assert.True(start > 0);
+            string clamp = code[start..code.IndexOf("\n        }", start, System.StringComparison.Ordinal)];
+            Assert.DoesNotContain("Math.Clamp(this.View.X, 0,", clamp);
+            Assert.Contains("keepX - viewW", clamp);
+        }
+
+        [Fact]
+        public void TheColourPreviewIsOnlyForGreySheets()
+        {
+            string code = ReadCore("UI", "PaintScreen.cs");
+            Assert.Contains("this.TintCycler.Visible = this.Greyscale;", code);
         }
 
         private static string ReadCore(params string[] path)

@@ -109,6 +109,11 @@ namespace CustomContentCore.UI
         /// <summary>The gradient for fills, lines and shapes (see <see cref="Gradients"/>), and how its two colours blend.</summary>
         private string GradientShape = Gradients.Off;
         private string GradientBlend = Gradients.ThreeBands;
+        private string GradientDirection = Gradients.AlongDrag;
+        private string GradientCentre = Gradients.FromPress;
+
+        /// <summary>Whether the image is shades of grey, like a hair sheet, which is the only kind the colour preview is for.</summary>
+        private readonly bool Greyscale;
 
         /// <summary>Whether a gradient is chosen, for the tools that can paint one.</summary>
         private bool GradientOn => this.GradientShape != Gradients.Off && this.Current is Tool.Fill or Tool.Line or Tool.Rectangle or Tool.Ellipse;
@@ -205,8 +210,8 @@ namespace CustomContentCore.UI
         private const long MaxUndoBytes = 48L * 1024 * 1024;
 
         private readonly List<(Tool Tool, Button Button)> ToolButtons = new();
-        private readonly Cycler SizeCycler;
-        private readonly Cycler ShapeCycler;
+        private readonly Dropdown SizeCycler;
+        private readonly Dropdown ShapeCycler;
         private readonly Button UndoButton;
         private readonly Button RedoButton;
         private readonly Button ZoomInButton;
@@ -216,12 +221,14 @@ namespace CustomContentCore.UI
         private readonly Checkbox GridBox;
         private readonly Checkbox FillBox;
         private readonly Checkbox GuideBox;
-        private readonly Cycler BackgroundCycler;
-        private readonly Cycler TintCycler;
-        private readonly Cycler MirrorCycler;
-        private readonly Cycler GradientCycler;
-        private readonly Cycler BlendCycler;
-        private readonly Cycler PaletteCycler;
+        private readonly Dropdown BackgroundCycler;
+        private readonly Dropdown TintCycler;
+        private readonly Dropdown MirrorCycler;
+        private readonly Dropdown GradientCycler;
+        private readonly Dropdown BlendCycler;
+        private readonly Dropdown DirectionDropdown;
+        private readonly Dropdown CentreDropdown;
+        private readonly Dropdown PaletteCycler;
         private readonly Button ColourButton;
         private readonly Button SpriteButton;
         private readonly TextField SpriteField;
@@ -266,6 +273,7 @@ namespace CustomContentCore.UI
             this.ByHue = ByColour(this.ByUse);
             this.Palette = this.ByUse;
             this.Colour = this.Palette.FirstOrDefault(c => c.A > 0, Color.Black);
+            this.Greyscale = Gradients.IsGreyscale(this.Canvas);
             this.Texture = image.ToTexture();
 
             foreach ((Tool tool, string label, string tip) in new[]
@@ -274,7 +282,7 @@ namespace CustomContentCore.UI
                 (Tool.Brush, "Brush", "Like the pencil, but its edge fades out, which suits bigger sizes and HD sheets. Key: B."),
                 (Tool.Eraser, "Eraser", "Make pixels see-through. Key: E."),
                 (Tool.Picker, "Pick colour", "Take the colour under the cursor: left click for the first colour, right click for the second. Key: I. Alt and a click does this with any tool."),
-                (Tool.Fill, "Fill", "Flood one connected area of the same colour. Key: F. With a gradient chosen, drag to say which way it runs."),
+                (Tool.Fill, "Fill", "Flood one connected area of the same colour. Key: F. With a gradient that runs along your drag, drag to place it; any other gradient is one click."),
                 (Tool.Line, "Line", "Drag for a straight line. Key: L. Hold Shift to snap to a corner or straight across."),
                 (Tool.Rectangle, "Rectangle", "Drag for a box. Key: R. Hold Shift to keep it square."),
                 (Tool.Ellipse, "Ellipse", "Drag for an oval. Key: O. Hold Shift to keep it round."),
@@ -288,16 +296,16 @@ namespace CustomContentCore.UI
                 this.ToolButtons.Add((chosen, this.Add(new Button(label, () => this.SetTool(chosen), tip))));
             }
 
-            this.SizeCycler = this.Add(new Cycler(
+            this.SizeCycler = this.Add(new Dropdown(
                 new() { ("1", "1 pixel"), ("2", "2 pixels"), ("3", "3 pixels"), ("4", "4 pixels"), ("6", "6 pixels"), ("8", "8 pixels"), ("12", "12 pixels"), ("16", "16 pixels") },
                 "1",
                 v => this.BrushSize = int.Parse(v),
-                "How wide the pencil, brush and eraser are."));
-            this.ShapeCycler = this.Add(new Cycler(
-                new() { ("square", "Square"), ("round", "Round"), ("diamond", "Diamond") },
+                "How wide the tip is.", prefix: "Size"));
+            this.ShapeCycler = this.Add(new Dropdown(
+                new() { ("square", "square"), ("round", "round"), ("diamond", "diamond") },
                 "square",
                 v => this.BrushShape = v,
-                "The shape of the pencil, brush and eraser. A square tip is the usual one for pixel art."));
+                "The shape of the tip. A square tip is the usual one for pixel art.", prefix: "Tip"));
             this.UndoButton = this.Add(new Button("Undo", this.Undo, "Take back the last stroke."));
             this.RedoButton = this.Add(new Button("Redo", this.Redo));
             this.ZoomOutButton = this.Add(new Button("-", () => this.SetZoom(this.Zoom - 1, this.CanvasArea.Center), "Zoom out."));
@@ -306,37 +314,47 @@ namespace CustomContentCore.UI
             this.WidthButton = this.Add(new Button("Width", this.FitWidth, "Fill the width with the image, which is how it opens."));
             this.GridBox = this.Add(new Checkbox("Grid", true, v => this.ShowGrid = v, "Lines showing where each sprite in the sheet begins, and (zoomed right in) where each pixel is."));
             this.GuideBox = this.Add(new Checkbox("Guides", true, v => this.ShowGuides = v, "Show what the game expects in this sheet: where each sprite begins and ends, and the parts inside it."));
-            this.TintCycler = this.Add(new Cycler(
-                new() { ("none", "none"), ("blonde", "blonde"), ("ginger", "ginger"), ("brown", "brown"), ("black", "black"), ("red", "red"), ("blue", "blue"), ("green", "green"), ("pink", "pink"), ("custom", "picked colour") },
+            this.TintCycler = this.Add(new Dropdown(
+                new() { ("none", "grey"), ("blonde", "blonde"), ("ginger", "ginger"), ("brown", "brown"), ("black", "black"), ("red", "red"), ("blue", "blue"), ("green", "green"), ("pink", "pink"), ("custom", "a colour you pick...") },
                 "none",
                 v => { this.TintName = v; if (v == "custom") this.PickTint(); },
-                "Sheets like hair are grey so the game can colour them. This shows the art in a colour without changing it, the way your character's hair colour would."));
-            this.BackgroundCycler = this.Add(new Cycler(
+                "This sheet is grey, so the game colours it in (the way your hair colour does). Preview it in a colour here; the saved image stays grey.", prefix: "Preview as"));
+            this.BackgroundCycler = this.Add(new Dropdown(
                 new() { ("checks", "checks"), ("dark", "dark"), ("light", "light"), ("pink", "pink") },
                 "checks",
                 v => this.Background = v,
-                "What's drawn behind see-through pixels: a checkerboard, or a plain colour to see the art against."));
+                "What's drawn behind see-through pixels: a checkerboard, or a plain colour to see the art against.", prefix: "Behind"));
             this.FillBox = this.Add(new Checkbox("Fill shape", false, v => { this.FillShapes = v; this.Layout(this.Area); }, "Draw rectangles and ovals filled in instead of as an outline."));
-            this.GradientCycler = this.Add(new Cycler(
-                new() { (Gradients.Off, "One colour"), (Gradients.Straight, "Gradient"), (Gradients.Round, "Round gradient") },
+            this.GradientCycler = this.Add(new Dropdown(
+                new() { (Gradients.Off, "one colour"), (Gradients.Straight, "gradient"), (Gradients.Round, "round") },
                 Gradients.Off,
                 v => { this.GradientShape = v; this.Layout(this.Area); },
-                "Blend from the colour of the button you drag with to the other colour, from where you press to where you let go. A round gradient spreads out from where you press."));
-            this.BlendCycler = this.Add(new Cycler(
-                new() { (Gradients.ThreeBands, "3 bands"), (Gradients.FiveBands, "5 bands"), (Gradients.Dither, "Dithered"), (Gradients.Smooth, "Smooth") },
+                "Blend from the colour of the button you use (left: first, right: second) to the other colour.", prefix: "Paint"));
+            this.DirectionDropdown = this.Add(new Dropdown(
+                new() { (Gradients.AlongDrag, "with drag"), (Gradients.LeftToRight, "left-right"), (Gradients.RightToLeft, "right-left"), (Gradients.TopToBottom, "top-bottom"), (Gradients.BottomToTop, "bottom-top"), (Gradients.DownRight, "corner down"), (Gradients.UpRight, "corner up") },
+                Gradients.AlongDrag,
+                v => this.GradientDirection = v,
+                "Which way it runs. 'With drag' goes from where you press to where you let go; the others run edge to edge across what's painted, so a fill is a single click.", prefix: "Runs"));
+            this.CentreDropdown = this.Add(new Dropdown(
+                new() { (Gradients.FromPress, "press point"), (Gradients.FromMiddle, "middle") },
+                Gradients.FromPress,
+                v => this.GradientCentre = v,
+                "Where the round gradient starts. 'Press point' is where you press, reaching out to where you let go; 'middle' is the middle of what's painted, out to its corners, so a fill is a single click.", prefix: "From"));
+            this.BlendCycler = this.Add(new Dropdown(
+                new() { (Gradients.ThreeBands, "3 bands"), (Gradients.FiveBands, "5 bands"), (Gradients.Dither, "dithered"), (Gradients.Smooth, "smooth") },
                 Gradients.ThreeBands,
                 v => this.GradientBlend = v,
-                "How the two colours blend. Bands and dithering keep to a few colours, the way pixel art usually does; smooth adds a new colour on nearly every pixel."));
-            this.MirrorCycler = this.Add(new Cycler(
-                new() { ("off", "Mirror: off"), ("lr", "Mirror: sides"), ("ud", "Mirror: up-down"), ("both", "Mirror: both") },
+                "How the two colours blend. Bands and dithering keep to a few colours, the way pixel art usually does; smooth adds a new colour on nearly every pixel.", prefix: "Blend"));
+            this.MirrorCycler = this.Add(new Dropdown(
+                new() { ("off", "off"), ("lr", "left-right"), ("ud", "up-down"), ("both", "both") },
                 "off",
                 v => this.Mirror = v,
-                "Draw the same strokes mirrored. On a sheet it mirrors within the sprite you're drawing in, not across the whole sheet."));
-            this.PaletteCycler = this.Add(new Cycler(
-                new() { ("used", "Order: most used"), ("hue", "Order: by shade") },
+                "Draw the same strokes mirrored. On a sheet it mirrors within the sprite you're drawing in, not across the whole sheet.", prefix: "Mirror"));
+            this.PaletteCycler = this.Add(new Dropdown(
+                new() { ("used", "most used"), ("hue", "by shade") },
                 "used",
                 v => this.Palette = v == "hue" ? this.ByHue : this.ByUse,
-                "The colours this image uses. 'Most used' puts the commonest first; 'by shade' lines them up from dark to light and groups colours together."));
+                "The colours this image uses. 'Most used' puts the commonest first; 'by shade' lines them up from dark to light and groups colours together.", prefix: "Order"));
             this.CopyButton = this.Add(new Button("Copy", this.CopySelection, "Copy what's selected."));
             this.PasteButton = this.Add(new Button("Paste", this.PasteClipboard, "Put what you copied in the top left of the selection (or of the view)."));
             this.ClearButton = this.Add(new Button("Clear", this.ClearSelection, "Make everything in the selection see-through."));
@@ -384,16 +402,17 @@ namespace CustomContentCore.UI
             this.RedoButton.Bounds = new Rectangle(this.UndoButton.Bounds.Right + 8, top, 110, 48);
             this.GuideBox.Bounds = new Rectangle(this.RedoButton.Bounds.Right + 24, top + 2, 130, 44);
 
-            int room = this.GridBox.Bounds.X - 16 - (this.GuideBox.Bounds.Right + 8);
-            int labels = 106 + 72; // the words drawn to the left of each cycler
-            int cyclers = Math.Min(410, Math.Max(200, room - labels));
-            int backgroundW = cyclers * 200 / 410, tintW = cyclers - backgroundW;
-            bool tintFitsOnTop = room >= labels + 300;
-
-            this.BackgroundCycler.Bounds = new Rectangle(this.GuideBox.Bounds.Right + 106, top, backgroundW, 48);
+            // between them, the two view settings as dropdowns that carry their own labels; the colour preview only for a grey
+            // sheet like hair, which is the one kind the game colours in
+            int room = this.GridBox.Bounds.X - 16 - (this.GuideBox.Bounds.Right + 16);
+            this.TintCycler.Visible = this.Greyscale;
+            int tintW = this.Greyscale ? Math.Min(300, room / 2) : 0;
+            bool tintFitsOnTop = !this.Greyscale || room >= 200 + 8 + 220;
+            int backgroundW = Math.Min(220, tintFitsOnTop ? room - (tintW > 0 ? tintW + 8 : 0) : room);
+            this.BackgroundCycler.Bounds = new Rectangle(this.GuideBox.Bounds.Right + 16, top + 2, backgroundW, 44);
             this.TintCycler.Bounds = tintFitsOnTop
-                ? new Rectangle(this.BackgroundCycler.Bounds.Right + 72, top, tintW, 48)
-                : new Rectangle(area.X + pad + 72, top + 52, Math.Min(210, this.GuideBox.Bounds.Right - area.X - pad - 72), 44);
+                ? new Rectangle(this.BackgroundCycler.Bounds.Right + 8, top + 2, tintW, 44)
+                : new Rectangle(area.X + pad, top + 54, Math.Min(300, this.GuideBox.Bounds.Right - area.X - pad), 44);
             this.TintOnSecondRow = !tintFitsOnTop;
 
             // tools down the left, under the top bar (which is two rows deep in a narrow window)
@@ -407,7 +426,7 @@ namespace CustomContentCore.UI
 
             int paletteH = 56;
             int canvasX = area.X + pad + toolW + 16;
-            int actionW = area.Width >= 1400 ? 240 : 170; // wide enough for "Mirror: up-down" where there's room
+            int actionW = area.Width >= 1600 ? 270 : area.Width >= 1400 ? 240 : 190; // room for "Runs: corner down" where there is some
             this.CanvasArea = new Rectangle(canvasX, contentTop, area.Right - pad - actionW - 16 - canvasX, bottom - contentTop - paletteH - 12);
 
             // beside the canvas: only the settings the chosen tool uses, under its name. In a short window the rows tighten up
@@ -453,14 +472,14 @@ namespace CustomContentCore.UI
         private IEnumerable<Widget> AllColumnWidgets => new Widget[]
         {
             this.SpriteButton, this.CopyButton, this.PasteButton, this.ClearButton, this.FlipButton, this.FlipDownButton, this.TurnButton,
-            this.SizeCycler, this.ShapeCycler, this.FillBox, this.MirrorCycler, this.GradientCycler, this.BlendCycler
+            this.SizeCycler, this.ShapeCycler, this.FillBox, this.MirrorCycler, this.GradientCycler, this.DirectionDropdown, this.CentreDropdown, this.BlendCycler
         };
 
         /// <summary>The settings to show beside the canvas for the chosen tool, top to bottom (see <see cref="PaintOptions"/>).</summary>
         private List<Widget> ColumnWidgets()
         {
             List<Widget> column = new();
-            foreach (string option in PaintOptions.For(this.Current.ToString(), this.FillShapes, this.GradientShape != Gradients.Off))
+            foreach (string option in PaintOptions.For(this.Current.ToString(), this.FillShapes, this.GradientShape))
             {
                 switch (option)
                 {
@@ -469,6 +488,8 @@ namespace CustomContentCore.UI
                     case PaintOptions.FillShape: column.Add(this.FillBox); break;
                     case PaintOptions.Mirror: column.Add(this.MirrorCycler); break;
                     case PaintOptions.Gradient: column.Add(this.GradientCycler); break;
+                    case PaintOptions.Direction: column.Add(this.DirectionDropdown); break;
+                    case PaintOptions.Centre: column.Add(this.CentreDropdown); break;
                     case PaintOptions.Blend: column.Add(this.BlendCycler); break;
                     case PaintOptions.Selection:
                         if (this.Selection != null && this.CellWidth > 0 && this.CellHeight > 0)
@@ -516,8 +537,6 @@ namespace CustomContentCore.UI
             this.DrawCanvas(b, mouseX, mouseY);
             if (this.SpriteField.Visible)
                 Gfx.Text(b, "Sprite", new Vector2(this.SpriteField.Bounds.X - 84, this.SpriteField.Bounds.Y + 10));
-            Gfx.Text(b, "Behind", new Vector2(this.BackgroundCycler.Bounds.X - 92, this.BackgroundCycler.Bounds.Y + 12));
-            Gfx.Text(b, "Colour", new Vector2(this.TintCycler.Bounds.X - 68, this.TintCycler.Bounds.Y + 12));
             this.DrawPalette(b, mouseX, mouseY);
             base.Draw(b, mouseX, mouseY);
 
@@ -531,14 +550,19 @@ namespace CustomContentCore.UI
             Gfx.Inset(b, this.CanvasArea, new Color(60, 56, 52));
             Rectangle inner = this.Inner;
 
+            // the view can be moved past the image's edges (to put a small image in the middle, say), so the image may start
+            // part-way into the area: 'view' is the first image pixel shown, and 'dest' starts where that pixel is drawn
+            int gapX = Math.Max(0, -this.View.X), gapY = Math.Max(0, -this.View.Y);
+            Point view = new(Math.Max(0, this.View.X), Math.Max(0, this.View.Y));
+
             // show whole pixels only: if the area doesn't divide by the zoom, the last part-pixel is left off rather than squashed
-            int columns = Math.Min(inner.Width / this.Zoom, this.Width - this.View.X);
-            int rows = Math.Min(inner.Height / this.Zoom, this.Height - this.View.Y);
+            int columns = Math.Min(inner.Width / this.Zoom - gapX, this.Width - view.X);
+            int rows = Math.Min(inner.Height / this.Zoom - gapY, this.Height - view.Y);
             if (columns <= 0 || rows <= 0)
                 return;
             int shownW = columns * this.Zoom, shownH = rows * this.Zoom;
-            Rectangle dest = new(inner.X, inner.Y, shownW, shownH);
-            Rectangle source = new(this.View.X, this.View.Y, columns, rows);
+            Rectangle dest = new(inner.X + gapX * this.Zoom, inner.Y + gapY * this.Zoom, shownW, shownH);
+            Rectangle source = new(view.X, view.Y, columns, rows);
 
             if (this.Background != "checks")
             {
@@ -554,11 +578,11 @@ namespace CustomContentCore.UI
             // can't be mistaken for the art) and lines up with them, so it doesn't beat against the pixel grid at any zoom.
             int squarePixels = Math.Max(2, (int)Math.Ceiling(10.0 / this.Zoom));
             int square = squarePixels * this.Zoom;
-            for (int cellY = this.View.Y / squarePixels * squarePixels; this.Background == "checks" && cellY < this.View.Y + rows; cellY += squarePixels)
+            for (int cellY = view.Y / squarePixels * squarePixels; this.Background == "checks" && cellY < view.Y + rows; cellY += squarePixels)
             {
-                for (int cellX = this.View.X / squarePixels * squarePixels; cellX < this.View.X + columns; cellX += squarePixels)
+                for (int cellX = view.X / squarePixels * squarePixels; cellX < view.X + columns; cellX += squarePixels)
                 {
-                    int x = dest.X + (cellX - this.View.X) * this.Zoom, y = dest.Y + (cellY - this.View.Y) * this.Zoom;
+                    int x = dest.X + (cellX - view.X) * this.Zoom, y = dest.Y + (cellY - view.Y) * this.Zoom;
                     int left = Math.Max(x, dest.X), topEdge = Math.Max(y, dest.Y);
                     int right = Math.Min(x + square, dest.Right), bottomEdge = Math.Min(y + square, dest.Bottom);
                     if (right <= left || bottomEdge <= topEdge)
@@ -574,9 +598,9 @@ namespace CustomContentCore.UI
             if (this.ShowGrid && this.CellWidth > 0 && this.CellHeight > 0 && this.Zoom >= 2)
             {
                 Color line = new(0, 0, 0, 70);
-                for (int x = this.CellWidth - this.View.X % this.CellWidth; x * this.Zoom < shownW; x += this.CellWidth)
+                for (int x = this.CellWidth - view.X % this.CellWidth; x * this.Zoom < shownW; x += this.CellWidth)
                     Gfx.Rect(b, new Rectangle(dest.X + x * this.Zoom, dest.Y, 1, shownH), line);
-                for (int y = this.CellHeight - this.View.Y % this.CellHeight; y * this.Zoom < shownH; y += this.CellHeight)
+                for (int y = this.CellHeight - view.Y % this.CellHeight; y * this.Zoom < shownH; y += this.CellHeight)
                     Gfx.Rect(b, new Rectangle(dest.X, dest.Y + y * this.Zoom, shownW, 1), line);
             }
 
@@ -584,14 +608,14 @@ namespace CustomContentCore.UI
             if (this.ShowGuides && this.PartWidth > 0 && this.PartHeight > 0 && this.Zoom >= 2)
             {
                 Color guide = new(220, 120, 40, 150);
-                for (int x = this.PartWidth - this.View.X % this.PartWidth; x * this.Zoom < shownW; x += this.PartWidth)
+                for (int x = this.PartWidth - view.X % this.PartWidth; x * this.Zoom < shownW; x += this.PartWidth)
                 {
-                    if (this.CellWidth <= 0 || (this.View.X + x) % this.CellWidth != 0)
+                    if (this.CellWidth <= 0 || (view.X + x) % this.CellWidth != 0)
                         Gfx.Rect(b, new Rectangle(dest.X + x * this.Zoom, dest.Y, 1, shownH), guide);
                 }
-                for (int y = this.PartHeight - this.View.Y % this.PartHeight; y * this.Zoom < shownH; y += this.PartHeight)
+                for (int y = this.PartHeight - view.Y % this.PartHeight; y * this.Zoom < shownH; y += this.PartHeight)
                 {
-                    if (this.CellHeight <= 0 || (this.View.Y + y) % this.CellHeight != 0)
+                    if (this.CellHeight <= 0 || (view.Y + y) % this.CellHeight != 0)
                         Gfx.Rect(b, new Rectangle(dest.X, dest.Y + y * this.Zoom, shownW, 1), guide);
                 }
 
@@ -610,15 +634,34 @@ namespace CustomContentCore.UI
             // where the line or rectangle being dragged will land
             if (this.ShapeStart is { } shapeStart)
             {
-                // a gradient fill shows the way it will run, in its colours; a line or shape shows itself
-                bool gradientFill = this.Current == Tool.Fill;
-                Point shapeEnd = gradientFill ? this.ShapeEnd : this.Constrain(shapeStart, this.ShapeEnd);
-                IEnumerable<Point> dots = gradientFill ? LinePoints(shapeStart, this.ShapeEnd) : this.ShapePixels(shapeStart, this.ShapeEnd);
-                foreach (Point dot in dots)
+                // a gradient fill shows the whole area it covers in the gradient it will get, and the drag as a line; a line or
+                // shape shows itself. Either way, what you see is what letting go will paint.
+                if (this.Current == Tool.Fill && this.FillPreview is { } region)
                 {
-                    int sx = dest.X + (dot.X - this.View.X) * this.Zoom, sy = dest.Y + (dot.Y - this.View.Y) * this.Zoom;
-                    if (sx >= dest.X && sy >= dest.Y && sx < dest.Right && sy < dest.Bottom)
-                        Gfx.Rect(b, new Rectangle(sx, sy, Math.Max(this.Zoom, gradientFill ? 3 : 1), Math.Max(this.Zoom, gradientFill ? 3 : 1)), this.ShapeColourAt(dot, shapeStart, shapeEnd));
+                    (Point from, Point to) = this.GradientEnds(this.BoundsOf(region), shapeStart, this.ShapeEnd);
+                    foreach (int index in region)
+                    {
+                        int x = index % this.Width, y = index / this.Width;
+                        int sx = dest.X + (x - view.X) * this.Zoom, sy = dest.Y + (y - view.Y) * this.Zoom;
+                        if (sx >= dest.X && sy >= dest.Y && sx < dest.Right && sy < dest.Bottom)
+                            Gfx.Rect(b, new Rectangle(sx, sy, this.Zoom, this.Zoom), Gradients.At(this.GradientShape, this.GradientBlend, new Point(x, y), from, to, this.StrokeColour, this.OtherColour));
+                    }
+                    foreach (Point dot in LinePoints(shapeStart, this.ShapeEnd))
+                    {
+                        int sx = dest.X + (dot.X - view.X) * this.Zoom, sy = dest.Y + (dot.Y - view.Y) * this.Zoom;
+                        if (sx >= dest.X && sy >= dest.Y && sx < dest.Right && sy < dest.Bottom)
+                            Gfx.Rect(b, new Rectangle(sx, sy, Math.Max(this.Zoom, 2), Math.Max(this.Zoom, 2)), Color.White * 0.8f);
+                    }
+                }
+                else
+                {
+                    Point shapeEnd = this.Constrain(shapeStart, this.ShapeEnd);
+                    foreach (Point dot in this.ShapePixels(shapeStart, this.ShapeEnd))
+                    {
+                        int sx = dest.X + (dot.X - view.X) * this.Zoom, sy = dest.Y + (dot.Y - view.Y) * this.Zoom;
+                        if (sx >= dest.X && sy >= dest.Y && sx < dest.Right && sy < dest.Bottom)
+                            Gfx.Rect(b, new Rectangle(sx, sy, this.Zoom, this.Zoom), this.ShapeColourAt(dot, shapeStart, shapeEnd));
+                    }
                 }
             }
 
@@ -634,13 +677,13 @@ namespace CustomContentCore.UI
                             Color colour = floating[y * selected.Width + x];
                             if (colour.A == 0)
                                 continue;
-                            int sx = dest.X + (selected.X + x - this.View.X) * this.Zoom, sy = dest.Y + (selected.Y + y - this.View.Y) * this.Zoom;
+                            int sx = dest.X + (selected.X + x - view.X) * this.Zoom, sy = dest.Y + (selected.Y + y - view.Y) * this.Zoom;
                             if (sx >= dest.X && sy >= dest.Y && sx < dest.Right && sy < dest.Bottom)
                                 Gfx.Rect(b, new Rectangle(sx, sy, this.Zoom, this.Zoom), colour);
                         }
                     }
                 }
-                Rectangle box = new(dest.X + (selected.X - this.View.X) * this.Zoom, dest.Y + (selected.Y - this.View.Y) * this.Zoom, selected.Width * this.Zoom, selected.Height * this.Zoom);
+                Rectangle box = new(dest.X + (selected.X - view.X) * this.Zoom, dest.Y + (selected.Y - view.Y) * this.Zoom, selected.Width * this.Zoom, selected.Height * this.Zoom);
                 box = Rectangle.Intersect(box, dest); // a sprite taller than the canvas mustn't draw its box over the buttons
                 if (box.Width > 0 && box.Height > 0)
                 {
@@ -653,7 +696,7 @@ namespace CustomContentCore.UI
             if (this.ToPixel(mouseX, mouseY) is { } pixel && this.Zoom >= 3)
             {
                 int tip = this.Current is Tool.Pencil or Tool.Brush or Tool.Eraser or Tool.ReplaceBrush ? this.BrushSize : 1;
-                Rectangle box = new(dest.X + (pixel.X - this.View.X) * this.Zoom, dest.Y + (pixel.Y - this.View.Y) * this.Zoom, this.Zoom * tip, this.Zoom * tip);
+                Rectangle box = new(dest.X + (pixel.X - view.X) * this.Zoom, dest.Y + (pixel.Y - view.Y) * this.Zoom, this.Zoom * tip, this.Zoom * tip);
                 Gfx.Outline(b, box, Color.White, 1);
             }
         }
@@ -844,7 +887,10 @@ namespace CustomContentCore.UI
                 this.StrokeOriginals = new Dictionary<int, Color>();
                 this.StrokeArea = Rectangle.Empty;
                 if (this.Current == Tool.Fill)
+                {
                     this.FillGradient(start, this.ShapeEnd);
+                    this.FillPreview = null;
+                }
                 else
                 {
                     Point end = this.Constrain(start, this.ShapeEnd);
@@ -1079,10 +1125,11 @@ namespace CustomContentCore.UI
 
             // a line or rectangle is only drawn when you let go, so you can see where it will land first; a gradient fill too,
             // since the drag is what says which way the gradient runs
-            if (this.Current is Tool.Line or Tool.Rectangle or Tool.Ellipse || (this.Current == Tool.Fill && this.GradientOn))
+            if (this.Current is Tool.Line or Tool.Rectangle or Tool.Ellipse || (this.Current == Tool.Fill && this.GradientOn && this.GradientFollowsDrag))
             {
                 this.ShapeStart = pixel;
                 this.ShapeEnd = pixel;
+                this.FillPreview = this.Current == Tool.Fill ? this.FloodRegion(pixel) : null; // what the fill will cover, shown while dragging
                 return;
             }
 
@@ -1090,6 +1137,14 @@ namespace CustomContentCore.UI
             this.StrokeArea = Rectangle.Empty;
             this.LastPixel = null;
 
+            if (this.Current == Tool.Fill && this.GradientOn)
+            {
+                // a gradient that runs a fixed way across the area needs no drag: one click fills it
+                this.FillGradient(pixel, pixel);
+                this.Refresh(this.StrokeArea);
+                this.CommitStroke();
+                return;
+            }
             if (this.Current == Tool.Fill)
             {
                 this.Fill(pixel, this.StrokeColour);
@@ -1334,7 +1389,7 @@ namespace CustomContentCore.UI
                 return;
             this.SetTool(Tool.Select); // so the paste can be dragged into place, whichever tool was in use
             this.DropSelection(); // a paste already floating is put down first
-            Point at = this.Selection is { } area ? new Point(area.X, area.Y) : this.View;
+            Point at = this.Selection is { } area ? new Point(area.X, area.Y) : new Point(Math.Max(0, this.View.X), Math.Max(0, this.View.Y)); // the view can start off the image
 
             // it floats until it's put down, so dragging it into place never takes the pixels it passes over
             this.Floating = (Color[])pixels.Clone();
@@ -1624,14 +1679,47 @@ namespace CustomContentCore.UI
         /// <summary>Fill the area around where the drag started with a gradient, running from there to where it ended.</summary>
         private void FillGradient(Point start, Point end)
         {
-            foreach (int index in this.FloodRegion(start))
+            List<int> region = this.FloodRegion(start);
+            (Point from, Point to) = this.GradientEnds(this.BoundsOf(region), start, end);
+            foreach (int index in region)
             {
                 int x = index % this.Width, y = index / this.Width;
                 this.Remember(index);
-                this.Canvas[index] = Gradients.At(this.GradientShape, this.GradientBlend, new Point(x, y), start, end, this.StrokeColour, this.OtherColour);
+                this.Canvas[index] = Gradients.At(this.GradientShape, this.GradientBlend, new Point(x, y), from, to, this.StrokeColour, this.OtherColour);
                 this.Grow(x, y);
             }
         }
+
+        /// <summary>What a fill being dragged will cover, worked out when it was pressed, to show the gradient over it while dragging.</summary>
+        private List<int>? FillPreview;
+
+        /// <summary>Whether the chosen gradient is placed by dragging, rather than across the area it covers.</summary>
+        private bool GradientFollowsDrag => Gradients.FollowsDrag(this.GradientShape, this.GradientDirection, this.GradientCentre);
+
+        /// <summary>Where the gradient starts and ends for an area being painted (see <see cref="Gradients.Endpoints"/>).</summary>
+        private (Point Start, Point End) GradientEnds(Rectangle area, Point pressed, Point released)
+        {
+            return Gradients.Endpoints(this.GradientShape, this.GradientDirection, this.GradientCentre, area, pressed, released);
+        }
+
+        /// <summary>The smallest rectangle around some pixels, by their index in the image.</summary>
+        private Rectangle BoundsOf(IEnumerable<int> indexes)
+        {
+            int left = int.MaxValue, top = int.MaxValue, right = int.MinValue, bottom = int.MinValue;
+            foreach (int index in indexes)
+            {
+                int x = index % this.Width, y = index / this.Width;
+                left = Math.Min(left, x);
+                top = Math.Min(top, y);
+                right = Math.Max(right, x);
+                bottom = Math.Max(bottom, y);
+            }
+            return left > right ? Rectangle.Empty : new Rectangle(left, top, right - left + 1, bottom - top + 1);
+        }
+
+        /// <summary>The rectangle a line or shape covers, from where it was pressed to where it ends.</summary>
+        private static Rectangle ShapeBounds(Point start, Point end) =>
+            new(Math.Min(start.X, end.X), Math.Min(start.Y, end.Y), Math.Abs(end.X - start.X) + 1, Math.Abs(end.Y - start.Y) + 1);
 
         /// <summary>The pixels a fill would change: the ones joined to the start that are the same colour it is.</summary>
         private List<int> FloodRegion(Point start)
@@ -1664,9 +1752,10 @@ namespace CustomContentCore.UI
         /// <summary>The colour of one pixel of a line or shape: the button's colour, or its place in the gradient.</summary>
         private Color ShapeColourAt(Point pixel, Point start, Point end)
         {
-            return this.GradientOn
-                ? Gradients.At(this.GradientShape, this.GradientBlend, pixel, start, end, this.StrokeColour, this.OtherColour)
-                : this.StrokeColour;
+            if (!this.GradientOn)
+                return this.StrokeColour;
+            (Point from, Point to) = this.GradientEnds(ShapeBounds(start, end), start, end);
+            return Gradients.At(this.GradientShape, this.GradientBlend, pixel, from, to, this.StrokeColour, this.OtherColour);
         }
 
         /// <summary>The pixels on a straight line between two points.</summary>
@@ -1811,6 +1900,7 @@ namespace CustomContentCore.UI
             Rectangle inner = this.Inner;
             this.Zoom = Math.Clamp(inner.Width / Math.Max(1, this.Width), 1, 24);
             this.View = Point.Zero;
+            this.CentreView();
             this.ClampView();
         }
 
@@ -1819,14 +1909,32 @@ namespace CustomContentCore.UI
             Rectangle inner = this.Inner;
             this.Zoom = Math.Max(1, Math.Min(inner.Width / Math.Max(1, this.Width), inner.Height / Math.Max(1, this.Height)));
             this.View = Point.Zero;
+            this.CentreView(); // a whole image that's smaller than the area sits in its middle
         }
 
+        /// <summary>Keep at least part of the image in view, however far it's dragged.</summary>
+        /// <remarks>
+        /// It can go past its edges, so a small image can be moved to the middle, or a corner brought away from the frame to
+        /// draw on it comfortably. A quarter of whichever is smaller, the image or the view, always stays on screen.
+        /// </remarks>
         private void ClampView()
         {
             Rectangle inner = this.Inner;
-            int maxX = Math.Max(0, this.Width - inner.Width / Math.Max(1, this.Zoom));
-            int maxY = Math.Max(0, this.Height - inner.Height / Math.Max(1, this.Zoom));
-            this.View = new Point(Math.Clamp(this.View.X, 0, maxX), Math.Clamp(this.View.Y, 0, maxY));
+            int viewW = Math.Max(1, inner.Width / Math.Max(1, this.Zoom)), viewH = Math.Max(1, inner.Height / Math.Max(1, this.Zoom));
+            int keepX = Math.Max(1, Math.Min(this.Width, viewW) / 4), keepY = Math.Max(1, Math.Min(this.Height, viewH) / 4);
+            this.View = new Point(
+                Math.Clamp(this.View.X, keepX - viewW, this.Width - keepX),
+                Math.Clamp(this.View.Y, keepY - viewH, this.Height - keepY));
+        }
+
+        /// <summary>Put the image in the middle of the area along any side where it's smaller than the view.</summary>
+        private void CentreView()
+        {
+            Rectangle inner = this.Inner;
+            int viewW = inner.Width / Math.Max(1, this.Zoom), viewH = inner.Height / Math.Max(1, this.Zoom);
+            this.View = new Point(
+                this.Width < viewW ? -(viewW - this.Width) / 2 : this.View.X,
+                this.Height < viewH ? -(viewH - this.Height) / 2 : this.View.Y);
         }
 
 

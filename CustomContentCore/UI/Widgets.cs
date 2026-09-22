@@ -222,6 +222,123 @@ namespace CustomContentCore.UI
         }
     }
 
+    /// <summary>
+    /// A box showing the chosen option that opens a list to pick another. Better than a <see cref="Cycler"/> when there are more
+    /// than a few options, or when there's no room for a separate label: the label goes inside, like "Behind: checks".
+    /// </summary>
+    /// <remarks>
+    /// Only one list is open at a time (<see cref="Open"/>). The editor draws it over everything and gives it clicks first,
+    /// since it can hang over the image, which would otherwise take the click.
+    /// </remarks>
+    public sealed class Dropdown : Widget
+    {
+        public List<(string Value, string Label)> Options;
+        public int Index;
+        public Action<string> OnChange;
+        public bool Enabled = true;
+
+        /// <summary>Shown before the chosen option, like "Behind", or null for none.</summary>
+        public string? Prefix;
+
+        /// <summary>The list that's open right now, if any.</summary>
+        public static Dropdown? Open { get; private set; }
+
+        private const int RowHeight = 40;
+
+        public string Value => this.Options.Count > 0 ? this.Options[this.Index].Value : "";
+
+        public Dropdown(List<(string Value, string Label)> options, string? current, Action<string> onChange, string? tooltip = null, string? prefix = null)
+        {
+            this.Options = options;
+            this.OnChange = onChange;
+            this.Tooltip = tooltip;
+            this.Prefix = prefix;
+            this.Index = Math.Max(0, options.FindIndex(o => string.Equals(o.Value, current, StringComparison.OrdinalIgnoreCase)));
+        }
+
+        /// <summary>Choose an option without anyone clicking, e.g. to match another setting.</summary>
+        public void Select(string value)
+        {
+            int index = this.Options.FindIndex(o => o.Value == value);
+            if (index >= 0)
+                this.Index = index;
+        }
+
+        /// <summary>Where the open list goes: below the box, or above it when there isn't room below.</summary>
+        private Rectangle ListArea
+        {
+            get
+            {
+                int h = this.Options.Count * RowHeight + 8;
+                int w = Math.Max(this.Bounds.Width, 60 + this.Options.Max(o => (int)Gfx.Font.MeasureString(o.Label).X));
+                int x = Math.Min(this.Bounds.X, Game1.uiViewport.Width - w - 8);
+                int y = this.Bounds.Bottom + 2 + h > Game1.uiViewport.Height - 8 ? this.Bounds.Y - 2 - h : this.Bounds.Bottom + 2;
+                return new Rectangle(x, y, w, h);
+            }
+        }
+
+        public override void Draw(SpriteBatch b, int mouseX, int mouseY)
+        {
+            if (!this.Visible)
+                return;
+            bool hover = this.Enabled && this.Bounds.Contains(mouseX, mouseY) && Open == null;
+            IClickableMenu.drawTextureBox(b, Game1.mouseCursors, new Rectangle(432, 439, 9, 9), this.Bounds.X, this.Bounds.Y, this.Bounds.Width, this.Bounds.Height, hover ? Color.Wheat : Color.White, 4f, drawShadow: false);
+            string chosen = this.Options.Count > 0 ? this.Options[this.Index].Label : "-";
+            string text = this.Prefix != null ? $"{this.Prefix}: {chosen}" : chosen;
+            Rectangle inner = new(this.Bounds.X + 12, this.Bounds.Y, this.Bounds.Width - 12 - 30, this.Bounds.Height);
+            Gfx.Text(b, Gfx.Fit(text, inner.Width), new Vector2(inner.X, this.Bounds.Y + (this.Bounds.Height - Gfx.LineHeight) / 2), this.Enabled ? Game1.textColor : Color.DimGray);
+            // the down arrow
+            b.Draw(Game1.mouseCursors, new Vector2(this.Bounds.Right - 30, this.Bounds.Y + (this.Bounds.Height - 30) / 2), new Rectangle(421, 472, 11, 12), this.Enabled ? Color.White : Color.Gray * 0.6f, 0f, Vector2.Zero, 2.4f, SpriteEffects.None, 1f);
+        }
+
+        /// <summary>Draw the open list, over everything else.</summary>
+        public void DrawList(SpriteBatch b, int mouseX, int mouseY)
+        {
+            Rectangle list = this.ListArea;
+            IClickableMenu.drawTextureBox(b, Game1.menuTexture, new Rectangle(0, 256, 60, 60), list.X - 8, list.Y - 8, list.Width + 16, list.Height + 16, Color.White, 1f, drawShadow: true);
+            for (int i = 0; i < this.Options.Count; i++)
+            {
+                Rectangle row = new(list.X, list.Y + 4 + i * RowHeight, list.Width, RowHeight);
+                if (row.Contains(mouseX, mouseY))
+                    b.Draw(Game1.staminaRect, row, Color.Wheat * 0.8f);
+                else if (i == this.Index)
+                    b.Draw(Game1.staminaRect, row, Color.Wheat * 0.4f);
+                Gfx.Text(b, this.Options[i].Label, new Vector2(row.X + 12, row.Y + (RowHeight - Gfx.LineHeight) / 2));
+            }
+        }
+
+        public override bool Click(int x, int y)
+        {
+            if (!this.Visible || !this.Enabled || this.Options.Count == 0 || !this.Bounds.Contains(x, y))
+                return false;
+            Open = Open == this ? null : this;
+            Game1.playSound("shwip");
+            return true;
+        }
+
+        /// <summary>A click while the list is open: pick the option under it, and close the list either way.</summary>
+        /// <returns>Always true: the click was the list's, so nothing under it should take it too.</returns>
+        public bool ClickList(int x, int y)
+        {
+            Rectangle list = this.ListArea;
+            Open = null;
+            if (list.Contains(x, y))
+            {
+                int index = Math.Clamp((y - list.Y - 4) / RowHeight, 0, this.Options.Count - 1);
+                if (index != this.Index)
+                {
+                    this.Index = index;
+                    this.OnChange(this.Value);
+                }
+                Game1.playSound("smallSelect");
+            }
+            return true;
+        }
+
+        /// <summary>Close whatever list is open, e.g. when the screen changes.</summary>
+        public static void CloseAll() => Open = null;
+    }
+
     /// <summary>A single-line text input using the game's text box.</summary>
     public sealed class TextField : Widget
     {
