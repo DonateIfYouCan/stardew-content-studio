@@ -3,7 +3,7 @@
 [SMAPI](https://smapi.io) mods for Stardew Valley 1.6 that add your own content from your own images, made and edited in an
 in-game editor (press `K`), in HD where you want it.
 
-![Stardew Content Studio: paint your own crops, paintings, furniture and villagers, inside the game](docs/header-0.3.0.png)
+![Stardew Content Studio: paint your own crops, fish, paintings, furniture and villagers, inside the game](docs/header-0.4.0.png)
 
 | Mod | What it does |
 |---|---|
@@ -42,6 +42,9 @@ exactly what was and wasn't tested.
 
 ![Left: the game. Right: HD sprite sheets](docs/screenshots/characters-hd-comparison.png)
 *Left: the game. Right: HD sprite sheets (the game's own sprites upscaled with Scale2x, just to demonstrate).*
+
+![A farmhouse with only Emily things in it](docs/screenshots/0.4.0-emily-home.png)
+*One Emily per mod: the wallpaper, the painting, the bed, Emily fish in the tank, Emily plants in pots, and Emily with her own flower.*
 
 ![The fish editor on its Where page](docs/screenshots/0.4.0-fish-editor.png)
 *A fish: where and when it bites. Other pages set the minigame, crab pots, fish tanks, ponds and gifts.*

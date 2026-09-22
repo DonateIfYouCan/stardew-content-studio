@@ -13,3 +13,13 @@ To use them: put the two files in `CustomCrops/images`, add a crop in the editor
 
 `sunset-koi.png` — the demo fish in the 0.4.0 screenshots, 256x256, drawn for the demo. To use it: put it in
 `CustomFish/images`, add a fish in the editor and pick it with *Choose image*.
+
+## One Emily per mod (0.4.0 banner)
+
+Made from the game's own Emily portrait and sprite, so, like the Emily plant, they only make sense next to a copy of the game:
+
+- `emily-fish.png` — the Emily fish (Fish), 256x256.
+- `emily-bed.png` — the Emily bed (Furniture), a sheet for the Modern Double Bed (`2192`) at 4x, 384x256.
+- `emily-wallpaper.png` — the Emily wallpaper (Wallpaper & floors), one tile at 4x, 64x192.
+- `emily-painting.png` — the Emily painting (Paintings), 256x256.
+- `emily-portraits-flower.png` — Emily's portraits with an Emily-plant flower in her hair (Characters), her whole portrait sheet at 4x.
