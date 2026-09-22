@@ -11,6 +11,13 @@ namespace CustomMining
     /// <param name="LastLevel">The last mine level it covers, or <see cref="int.MaxValue"/> for "and below".</param>
     internal sealed record MineArea(string Key, string Label, int FirstLevel, int LastLevel);
 
+    /// <summary>One of the game's own rocks, as the editor lists it.</summary>
+    /// <param name="Id">The game's item ID for that rock.</param>
+    /// <param name="Label">What the editor calls it. The game names nearly all of them "Stone", so these are our own names.</param>
+    /// <param name="Group">The heading it's listed under.</param>
+    /// <param name="Area">The part of the mines it belongs to, or empty for one found all over.</param>
+    internal sealed record GameRock(string Id, string Label, string Group, string Area = "");
+
     /// <summary>
     /// Turning a rock into something the game can put in the mines: which levels it turns up on, how many hits it takes,
     /// and what it gives when it's broken. Pure, so it's checked without the game.
@@ -32,6 +39,81 @@ namespace CustomMining
             new("lava", "The lava floors (80-119)", 80, 119),
             new("skull", "Skull Cavern (121+)", 121, int.MaxValue)
         };
+
+        /// <summary>
+        /// The game's own rocks that the mines are filled with, with names of our own: the game calls nearly every rock
+        /// "Stone", so its own names would make a list of forty identical rows.
+        /// </summary>
+        /// <remarks>
+        /// Taken from the game's own code: the mine generator picks these, and <c>breakStone</c> says what each one gives,
+        /// which is where the node names come from. Rocks that turn up outdoors or in the volcano aren't listed: this mod
+        /// only fills the mines, so it couldn't keep a promise to hide one of those.
+        /// </remarks>
+        public static readonly GameRock[] GameRocks = BuildGameRocks();
+
+        private static GameRock[] BuildGameRocks()
+        {
+            List<GameRock> rocks = new()
+            {
+                new("751", "Copper node", "Ore nodes"),
+                new("290", "Iron node", "Ore nodes"),
+                new("764", "Gold node", "Ore nodes"),
+                new("765", "Iridium node", "Ore nodes"),
+                new("95", "Radioactive node", "Ore nodes"),
+                new("849", "Copper node (deeper mines)", "Ore nodes"),
+                new("850", "Iron node (deeper mines)", "Ore nodes"),
+                new("843", "Cinder shard node", "Ore nodes"),
+                new("844", "Cinder shard node (2)", "Ore nodes"),
+                new("818", "Clay stone", "Ore nodes"),
+                new("816", "Bone node", "Ore nodes"),
+                new("817", "Bone node (2)", "Ore nodes"),
+                new("25", "Mussel node", "Ore nodes"),
+
+                new("2", "Diamond node", "Gem nodes"),
+                new("4", "Ruby node", "Gem nodes"),
+                new("6", "Jade node", "Gem nodes"),
+                new("8", "Amethyst node", "Gem nodes"),
+                new("10", "Topaz node", "Gem nodes"),
+                new("12", "Emerald node", "Gem nodes"),
+                new("14", "Aquamarine node", "Gem nodes"),
+                new("44", "Gem node (any gem)", "Gem nodes"),
+                new("46", "Mystic stone", "Gem nodes"),
+
+                new("75", "Geode node", "Geode nodes"),
+                new("76", "Frozen geode node", "Geode nodes"),
+                new("77", "Magma geode node", "Geode nodes"),
+                new("819", "Omni geode node", "Geode nodes")
+            };
+
+            // the plain rocks, which the game only tells apart by number
+            AddPlain(rocks, "Mine rock", "The mines' rocks", "mines", 31, 41);
+            AddPlain(rocks, "Frozen rock", "The frozen floors' rocks", "frost", 47, 53);
+            AddPlain(rocks, "Lava rock", "The lava floors' rocks", "lava", 55, 57);
+            rocks.Add(new GameRock("760", "Lava rock 4", "The lava floors' rocks", "lava"));
+            rocks.Add(new GameRock("762", "Lava rock 5", "The lava floors' rocks", "lava"));
+            AddPlain(rocks, "Dark rock", "The dark floors' rocks", "", 845, 847);
+            rocks.Add(new GameRock("668", "Quarry rock", "The dark floors' rocks"));
+            rocks.Add(new GameRock("670", "Quarry rock 2", "The dark floors' rocks"));
+            return rocks.ToArray();
+        }
+
+        private static void AddPlain(List<GameRock> rocks, string label, string group, string area, int first, int last)
+        {
+            for (int id = first; id <= last; id++)
+                rocks.Add(new GameRock(id.ToString(), $"{label} {id - first + 1}", group, area));
+        }
+
+        /// <summary>The plain rock a hidden one is swapped for, so the level still has something to mine there.</summary>
+        /// <param name="mineLevel">The mine level being filled.</param>
+        /// <param name="isHidden">Whether a rock is one the player stopped turning up.</param>
+        /// <returns>The game's item ID for a plain rock that's still turning up, or null if every one of them is hidden.</returns>
+        public static string? PlainRockFor(int mineLevel, Func<string, bool> isHidden)
+        {
+            string area = AreaOf(mineLevel)?.Key ?? "mines";
+            IEnumerable<GameRock> plain = GameRocks.Where(rock => rock.Group.EndsWith("rocks"));
+            return plain.FirstOrDefault(rock => rock.Area == area && !isHidden(rock.Id))?.Id
+                ?? plain.FirstOrDefault(rock => !isHidden(rock.Id))?.Id;
+        }
 
         /// <summary>The part of the mines a level belongs to, or null for a level no rock is offered on (like level 120).</summary>
         public static MineArea? AreaOf(int mineLevel) => Areas.FirstOrDefault(area => mineLevel >= area.FirstLevel && mineLevel <= area.LastLevel);

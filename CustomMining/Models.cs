@@ -14,6 +14,27 @@ namespace CustomMining
 
         /// <summary>Changes to the game's own: new art, or no longer found. One per game item.</summary>
         public List<GameMineralChange> GameChanges { get; set; } = new();
+
+        /// <summary>Changes to the game's own rocks: new art, or no longer turning up. One per game rock.</summary>
+        public List<GameRockChange> RockChanges { get; set; } = new();
+    }
+
+    /// <summary>A change to one of the game's own rocks.</summary>
+    internal sealed class GameRockChange
+    {
+        /// <summary>The game item's ID, like <c>751</c> (a copper node).</summary>
+        public string Target { get; set; } = "";
+
+        /// <summary>New art and its square crop, or null to keep the game's.</summary>
+        public ImageRef? Image { get; set; }
+
+        public int Resolution { get; set; }
+
+        /// <summary>Whether the mines stop putting it out, swapping it for a plain rock. Ones already in a level stay.</summary>
+        public bool Hidden { get; set; }
+
+        [Newtonsoft.Json.JsonIgnore]
+        public bool IsEmpty => this.Image == null && !this.Hidden;
     }
 
     /// <summary>A rock of your own: where it turns up in the mines, how long it takes to break, and what it gives.</summary>

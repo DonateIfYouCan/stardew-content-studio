@@ -44,6 +44,12 @@ namespace CustomMining
         /// <summary>The game's own that are no longer found, by item ID.</summary>
         private HashSet<string> GameHidden = new(StringComparer.OrdinalIgnoreCase);
 
+        /// <summary>New art for the game's own rocks, by item ID.</summary>
+        private Dictionary<string, RenderedMineral> RockReplaced = new(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>The game's own rocks the mines no longer put out, by item ID.</summary>
+        private HashSet<string> RockHidden = new(StringComparer.OrdinalIgnoreCase);
+
         /// <summary>Rendered art for one item (premultiplied pixels).</summary>
         public sealed class RenderedMineral
         {
@@ -89,6 +95,18 @@ namespace CustomMining
         /// <summary>Whether one of the game's is no longer found.</summary>
         public bool IsGameHidden(string itemId) => this.GameHidden.Contains(itemId);
 
+        /// <summary>The new art for one of the game's rocks, if it has some.</summary>
+        public RenderedMineral? GetGameRockArt(string itemId) => this.RockReplaced.GetValueOrDefault(itemId);
+
+        /// <summary>Whether the mines stopped putting out one of the game's rocks.</summary>
+        public bool IsGameRockHidden(string itemId) => this.RockHidden.Contains(itemId);
+
+        /// <summary>The change to one of the game's rocks, if there is one.</summary>
+        public GameRockChange? GetGameRockChange(string itemId) => this.File.RockChanges.FirstOrDefault(c => string.Equals(c.Target, itemId, StringComparison.OrdinalIgnoreCase));
+
+        /// <summary>What a change to one of the game's rocks is called when it's sent to the player whose content this is.</summary>
+        internal const string GameRockPrefix = "gr:";
+
         /// <summary>The change to one of the game's, if there is one.</summary>
         public GameMineralChange? GetGameChange(string itemId) => this.File.GameChanges.FirstOrDefault(c => string.Equals(c.Target, itemId, StringComparison.OrdinalIgnoreCase));
 
@@ -105,6 +123,9 @@ namespace CustomMining
 
         /// <summary>What a rock's picture is called as an asset.</summary>
         private string GetRockAsset(string id) => $"Mods/{this.Manifest.UniqueID}/rock/{id}/Icon";
+
+        /// <summary>What new art for one of the game's rocks is called as an asset.</summary>
+        private string GetGameRockAsset(string itemId) => $"Mods/{this.Manifest.UniqueID}/gamerock/{itemId}/Icon";
 
 
         /*********
@@ -125,6 +146,7 @@ namespace CustomMining
             files.AddRange(this.File.Minerals.Select(m => this.ResolveImage(m.Image?.File)));
             files.AddRange(this.File.Rocks.Select(r => this.ResolveImage(r.Image?.File)));
             files.AddRange(this.File.GameChanges.Select(c => this.ResolveImage(c.Image?.File)));
+            files.AddRange(this.File.RockChanges.Select(c => this.ResolveImage(c.Image?.File)));
             return files.OfType<string>();
         }
 
@@ -204,7 +226,35 @@ namespace CustomMining
                 }
             }
             this.RockArt = rocks;
-            RockPatches.SetRocks(this, this.File.Rocks.Where(rock => rocks.ContainsKey(rock.Id)));
+
+            foreach (RenderedMineral old in this.RockReplaced.Values)
+                foreach (Texture2D texture in old.Textures)
+                    texture.Dispose();
+            Dictionary<string, RenderedMineral> rockArt = new(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> rockHidden = new(StringComparer.OrdinalIgnoreCase);
+            foreach (GameRockChange change in this.File.RockChanges)
+            {
+                if (string.IsNullOrWhiteSpace(change.Target) || rockArt.ContainsKey(change.Target) || rockHidden.Contains(change.Target))
+                    continue;
+                if (change.Hidden)
+                    rockHidden.Add(change.Target);
+                if (change.Image == null)
+                    continue;
+                try
+                {
+                    rockArt[change.Target] = this.Render(this.AsMineral(change), out string? warning);
+                    if (warning != null)
+                        this.Monitor.Log($"The game's rock '{change.Target}': {warning}", LogLevel.Warn);
+                }
+                catch (Exception ex)
+                {
+                    this.Monitor.Log($"Couldn't load new art for the game's rock '{change.Target}': {ex.Message}", LogLevel.Error);
+                }
+            }
+            this.RockReplaced = rockArt;
+            this.RockHidden = rockHidden;
+
+            RockPatches.SetRocks(this, this.File.Rocks.Where(rock => rocks.ContainsKey(rock.Id)), rockHidden);
 
             foreach ((_, RenderedMineral old) in this.GameReplaced.Values)
                 foreach (Texture2D texture in old.Textures)
@@ -252,6 +302,20 @@ namespace CustomMining
                 Id = change.Target,
                 Name = game?.Name ?? change.Target,
                 Kind = game?.Kind ?? MiningData.Mineral,
+                Image = change.Image,
+                Resolution = change.Resolution
+            };
+        }
+
+        /// <summary>A change to one of the game's rocks as something to draw, so it previews like any other.</summary>
+        public CustomMineral AsMineral(GameRockChange change)
+        {
+            GameRock? game = RockData.GameRocks.FirstOrDefault(r => r.Id == change.Target);
+            return new CustomMineral
+            {
+                Id = change.Target,
+                Name = game?.Label ?? change.Target,
+                Kind = MiningData.Mineral,
                 Image = change.Image,
                 Resolution = change.Resolution
             };
@@ -369,6 +433,8 @@ namespace CustomMining
                     e.LoadFrom(() => this.CreateGameTexture(game.Art, assetName), AssetLoadPriority.Exclusive);
                 else if (parts.Length == 3 && parts[0] == "rock" && this.RockArt.TryGetValue(parts[1], out RenderedMineral? rock))
                     e.LoadFrom(() => this.CreateGameTexture(rock, assetName), AssetLoadPriority.Exclusive);
+                else if (parts.Length == 3 && parts[0] == "gamerock" && this.RockReplaced.TryGetValue(parts[1], out RenderedMineral? gameRock))
+                    e.LoadFrom(() => this.CreateGameTexture(gameRock, assetName), AssetLoadPriority.Exclusive);
                 else if (parts.Length == 2 && this.Art.TryGetValue(parts[0], out RenderedMineral? item))
                     e.LoadFrom(() => this.CreateGameTexture(item, assetName), AssetLoadPriority.Exclusive);
             }
@@ -415,6 +481,7 @@ namespace CustomMining
             MiningFile file = this.ReadFile();
             return file.Minerals.Select(m => m.Id)
                 .Concat(file.Rocks.Where(r => !string.IsNullOrWhiteSpace(r.Id)).Select(r => RockPrefix + r.Id))
+                .Concat(file.RockChanges.Where(c => !string.IsNullOrWhiteSpace(c.Target)).Select(c => GameRockPrefix + c.Target))
                 .Concat(file.GameChanges.Where(c => !string.IsNullOrWhiteSpace(c.Target)).Select(c => GameItemId(c.Target))) // one per game item, so each is held on its own
                 .Where(id => !string.IsNullOrWhiteSpace(id) && id != CustomContent.GameItemPrefix)
                 .ToList();
@@ -426,7 +493,9 @@ namespace CustomMining
             MiningFile file = this.ReadFile();
             object? item = itemId.StartsWith(CustomContent.GameItemPrefix, StringComparison.Ordinal)
                 ? file.GameChanges.FirstOrDefault(c => string.Equals(c.Target, itemId.Substring(CustomContent.GameItemPrefix.Length), StringComparison.OrdinalIgnoreCase))
-                : itemId.StartsWith(RockPrefix, StringComparison.Ordinal)
+                : itemId.StartsWith(GameRockPrefix, StringComparison.Ordinal)
+                    ? file.RockChanges.FirstOrDefault(c => string.Equals(c.Target, itemId.Substring(GameRockPrefix.Length), StringComparison.OrdinalIgnoreCase))
+                    : itemId.StartsWith(RockPrefix, StringComparison.Ordinal)
                     ? file.Rocks.FirstOrDefault(r => string.Equals(r.Id, itemId.Substring(RockPrefix.Length), StringComparison.OrdinalIgnoreCase))
                     : file.Minerals.FirstOrDefault(m => string.Equals(m.Id, itemId, StringComparison.OrdinalIgnoreCase));
             return item == null
@@ -443,6 +512,8 @@ namespace CustomMining
         {
             if (itemId.StartsWith(CustomContent.GameItemPrefix, StringComparison.Ordinal))
                 return this.ApplyGameChangeJson(itemId.Substring(CustomContent.GameItemPrefix.Length), json, files);
+            if (itemId.StartsWith(GameRockPrefix, StringComparison.Ordinal))
+                return this.ApplyGameRockJson(itemId.Substring(GameRockPrefix.Length), json, files);
             if (itemId.StartsWith(RockPrefix, StringComparison.Ordinal))
                 return this.ApplyRockJson(itemId.Substring(RockPrefix.Length), json, files);
 
@@ -473,6 +544,15 @@ namespace CustomMining
                 // taking out a change to a game item puts it back as the game has it
                 string target = itemId.Substring(CustomContent.GameItemPrefix.Length);
                 if (file.GameChanges.RemoveAll(c => string.Equals(c.Target, target, StringComparison.OrdinalIgnoreCase)) == 0)
+                    return false;
+                this.Save(file);
+                return true;
+            }
+            if (itemId.StartsWith(GameRockPrefix, StringComparison.Ordinal))
+            {
+                // taking out a change to one of the game's rocks puts it back as the game has it
+                string target = itemId.Substring(GameRockPrefix.Length);
+                if (file.RockChanges.RemoveAll(c => string.Equals(c.Target, target, StringComparison.OrdinalIgnoreCase)) == 0)
                     return false;
                 this.Save(file);
                 return true;
@@ -510,6 +590,48 @@ namespace CustomMining
                 file.Rocks.Add(rock);
             this.Save(file);
             return true;
+        }
+
+        /// <summary>Write one change to a game rock that a player made.</summary>
+        private bool ApplyGameRockJson(string target, string json, IDictionary<string, string> files)
+        {
+            GameRockChange? change = JsonConvert.DeserializeObject<GameRockChange>(json);
+            if (change == null || string.IsNullOrWhiteSpace(target) || !RockData.GameRocks.Any(r => r.Id == target))
+                return false; // only the game's own
+
+            change.Target = target;
+            if (change.Image != null)
+            {
+                string image = this.TakeImage(change.Image.File, files);
+                change.Image = image.Length > 0 ? new ImageRef { File = image, Crop = change.Image.Crop } : null;
+            }
+            this.SaveGameRockChange(change);
+            return true;
+        }
+
+        /// <summary>Save a change to one of the game's rocks, replacing any earlier one; a change that changes nothing is dropped.</summary>
+        public void SaveGameRockChange(GameRockChange change)
+        {
+            MiningFile file = this.ReadFile();
+            file.RockChanges.RemoveAll(c => string.Equals(c.Target, change.Target, StringComparison.OrdinalIgnoreCase));
+            if (!change.IsEmpty)
+                file.RockChanges.Add(change);
+            this.Save(file);
+        }
+
+        /// <summary>One of your own rocks that starts as a copy of one of the game's: its picture, saved as your own image.</summary>
+        /// <param name="itemId">The game rock's ID.</param>
+        /// <returns>The new rock, not saved yet, or null if there's no such game rock.</returns>
+        public CustomRock? CopyOfGameRock(string itemId)
+        {
+            if (RockData.GameRocks.FirstOrDefault(r => r.Id == itemId) is not { } game)
+                return null;
+
+            CustomRock rock = new() { Name = $"{game.Label} copy" };
+            rock.Places[game.Area.Length > 0 ? game.Area : "mines"] = 0.1;
+            if (OriginalContent.LoadItemSprite("(O)" + itemId, 4) is { } icon)
+                rock.Image = new ImageRef { File = CustomContent.SaveImage(this.ImageFolder, rock.Name, icon) };
+            return rock;
         }
 
         /// <summary>Write one change to a game item that a player made.</summary>
@@ -660,6 +782,16 @@ namespace CustomMining
                         Chance = (float)chance,
                         Precedence = 0
                     });
+                }
+            }
+
+            // the game's own rocks with new art
+            foreach ((string itemId, _) in this.RockReplaced)
+            {
+                if (objects.TryGetValue(itemId, out ObjectData? data))
+                {
+                    data.Texture = this.GetGameRockAsset(itemId);
+                    data.SpriteIndex = 0;
                 }
             }
 

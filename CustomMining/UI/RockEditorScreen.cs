@@ -27,6 +27,10 @@ namespace CustomMining.UI
         private readonly bool IsNew;
         private readonly Action<string> OnSaved;
 
+        /// <summary>When editing new art for one of the game's own rocks, the change being made; null for your own.</summary>
+        /// <remarks>The game's rock keeps where it turns up and what it gives, so only the art controls are shown.</remarks>
+        private readonly GameRockChange? GameChange;
+
         private Page Current = Page.Rock;
         private readonly Dictionary<string, Pixels?> Images = new(StringComparer.OrdinalIgnoreCase);
         private Texture2D? PreviewIcon;
@@ -135,6 +139,24 @@ namespace CustomMining.UI
             this.ShowPage(Page.Rock);
         }
 
+        /// <summary>Edit new art for one of the game's own rocks.</summary>
+        /// <param name="store">The mineral store.</param>
+        /// <param name="change">The change to that rock (a new one if it has none yet).</param>
+        /// <param name="onSaved">Called after saving, with the rock's name.</param>
+        public RockEditorScreen(MiningStore store, GameRockChange change, Action<string> onSaved)
+            : this(store, AsRock(store, change), isNew: false, onSaved)
+        {
+            this.GameChange = change;
+            this.ShowPage(Page.Rock); // now that it's a game rock, only its looks show
+        }
+
+        /// <summary>A change to one of the game's rocks as a rock to edit, so the same screen draws it.</summary>
+        private static CustomRock AsRock(MiningStore store, GameRockChange change)
+        {
+            CustomMineral drawn = store.AsMineral(change);
+            return new CustomRock { Id = change.Target, Name = drawn.Name, Image = change.Image, Resolution = change.Resolution };
+        }
+
         public override void Dispose()
         {
             this.Cropper.Dispose();
@@ -216,6 +238,14 @@ namespace CustomMining.UI
             this.Labels.Add((this.DropChance, new Rectangle(rx + 120 + fieldW * 2 + 72, y, 100, 48), "How often"));
             this.DropChance.Bounds = new Rectangle(rx + 120 + fieldW * 2 + 176, y, 200, 48);
 
+            // a game rock only gets new looks, so its one control goes on the page with no tabs
+            if (this.GameChange != null)
+            {
+                this.Labels.RemoveAll(l => l.Owner == this.DetailCycler);
+                y = top;
+                Full("Detail", this.DetailCycler);
+            }
+
             this.SaveButton.Bounds = new Rectangle(area.Right - pad - 200, area.Bottom - 84, 200, 60);
             this.CancelButton.Bounds = new Rectangle(this.SaveButton.Bounds.X - 16 - 180, area.Bottom - 84, 180, 60);
             this.SyncPage();
@@ -225,7 +255,8 @@ namespace CustomMining.UI
         {
             Rectangle area = this.Area;
             Gfx.Panel(b, area);
-            Gfx.Text(b, this.IsNew ? "New rock" : $"Edit '{this.Rock.Name}'", new Vector2(area.X + 36, area.Y + 24), null, Gfx.TitleFont);
+            string title = this.GameChange != null ? $"New art for the game's {this.Rock.Name}" : this.IsNew ? "New rock" : $"Edit '{this.Rock.Name}'";
+            Gfx.Text(b, title, new Vector2(area.X + 36, area.Y + 24), null, Gfx.TitleFont);
 
             foreach ((Widget owner, Rectangle row, string label) in this.Labels)
                 if (owner.Visible)
@@ -234,7 +265,9 @@ namespace CustomMining.UI
             this.DrawPreview(b);
             base.Draw(b, mouseX, mouseY);
 
-            string help = this.Current switch
+            string help = this.GameChange != null
+                ? "Where it turns up and what it gives stay the game's. The picture is used wherever the rock is drawn."
+                : this.Current switch
             {
                 Page.Where => "A chance is how many of the rocks down there are this one. The rest of the level stays the game's.",
                 Page.Drops => "This is on top of what any rock gives: stone, and the odd geode or gem the mines hand out anyway.",
@@ -253,6 +286,9 @@ namespace CustomMining.UI
             if (this.PreviewIcon != null)
                 b.Draw(this.PreviewIcon, new Rectangle(inner.X, inner.Y + 8, icon, icon), Color.White);
             Gfx.Text(b, "In the mine", new Vector2(inner.X, inner.Y + icon + 16), Color.White * 0.9f);
+
+            if (this.GameChange != null)
+                return;
 
             int x = inner.X + icon + 48;
             Gfx.Text(b, $"{RockData.CleanHits(this.Rock.Hits)} hit(s)", new Vector2(x, inner.Y + 8), Color.White * 0.9f);
@@ -297,11 +333,22 @@ namespace CustomMining.UI
 
         private void SyncPage()
         {
+            bool game = this.GameChange != null;
             foreach ((Page page, Button tab) in this.Tabs)
+            {
                 tab.Toggled = page == this.Current;
+                tab.Visible = !game; // a game rock keeps everything but its looks, which fit on one page
+            }
             foreach ((Page page, List<Widget> widgets) in this.PageWidgets)
                 foreach (Widget widget in widgets)
                     widget.Visible = page == this.Current;
+
+            if (game)
+            {
+                foreach (Widget widget in new Widget[] { this.NameField, this.HitsField, this.ExperienceField })
+                    widget.Visible = false;
+                return;
+            }
 
             if (this.Current == Page.Where)
             {
@@ -441,11 +488,18 @@ namespace CustomMining.UI
             this.PreviewIcon = null;
             try
             {
-                MiningStore.RenderedMineral rendered = this.Store.Render(MiningStore.AsMineral(this.Rock), out string? warning);
-                if (warning != null)
-                    this.ShowError(warning);
-                this.PreviewIcon = new Texture2D(Game1.graphics.GraphicsDevice, rendered.IconHd.Width, rendered.IconHd.Height);
-                this.PreviewIcon.SetData(rendered.IconHd.Data);
+                Pixels icon;
+                if (this.Rock.Image == null && this.GameChange != null && OriginalContent.LoadItemSprite("(O)" + this.GameChange.Target, 1) is { } vanilla)
+                    icon = new Pixels(ImageProcessor.Premultiply(vanilla.Data), vanilla.Width, vanilla.Height); // no picture of its own yet: the game's
+                else
+                {
+                    MiningStore.RenderedMineral rendered = this.Store.Render(MiningStore.AsMineral(this.Rock), out string? warning);
+                    icon = rendered.IconHd;
+                    if (warning != null)
+                        this.ShowError(warning);
+                }
+                this.PreviewIcon = new Texture2D(Game1.graphics.GraphicsDevice, icon.Width, icon.Height);
+                this.PreviewIcon.SetData(icon.Data);
             }
             catch (Exception ex)
             {
@@ -477,6 +531,8 @@ namespace CustomMining.UI
                 Pixels hd = this.Store.Render(MiningStore.AsMineral(this.Rock), out _).IconHd;
                 start = new Pixels(ImageProcessor.Unpremultiply(hd.Data), hd.Width, hd.Height);
             }
+            else if (this.GameChange != null && OriginalContent.LoadItemSprite("(O)" + this.GameChange.Target, scale) is { } vanilla)
+                start = vanilla;
             else
                 start = new Pixels(new Color[size * size], size, size);
 
@@ -521,6 +577,24 @@ namespace CustomMining.UI
         private void Save()
         {
             CustomRock r = this.Rock;
+            if (this.GameChange is { } change)
+            {
+                change.Image = r.Image;
+                change.Resolution = r.Resolution;
+                try
+                {
+                    this.Store.SaveGameRockChange(change);
+                }
+                catch (Exception ex)
+                {
+                    this.ShowError($"Couldn't save: {ex.Message}");
+                    return;
+                }
+                Game1.playSound("newArtifact");
+                this.Root.Pop();
+                this.OnSaved(r.Name);
+                return;
+            }
             if (string.IsNullOrWhiteSpace(r.Name))
             {
                 this.ShowError("Give the rock a name.");

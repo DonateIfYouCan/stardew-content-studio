@@ -21,6 +21,9 @@ namespace CustomMining
         /// <summary>The rocks in the mines now, by the game's item ID, rebuilt whenever the content is reloaded.</summary>
         private static Dictionary<string, CustomRock> Rocks = new(StringComparer.OrdinalIgnoreCase);
 
+        /// <summary>The game's own rocks the mines no longer put out.</summary>
+        private static HashSet<string> Hidden = new(StringComparer.OrdinalIgnoreCase);
+
         public static void Apply(Harmony harmony, IMonitor monitor)
         {
             Monitor = monitor;
@@ -37,12 +40,13 @@ namespace CustomMining
         /// <summary>Note which rocks exist now, so the patches don't read the file on every tile of a mine level.</summary>
         /// <param name="store">The store the rocks came from, which names them for the game.</param>
         /// <param name="rocks">The rocks in the content now.</param>
-        public static void SetRocks(MiningStore store, IEnumerable<CustomRock> rocks)
+        public static void SetRocks(MiningStore store, IEnumerable<CustomRock> rocks, HashSet<string> hiddenGameRocks)
         {
             Dictionary<string, CustomRock> byItemId = new(StringComparer.OrdinalIgnoreCase);
             foreach (CustomRock rock in rocks)
                 byItemId[store.GetRockItemId(rock.Id)] = rock;
             Rocks = byItemId;
+            Hidden = hiddenGameRocks;
         }
 
         /// <summary>Swap the stone the game picked for one of yours, now and then.</summary>
@@ -57,8 +61,13 @@ namespace CustomMining
         {
             try
             {
-                if (Rocks.Count == 0 || __result == null || !__result.IsBreakableStone())
+                if ((Rocks.Count == 0 && Hidden.Count == 0) || __result == null || !__result.IsBreakableStone())
                     return;
+
+                // one the player stopped turning up: a plain rock of that part of the mines stands in for it, so the level
+                // still has something to break there (and its ladder still has somewhere to come from)
+                if (Hidden.Contains(__result.ItemId) && RockData.PlainRockFor(__instance.mineLevel, Hidden.Contains) is { } plain)
+                    __result = new Object(plain, 1) { MinutesUntilReady = 1 };
 
                 Random random = Utility.CreateDaySaveRandom(tile.X * 2000, tile.Y * 77, __instance.mineLevel * 13);
                 double roll = random.NextDouble();

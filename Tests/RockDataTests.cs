@@ -89,6 +89,38 @@ namespace Tests
         }
 
         [Fact]
+        public void TheGamesRocksAreListedOnceEachWithANameOfTheirOwn()
+        {
+            // the game calls nearly every rock "Stone", so the list would be forty identical rows without our own names
+            Assert.Equal(RockData.GameRocks.Length, RockData.GameRocks.Select(r => r.Id).Distinct().Count());
+            Assert.Equal(RockData.GameRocks.Length, RockData.GameRocks.Select(r => r.Label).Distinct().Count());
+            Assert.All(RockData.GameRocks, rock => Assert.False(string.IsNullOrWhiteSpace(rock.Group)));
+
+            // the ones the game's own code names, which is where these came from
+            foreach (string id in new[] { "751", "290", "764", "765", "95", "44", "46", "75", "76", "77", "819", "818", "25" })
+                Assert.Contains(id, RockData.GameRocks.Select(r => r.Id));
+        }
+
+        [Fact]
+        public void AHiddenRockIsSwappedForAPlainOneFromTheSamePartOfTheMines()
+        {
+            // the level still needs something to break there, or a floor could be left with no way down
+            Assert.Equal("31", RockData.PlainRockFor(5, _ => false));
+            Assert.Equal("47", RockData.PlainRockFor(50, _ => false));
+            Assert.Equal("55", RockData.PlainRockFor(100, _ => false));
+
+            // the first choice hidden too: the next plain rock stands in
+            Assert.Equal("32", RockData.PlainRockFor(5, id => id == "31"));
+        }
+
+        [Fact]
+        public void HidingEveryPlainRockLeavesTheGamesOwnAlone()
+        {
+            // nothing sensible to swap in, so the patch is told so and leaves the rock the game picked
+            Assert.Null(RockData.PlainRockFor(5, _ => true));
+        }
+
+        [Fact]
         public void TheGameOnlyBreaksARockNamedStone()
         {
             // the game checks the name and category, not the type, so getting these wrong makes a rock that can't be mined

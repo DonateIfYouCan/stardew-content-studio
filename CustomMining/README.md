@@ -33,6 +33,9 @@ feel about them as a gift. It can also give the game's own new art, or stop one 
   picture, how many hits they take, the mining experience they give, which parts of the mines they appear in and how
   often, and what they give when broken (any of your minerals, the game's minerals, gems and artefacts, or ores and
   other bits). What they give is on top of what any rock gives.
+- **The game's rocks** (second tab of Rocks): every rock and ore node the mines are filled with, from copper and iridium
+  nodes to gem, geode and bone nodes and the plain grey rocks. Give one new art, stop the mines putting it out (a plain
+  rock of that depth stands in, so a floor always has something to break), or make your own copy from its picture.
 - What you add is real to the game: minerals and artefacts can be donated to the museum and count towards its rewards,
   gems count as gems (so the gemologist profession pays out), and everything sells and ships like the game's own.
 
@@ -40,7 +43,7 @@ feel about them as a gift. It can also give the game's own new art, or stop one 
 
 | Path | What it is |
 |---|---|
-| `minerals.json` | Your minerals, your rocks and changes to the game's (written by the editor; reloads automatically when edited). |
+| `minerals.json` | Your minerals, your rocks and changes to the game's minerals and rocks (written by the editor; reloads automatically when edited). |
 | `images/` | Images picked or painted in the editor. |
 
 ## Console commands
@@ -59,7 +62,8 @@ feel about them as a gift. It can also give the game's own new art, or stop one 
 - Don't delete something you've found: ones in your world, in chests or donated to the museum become Error Items.
 - The museum takes minerals, gems and artefacts alike (as it does the game's own diamonds and rubies); turning off
   "Can be donated to the museum" is what keeps one out.
-- Rocks only turn up in the mines and Skull Cavern for now; the quarry and the farm spawn their rocks another way.
+- Rocks only turn up in the mines and Skull Cavern for now; the quarry, the farm and the volcano fill themselves another
+  way, so stopping a rock turning up doesn't reach those.
 - The game calls every rock "Stone", so a rock's name is only ever seen in the editor.
 - In multiplayer, every player needs the mod. With the Core's content sharing on, everyone uses the Host's set.
 
