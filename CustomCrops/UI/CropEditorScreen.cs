@@ -48,6 +48,8 @@ namespace CustomCrops.UI
         private readonly Button FitButton;
         private readonly Checkbox LockShapeBox;
         private readonly Button AutoPacketButton;
+        private readonly Button PaintImageButton;
+        private readonly Button GamePacketButton;
         private readonly Cycler LookCycler;
         private readonly Button ChooseSheetButton;
         private readonly Button ExportTemplateButton;
@@ -101,6 +103,8 @@ namespace CustomCrops.UI
             this.FitButton = this.Add(new Button("Fit image", this.FitAndLock));
             this.LockShapeBox = this.Add(new Checkbox("Lock shape", true, on => { this.Cropper.FreeShape = !on; if (on) this.Cropper.SetAspect(1); this.ArtDirty = true; },
                 "Keep the box square while you drag its corners. Unlock it to take any part of the picture and have it squeezed into the icon."));
+            this.PaintImageButton = this.Add(new Button("Paint", this.PaintImage, "Draw it here in the game, starting from how it looks now."));
+            this.GamePacketButton = this.Add(new Button("Game's packet", () => { c.PacketBase = null; this.ArtDirty = true; this.SyncButtons(); }, "Put the game's own packet back behind the harvest icon."));
             this.AutoPacketButton = this.Add(new Button("Use auto packet", () => { c.SeedImage = null; this.ArtDirty = true; this.SyncImage(); }, "Make the seed packet from the harvest icon."));
 
             List<(string, string)> looks = this.VanillaCrops.Select(v => (v.SeedId, $"Looks like: {v.Name}")).ToList();
@@ -166,7 +170,7 @@ namespace CustomCrops.UI
         {
             this.GameChange = change;
             // what makes it that crop stays the game's; only the art is yours
-            List<Widget> gameOwns = new() { this.ColorCycler, this.GiftsButton, this.ImageCycler, this.AutoPacketButton, this.LookCycler, this.NameField, this.DescriptionField, this.DaysField, this.RegrowField,
+            List<Widget> gameOwns = new() { this.ColorCycler, this.GiftsButton, this.ImageCycler, this.AutoPacketButton, this.GamePacketButton, this.LookCycler, this.NameField, this.DescriptionField, this.DaysField, this.RegrowField,
                 this.CategoryCycler, this.EnergyField, this.SellField, this.SeedPriceField, this.HarvestCountField, this.TrellisBox, this.ScytheBox, this.PierreBox, this.JojaBox, this.TravelerBox };
             gameOwns.AddRange(this.SeasonBoxes);
             foreach (Widget widget in gameOwns)
@@ -201,7 +205,8 @@ namespace CustomCrops.UI
             // left: image cropper and growth look
             int lx = area.X + pad;
             this.Labels.Add((new Rectangle(lx, top, 110, 48), this.GameChange != null ? "Harvest icon" : "Image"));
-            this.ImageCycler.Bounds = new Rectangle(lx + 110, top, leftW - 110, 48);
+            this.ImageCycler.Bounds = new Rectangle(lx + 110, top, leftW - 110 - 150, 48);
+            this.PaintImageButton.Bounds = new Rectangle(lx + leftW - 140, top, 140, 48);
             int growthBlock = 48 + 12 + 48;
             this.Cropper.Bounds = new Rectangle(lx, top + 60, leftW, bottom - (top + 60) - 60 - growthBlock - 24);
             int by = this.Cropper.Bounds.Bottom + 10;
@@ -286,7 +291,7 @@ namespace CustomCrops.UI
                     int size = Math.Min(this.Cropper.Bounds.Width, this.Cropper.Bounds.Height) - 120;
                     b.Draw(this.PreviewObjects, new Rectangle(this.Cropper.Bounds.Center.X - size / 2, this.Cropper.Bounds.Y + 30, size, size), new Rectangle(0, 0, this.PreviewObjects.Width / 2, this.PreviewObjects.Height), Color.White);
                 }
-                Gfx.TextCentered(b, "Made from the harvest icon", new Rectangle(this.Cropper.Bounds.X, this.Cropper.Bounds.Bottom - 70, this.Cropper.Bounds.Width, 40), Color.LightGray);
+                Gfx.TextCentered(b, string.IsNullOrWhiteSpace(this.Crop.PacketBase) ? "The game's packet with the harvest icon" : "Your packet with the harvest icon", new Rectangle(this.Cropper.Bounds.X, this.Cropper.Bounds.Bottom - 70, this.Cropper.Bounds.Width, 40), Color.LightGray);
             }
 
             foreach ((Rectangle row, string label) in this.Labels)
@@ -395,6 +400,14 @@ namespace CustomCrops.UI
         {
             this.FitButton.Visible = this.Cropper.Visible && this.Cropper.Image != null && !(this.EditingSeed && this.Crop.SeedImage != null);
             this.AutoPacketButton.Visible = this.EditingSeed && this.Crop.SeedImage != null;
+            bool autoPacket = this.EditingSeed && this.Crop.SeedImage == null;
+            this.GamePacketButton.Visible = autoPacket && this.GameChange == null && !string.IsNullOrWhiteSpace(this.Crop.PacketBase);
+            this.LockShapeBox.Visible = !autoPacket && !(this.EditingSeed && this.Crop.SeedImage != null);
+            this.PaintImageButton.Label = "Paint";
+            this.PaintImageButton.Tooltip = autoPacket
+                ? "Draw the packet behind the harvest icon, starting from the one it has now. The harvest icon stays on its front."
+                : "Draw it here in the game, starting from how it looks now.";
+            this.GamePacketButton.Bounds = new Rectangle(this.ChooseImageButton.Bounds.Right + 10, this.ChooseImageButton.Bounds.Y, 200, this.ChooseImageButton.Bounds.Height);
             this.ChooseImageButton.Label = this.EditedImage == null ? "Choose image" : "Change image";
             this.ExportTemplateButton.Enabled = string.IsNullOrEmpty(this.Crop.GrowthSheet) && this.LookCycler.Value.Length > 0;
             this.ChooseSheetButton.Label = string.IsNullOrEmpty(this.Crop.GrowthSheet) ? "Choose growth sheet" : "Change growth sheet";
@@ -471,6 +484,57 @@ namespace CustomCrops.UI
                 this.ArtDirty = true;
                 this.SyncImage();
             }, this.Store.BrowserPlaces));
+        }
+
+        /// <summary>Paint what the image area shows: the harvest icon, your own seed packet, or the packet behind the harvest icon.</summary>
+        private void PaintImage()
+        {
+            int scale = CropStore.GetScale(this.Crop.Resolution);
+            int size = 16 * scale;
+            bool autoPacket = this.EditingSeed && this.Crop.SeedImage == null;
+            Pixels start;
+            string what;
+            if (autoPacket)
+            {
+                what = "seed packet";
+                Pixels? own = !string.IsNullOrWhiteSpace(this.Crop.PacketBase) ? this.GetImage(this.Crop.PacketBase) : null;
+                start = own != null ? ImageProcessor.Resize(own, null, size, size) : CropStore.GamePacket(scale);
+            }
+            else
+            {
+                // the icon as it's drawn now, at the detail chosen: seed packet on the left of the rendered pair, harvest on the right
+                what = this.EditingSeed ? "seed image" : "harvest";
+                CropStore.RenderedCrop rendered = this.Store.Render(this.Crop, out _);
+                Pixels pair = new(ImageProcessor.Unpremultiply(rendered.ObjectsHd.Data), rendered.ObjectsHd.Width, rendered.ObjectsHd.Height);
+                int half = pair.Width / 2;
+                Color[] data = new Color[half * pair.Height];
+                for (int y = 0; y < pair.Height; y++)
+                    Array.Copy(pair.Data, y * pair.Width + (this.EditingSeed ? 0 : half), data, y * half, half);
+                start = new Pixels(data, half, pair.Height);
+            }
+
+            bool seed = this.EditingSeed;
+            this.Root.Push(new PaintScreen(start, $"Paint the {what} of '{this.Crop.Name}'", pixels =>
+            {
+                try
+                {
+                    string file = CustomContent.SaveImage(this.Store.ImageFolder, $"{this.Crop.Name} {what}", pixels);
+                    this.Images.Remove(file);
+                    if (autoPacket)
+                        this.Crop.PacketBase = file;
+                    else if (seed)
+                        this.Crop.SeedImage = new ImageRef { File = file };
+                    else
+                        this.Crop.HarvestImage = new ImageRef { File = file };
+                    this.ArtDirty = true;
+                    this.Message = null;
+                    this.SyncImage();
+                }
+                catch (Exception ex)
+                {
+                    this.ShowError($"Couldn't save the picture: {ex.Message}");
+                }
+            }));
         }
 
         /// <summary>Let go of the growth sheet the painter was open on, so another player can change it.</summary>

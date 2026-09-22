@@ -116,7 +116,7 @@ namespace CustomCrops
         {
             List<string?> files = new() { Path.Combine(this.ContentFolder, DataFileName) };
             foreach (CustomCrop crop in this.File.Crops)
-                files.AddRange(new[] { crop.HarvestImage?.File, crop.SeedImage?.File, crop.GrowthSheet }.Select(this.ResolveImage));
+                files.AddRange(new[] { crop.HarvestImage?.File, crop.SeedImage?.File, crop.PacketBase, crop.GrowthSheet }.Select(this.ResolveImage));
             foreach (GameCropChange change in this.File.GameChanges)
                 files.AddRange(new[] { change.HarvestImage?.File, change.GrowthSheet }.Select(this.ResolveImage));
             return files.OfType<string>();
@@ -257,7 +257,10 @@ namespace CustomCrops
             result.Color = ColorTags.IsKnown(crop.Color) ? crop.Color : ColorTags.Of(harvest);
 
             // seed icon
-            Pixels seed = this.LoadSquare(crop.SeedImage, 16 * scale) ?? MakePacket(harvest, scale);
+            Pixels? packet = this.LoadSquare(string.IsNullOrWhiteSpace(crop.PacketBase) ? null : new ImageRef { File = crop.PacketBase }, 16 * scale);
+            if (packet == null && !string.IsNullOrWhiteSpace(crop.PacketBase))
+                warning = $"seed packet image '{crop.PacketBase}' not found.";
+            Pixels seed = this.LoadSquare(crop.SeedImage, 16 * scale) ?? MakePacket(harvest, scale, packet);
 
             Pixels objects = SideBySide(seed, harvest);
             result.ObjectsHd = new Pixels(ImageProcessor.Premultiply(objects.Data), objects.Width, objects.Height);
@@ -487,6 +490,8 @@ namespace CustomCrops
                 crop.SeedImage.File = this.TakeImage(crop.SeedImage.File, files);
             string sheet = this.TakeImage(crop.GrowthSheet, files);
             crop.GrowthSheet = sheet.Length > 0 ? sheet : null; // no sheet means the plant copies a game crop instead
+            string packet = this.TakeImage(crop.PacketBase, files);
+            crop.PacketBase = packet.Length > 0 ? packet : null; // no packet means the game's
 
             CropsFile file = this.ReadFile();
             int index = file.Crops.FindIndex(c => string.Equals(c.Id, itemId, StringComparison.OrdinalIgnoreCase));
@@ -836,8 +841,8 @@ namespace CustomCrops
             return new Pixels(data, source.Width, source.Height);
         }
 
-        /// <summary>Make a seed packet from the vanilla parsnip packet with the harvest icon on it.</summary>
-        private static Pixels MakePacket(Pixels harvest, int scale)
+        /// <summary>The game's own empty seed packet (the parsnip packet, straight alpha), enlarged with sharp pixels, to paint over.</summary>
+        public static Pixels GamePacket(int scale)
         {
             int size = 16 * scale;
             Color[] result = new Color[size * size];
@@ -854,6 +859,17 @@ namespace CustomCrops
                             result[y * size + x] = base16[(y / scale) * 16 + x / scale];
                 }
             }
+            return new Pixels(result, size, size);
+        }
+
+        /// <summary>Make a seed packet: a packet (the game's parsnip packet, or your own) with the harvest icon on its front.</summary>
+        /// <param name="harvest">The harvest icon.</param>
+        /// <param name="scale">The resolution multiplier.</param>
+        /// <param name="packet">Your own packet, 16x16 times <paramref name="scale"/>, or null for the game's.</param>
+        private static Pixels MakePacket(Pixels harvest, int scale, Pixels? packet)
+        {
+            int size = 16 * scale;
+            Color[] result = (Color[])(packet ?? GamePacket(scale)).Data.Clone();
 
             // harvest icon on the packet front
             int iconSize = 9 * scale, ox = 4 * scale, oy = 5 * scale;

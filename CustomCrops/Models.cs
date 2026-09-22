@@ -90,6 +90,12 @@ namespace CustomCrops
         /// <summary>The seed packet image and square crop, or null to make one from the harvest icon.</summary>
         public ImageRef? SeedImage { get; set; }
 
+        /// <summary>
+        /// The packet behind the harvest icon when the seed packet is made automatically, or null for the game's own packet.
+        /// Any square image; the harvest icon is put on its front.
+        /// </summary>
+        public string? PacketBase { get; set; }
+
         /// <summary>The growth sheet image (8 frames of 16x32 in a row, or a whole-number multiple), or null to copy <see cref="LooksLike"/>.</summary>
         public string? GrowthSheet { get; set; }
 

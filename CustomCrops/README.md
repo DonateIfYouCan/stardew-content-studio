@@ -31,7 +31,7 @@ All images in the screenshots are made for the demo.
 ## Features
 
 - Editor section **Crops** (press `K`): make a crop in a few clicks.
-  - **Harvest icon** from any image (with crop tool); **seed packet** made automatically from it, or your own image.
+  - **Harvest icon** from any image (with crop tool); **seed packet** made automatically from it (the game's packet, or one you paint, with the harvest icon on its front), or your own image. **Paint** works on each of them.
   - **Growing plant**: looks like any game crop (frames are rearranged to fit your number of growth stages), or your own
     growth sheet (8 frames of 16x32, or a whole-number multiple for HD). **Export template** saves a game crop's sheet to paint over.
   - Seasons, days per growth stage, regrowing, trellis, scythe, harvest amount.
