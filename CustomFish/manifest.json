@@ -1,7 +1,7 @@
 {
   "Name": "Content Studio: Fish",
   "Author": "DonateIfYouCan",
-  "Version": "0.3.4",
+  "Version": "0.4.0",
   "Description": "Add your own fish with an in-game editor: where and when they bite, the fishing minigame, crab pots, fish tanks, fish ponds and gifts; new art for the game's fish, or stop them biting.",
   "UniqueID": "DonateIfYouCan.CustomFish",
   "EntryDll": "CustomFish.dll",
@@ -9,7 +9,7 @@
   "Dependencies": [
     {
       "UniqueID": "DonateIfYouCan.CustomContentCore",
-      "MinimumVersion": "0.3.4"
+      "MinimumVersion": "0.4.0"
     }
   ],
   "UpdateKeys": [

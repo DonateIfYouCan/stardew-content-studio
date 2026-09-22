@@ -28,6 +28,7 @@ namespace CustomFish.UI
         private readonly Button GameArtButton;
         private readonly Button GameHideButton;
         private readonly Button GameRestoreButton;
+        private readonly Button GameCopyButton;
         private readonly Button CloseButton;
         private readonly Dictionary<string, Texture2D> Icons = new();
 
@@ -65,6 +66,7 @@ namespace CustomFish.UI
             this.GameArtButton = this.Add(new Button("New art", this.EditGameArt));
             this.GameHideButton = this.Add(new Button("Stop it biting", this.ToggleGameHidden));
             this.GameRestoreButton = this.Add(new Button("Put the game's art back", this.RestoreGameArt));
+            this.GameCopyButton = this.Add(new Button("Make my own copy", this.CopyGameFish, "Start a fish of your own from this one: its picture, where and when it bites, and the rest, all yours to change. The game's fish stays as it is."));
             this.CloseButton = this.Add(new Button("Close", () => this.Root.Pop()));
             this.Refresh();
         }
@@ -131,6 +133,7 @@ namespace CustomFish.UI
                 button.Bounds = new Rectangle(bx, by, sideW, 56);
                 by += 64;
             }
+            this.GameCopyButton.Bounds = new Rectangle(bx, this.List.Bounds.Bottom - 56, sideW, 56); // apart from the buttons that change the game's fish
             this.SyncButtons(); // the give button moves with the tab
             this.CloseButton.Bounds = new Rectangle(area.Right - pad - 180, area.Bottom - 84, 180, 60);
         }
@@ -298,6 +301,7 @@ namespace CustomFish.UI
             this.GameHideButton.Visible = game != null;
             this.GameHideButton.Label = hidden ? "Let it bite again" : "Stop it biting";
             this.GameRestoreButton.Visible = replaced;
+            this.GameCopyButton.Visible = game != null; // adding a fish of your own needs nobody's say-so, so it's never greyed out
 
             // on the game's list the give button goes under whichever of that list's buttons are showing, not over one
             this.GiveButton.Bounds = this.ShowGame
@@ -414,6 +418,26 @@ namespace CustomFish.UI
                 GameFishChange change = CopyOf(this.Store.GetGameChange(fish.Id)) ?? new GameFishChange { Target = fish.Id };
                 this.Root.Push(new FishEditorScreen(this.Store, change, saved => this.ShowMessage($"Saved new art for the game's {saved}.")));
             });
+        }
+
+        /// <summary>Open the editor on a new fish of your own that starts as a copy of the selected game fish.</summary>
+        private void CopyGameFish()
+        {
+            if (this.GameList.Selected is not { } fish)
+                return;
+            try
+            {
+                if (this.Store.CopyOfGameFish(fish.Id) is not { } copy)
+                {
+                    this.ShowMessage($"Couldn't read the game's {fish.Name}.", error: true);
+                    return;
+                }
+                this.Root.Push(new FishEditorScreen(this.Store, copy, isNew: true, name => { this.SwitchTab(false); this.ShowMessage($"Saved '{name}'."); }));
+            }
+            catch (Exception ex)
+            {
+                this.ShowMessage($"Couldn't copy it: {ex.Message}", error: true);
+            }
         }
 
         /// <summary>Stop the selected game fish being caught, or let it be caught again.</summary>

@@ -271,6 +271,50 @@ namespace CustomFish
             return result.OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase).ToList();
         }
 
+        /// <summary>A fish of your own that starts as a copy of one of the game's: its catching data, places, seasons, price, tank and pond, and its picture saved as your own image.</summary>
+        /// <param name="itemId">The game fish's item ID.</param>
+        /// <returns>The new fish, not saved yet, or null if there's no such game fish.</returns>
+        /// <remarks>Read from the game's own data, so a game fish you changed or hid is copied as the game has it.</remarks>
+        public CustomFishItem? CopyOfGameFish(string itemId)
+        {
+            if (ItemRegistry.GetData("(O)" + itemId) is not { } data || OriginalContent.LoadData<Dictionary<string, string>>("Data/Fish")?.GetValueOrDefault(itemId) is not { } entry)
+                return null;
+
+            CustomFishItem fish = new() { Name = $"{data.DisplayName} copy", Description = data.Description ?? "" };
+            FishData.ReadEntry(entry, fish);
+
+            if (OriginalContent.LoadData<Dictionary<string, ObjectData>>("Data/Objects")?.GetValueOrDefault(itemId) is { } objectData)
+            {
+                fish.Price = objectData.Price;
+                fish.Energy = objectData.Edibility > 0 ? (int)Math.Round(objectData.Edibility * 2.5) : 0;
+                fish.RoeColor = objectData.ContextTags?.Select(t => t.StartsWith("color_") ? t["color_".Length..] : null).FirstOrDefault(c => c != null && FishData.Colors.Any(k => k.Name == c)) ?? "";
+            }
+
+            // where and when it bites, from the game's spawns (a crab pot fish has none: crab pots go by water)
+            if (fish.Method == FishData.Rod && OriginalContent.LoadData<Dictionary<string, LocationData>>("Data/Locations") is { } locations)
+            {
+                var spawns = locations
+                    .SelectMany(loc => (loc.Value.Fish ?? new()).Where(s => s.ItemId == "(O)" + itemId || s.ItemId == itemId)
+                    .Select(s => (Location: loc.Key, Area: (string?)s.FishAreaId, Season: s.Season?.ToString())))
+                    .ToList();
+                (fish.Locations, fish.Seasons) = FishData.ReadSpawns(spawns);
+            }
+            if (fish.Seasons.Count == 0)
+                fish.Seasons = new List<string> { "spring", "summer", "fall", "winter" };
+
+            string? aquarium = OriginalContent.LoadData<Dictionary<string, string>>("Data/AquariumFish")?.GetValueOrDefault(itemId);
+            fish.InAquarium = aquarium != null;
+            string style = aquarium?.Split('/').ElementAtOrDefault(1) ?? "fish";
+            fish.SwimStyle = style switch { "front_crawl" => "crawl", "static" or "cephalopod" => "float", _ when FishData.SwimStyles.Contains(style) => style, _ => "fish" };
+            fish.TankTurn = 45; // the game's fish icons lie diagonally, head up and to the right; turned, they swim level
+            fish.InPond = StardewValley.Buildings.FishPond.GetRawData(itemId) != null;
+
+            // the game's picture as your own image, four times the size with sharp pixels, so it looks the same and can be painted in detail
+            if (GetVanillaIcon(itemId, 4) is { } icon)
+                fish.Image = new ImageRef { File = CustomContent.SaveImage(this.ImageFolder, fish.Name, icon) };
+            return fish;
+        }
+
         /// <summary>A game fish's own icon, straight alpha, enlarged with sharp pixels.</summary>
         public static Pixels? GetVanillaIcon(string itemId, int scale)
         {

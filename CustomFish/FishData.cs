@@ -159,6 +159,69 @@ namespace CustomFish
             return result;
         }
 
+        /// <summary>Fill in how a fish is caught from one of the game's <c>Data/Fish</c> entries, the reverse of <see cref="RodEntry"/> and <see cref="TrapEntry"/>.</summary>
+        /// <param name="entry">The game's entry.</param>
+        /// <param name="fish">The fish to fill in.</param>
+        public static void ReadEntry(string entry, CustomFishItem fish)
+        {
+            string[] f = entry.Split('/');
+            int Int(int index, int fallback) => index < f.Length && int.TryParse(f[index], NumberStyles.Integer, CultureInfo.InvariantCulture, out int v) ? v : fallback;
+            double Dbl(int index, double fallback) => index < f.Length && double.TryParse(f[index], NumberStyles.Float, CultureInfo.InvariantCulture, out double v) ? v : fallback;
+
+            if (f.Length > 1 && f[1] == "trap")
+            {
+                fish.Method = CrabPot;
+                fish.BiteChance = Math.Clamp(Dbl(2, 0.1), 0.01, 1);
+                fish.WaterType = f.Length > 4 && f[4].Contains("ocean") ? "ocean" : "freshwater";
+                fish.MinSize = Int(5, 1);
+                fish.MaxSize = Math.Max(fish.MinSize, Int(6, fish.MinSize));
+                return;
+            }
+
+            fish.Method = Rod;
+            fish.Difficulty = Math.Clamp(Int(1, 40), 0, 150);
+            fish.Behavior = f.Length > 2 && Behaviors.Contains(f[2]) ? f[2] : "mixed";
+            fish.MinSize = Int(3, 1);
+            fish.MaxSize = Math.Max(fish.MinSize, Int(4, fish.MinSize));
+            string[] times = f.Length > 5 ? f[5].Split(' ', StringSplitOptions.RemoveEmptyEntries) : Array.Empty<string>();
+            // the game can give several spans, like "1600 2600 600 800"; one span from the earliest start to the latest end covers them all
+            List<(int Start, int End)> spans = new();
+            for (int i = 0; i + 1 < times.Length; i += 2)
+                if (int.TryParse(times[i], out int start) && int.TryParse(times[i + 1], out int end))
+                    spans.Add((start, end));
+            if (spans.Count > 0)
+            {
+                fish.StartTime = ClampTime(spans.Min(s => s.Start));
+                fish.EndTime = ClampTime(spans.Max(s => s.End));
+            }
+            fish.Weather = f.Length > 7 && f[7] is "sunny" or "rainy" ? f[7] : "both";
+            fish.BiteChance = Math.Clamp(Dbl(10, 0.4), 0.01, 1);
+            fish.MinFishingLevel = Math.Clamp(Int(12, 0), 0, 10);
+        }
+
+        /// <summary>Which of the editor's places and seasons a game fish's spawns amount to.</summary>
+        /// <param name="spawns">Where the game has it: the location, its fishing area (null for all of it), and the season (null for all year).</param>
+        /// <returns>The place keys, in the editor's order, and the seasons (empty for all year).</returns>
+        /// <remarks>A place counts if the fish bites in any of its spots; a spawn for a whole location counts for every area of it.</remarks>
+        public static (List<string> Places, List<string> Seasons) ReadSpawns(IEnumerable<(string Location, string? Area, string? Season)> spawns)
+        {
+            List<(string Location, string? Area, string? Season)> all = spawns.ToList();
+            static bool InSpot((string Location, string? Area, string? Season) s, (string Location, string? Area) spot) => s.Location == spot.Location && (s.Area == null || spot.Area == null || s.Area == spot.Area);
+            List<string> places = Places
+                .Where(place => place.Spots.Any(spot => all.Any(s => InSpot(s, spot))))
+                .Select(place => place.Key)
+                .ToList();
+
+            // only the spawns in those places say when it bites: a farm borrowing it, or a festival, isn't one of them
+            List<(string Location, string? Area, string? Season)> list = all.Where(s => Places.Any(p => p.Spots.Any(spot => InSpot(s, spot)))).ToList();
+
+            string[] order = { "spring", "summer", "fall", "winter" };
+            List<string> seasons = list.Count == 0 || list.Any(s => s.Season == null)
+                ? new List<string>()
+                : order.Where(season => list.Any(s => string.Equals(s.Season, season, StringComparison.OrdinalIgnoreCase))).ToList();
+            return (places, seasons);
+        }
+
         /// <summary>Put an item in one villager's gift tastes, taking it out of whichever list it was in before.</summary>
         /// <param name="entry">The villager's <c>Data/NPCGiftTastes</c> entry: love text / loved IDs / like text / liked IDs / dislike text / disliked IDs / hate text / hated IDs / neutral text / neutral IDs.</param>
         /// <param name="itemId">The item's ID as the game writes it there.</param>

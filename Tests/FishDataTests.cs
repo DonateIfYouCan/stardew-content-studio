@@ -191,5 +191,50 @@ namespace Tests
             int visible = diagonal.Data.Take(24 * 24).Count(c => c.A > 0);
             Assert.InRange(visible, 16 * 16 - 24, 16 * 16 + 24); // about the whole icon, nothing cut off
         }
+
+        [Fact]
+        public void TheGamesRodFishIsReadBack()
+        {
+            CustomFishItem fish = new();
+            FishData.ReadEntry("Pufferfish/80/floater/1/36/1200 1600/summer/sunny/690 .4 685 .1/4/.3/.5/0/true", fish);
+            Assert.Equal((FishData.Rod, 80, "floater", 1, 36, 1200, 1600, "sunny", 0.3, 0), (fish.Method, fish.Difficulty, fish.Behavior, fish.MinSize, fish.MaxSize, fish.StartTime, fish.EndTime, fish.Weather, fish.BiteChance, fish.MinFishingLevel));
+
+            // and written out again it's the game's entry, apart from the fields the game no longer reads
+            string[] again = FishData.RodEntry("Pufferfish", fish).Split('/');
+            Assert.Equal(new[] { "Pufferfish", "80", "floater", "1", "36", "1200 1600" }, again.Take(6));
+            Assert.Equal("sunny", again[7]);
+        }
+
+        [Fact]
+        public void SeveralTimeSpansBecomeOne()
+        {
+            CustomFishItem fish = new();
+            FishData.ReadEntry("Catfish/75/mixed/12/73/600 2400/spring fall/rainy/689 .4 680 .1/4/.4/.4/3/false", fish);
+            Assert.Equal((600, 2400, 3), (fish.StartTime, fish.EndTime, fish.MinFishingLevel));
+            FishData.ReadEntry("Eel/70/smooth/12/80/1600 2600 600 800/spring fall/rainy/-1/4/.35/.1/3/false", fish);
+            Assert.Equal((600, 2600), (fish.StartTime, fish.EndTime)); // the widest span, never one that ends before it starts
+        }
+
+        [Fact]
+        public void TheGamesCrabPotFishIsReadBack()
+        {
+            CustomFishItem fish = new();
+            FishData.ReadEntry("Lobster/trap/.05/688 .45 689 .35 690 .35/ocean/2/20/false", fish);
+            Assert.Equal((FishData.CrabPot, 0.05, "ocean", 2, 20), (fish.Method, fish.BiteChance, fish.WaterType, fish.MinSize, fish.MaxSize));
+        }
+
+        [Fact]
+        public void SpawnsBecomeTheEditorsPlaces()
+        {
+            // the game's spawns for a river fish in town and the forest river, in two seasons
+            var (places, seasons) = FishData.ReadSpawns(new (string, string?, string?)[] { ("Town", null, "Summer"), ("Forest", "River", "Fall"), ("Farm_Riverland", null, null) });
+            Assert.Equal(new[] { "Town:River", "Forest:River" }, places); // a farm isn't a place of its own: it borrows from these
+            Assert.Equal(new[] { "summer", "fall" }, seasons);
+
+            // a spawn for the whole forest counts for its river and its pond; a spawn with no season means all year
+            (places, seasons) = FishData.ReadSpawns(new (string, string?, string?)[] { ("Forest", null, null), ("IslandWest", "Ocean", "Winter") });
+            Assert.Equal(new[] { "Forest:River", "Forest:Lake", "Island:Ocean" }, places);
+            Assert.Empty(seasons);
+        }
     }
 }
