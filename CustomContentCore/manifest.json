@@ -1,7 +1,7 @@
 {
   "Name": "Content Studio: Core",
   "Author": "DonateIfYouCan",
-  "Version": "0.3.2",
+  "Version": "0.3.3",
   "Description": "Shared in-game editor, file browser, image tools and HD drawing used by the Content Studio mods.",
   "UniqueID": "DonateIfYouCan.CustomContentCore",
   "EntryDll": "CustomContentCore.dll",

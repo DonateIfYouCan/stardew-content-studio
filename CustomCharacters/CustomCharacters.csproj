@@ -4,7 +4,7 @@
     <EnableHarmony>true</EnableHarmony>
     <AssemblyName>CustomCharacters</AssemblyName>
     <RootNamespace>CustomCharacters</RootNamespace>
-    <Version>0.3.2</Version>
+    <Version>0.3.3</Version>
     <TargetFramework>net6.0</TargetFramework>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>

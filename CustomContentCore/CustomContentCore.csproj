@@ -3,7 +3,7 @@
   <PropertyGroup>
     <AssemblyName>CustomContentCore</AssemblyName>
     <RootNamespace>CustomContentCore</RootNamespace>
-    <Version>0.3.2</Version>
+    <Version>0.3.3</Version>
     <TargetFramework>net6.0</TargetFramework>
     <LangVersion>latest</LangVersion>
     <EnableHarmony>true</EnableHarmony>
