@@ -24,6 +24,12 @@ namespace CustomMining
         /// <summary>The game's own rocks the mines no longer put out.</summary>
         private static HashSet<string> Hidden = new(StringComparer.OrdinalIgnoreCase);
 
+        /// <summary>Whether the game really has an item, so a rock standing in for a hidden one is never an Error Item.</summary>
+        internal static bool Exists(string itemId) => ItemRegistry.GetData("(O)" + itemId) != null;
+
+        /// <summary>Whether a rock is one the player stopped turning up.</summary>
+        internal static bool IsHidden(string itemId) => Hidden.Contains(itemId);
+
         public static void Apply(Harmony harmony, IMonitor monitor)
         {
             Monitor = monitor;
@@ -70,7 +76,7 @@ namespace CustomMining
 
                 // one the player stopped turning up: a plain rock of that part of the mines stands in for it, so the level
                 // still has something to break there (and its ladder still has somewhere to come from)
-                if (Hidden.Contains(__result.ItemId) && RockData.PlainRockFor(__instance.mineLevel, Hidden.Contains) is { } plain)
+                if (Hidden.Contains(__result.ItemId) && RockData.PlainRockFor(__instance.mineLevel, Hidden.Contains, Exists) is { } plain)
                     __result = new Object(plain, 1) { MinutesUntilReady = 1 };
 
                 Random random = Utility.CreateDaySaveRandom(tile.X * 2000, tile.Y * 77, __instance.mineLevel * 13);
@@ -107,7 +113,7 @@ namespace CustomMining
                     return;
 
                 // one the player stopped turning up: a plain volcano rock stands in, as in the mines
-                if (Hidden.Contains(__result.ItemId) && RockData.PlainRockForArea(RockData.VolcanoKey, Hidden.Contains) is { } plain)
+                if (Hidden.Contains(__result.ItemId) && RockData.PlainRockForArea(RockData.VolcanoKey, Hidden.Contains, Exists) is { } plain)
                     __result = new Object(plain, 1) { MinutesUntilReady = 6 };
 
                 Random random = Utility.CreateDaySaveRandom(tile.X * 2000, tile.Y * 77, __instance.level.Value * 31 + 5);

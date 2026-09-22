@@ -39,7 +39,7 @@ namespace CustomMining
         public static int PlaceThisMorning(MiningStore store, IEnumerable<CustomRock> rocks, IMonitor monitor)
         {
             List<(string ItemId, CustomRock Rock)> mine = rocks.Select(rock => (store.GetRockItemId(rock.Id), rock)).ToList();
-            if (mine.Count == 0)
+            if (mine.Count == 0 && !AnyHidden())
             {
                 RememberTonight(); // nothing of yours to put out, but keep a fresh note for later
                 return 0;
@@ -59,7 +59,7 @@ namespace CustomMining
                         .Select(entry => (entry.ItemId, entry.Rock, RockData.ChanceOutdoors(entry.Rock, location.Name, season)))
                         .Where(entry => entry.Item3 > 0)
                         .ToList();
-                    if (here.Count == 0)
+                    if (here.Count == 0 && !AnyHidden())
                         continue;
 
                     foreach (Vector2 tile in location.objects.Keys.ToArray())
@@ -68,6 +68,16 @@ namespace CustomMining
                             continue;
                         if (mine.Any(entry => entry.ItemId == spawned.ItemId))
                             continue; // already one of yours
+
+                        // one of the game's the player stopped turning up: a plain rock stands in, as it does in the caves
+                        if (RockPatches.IsHidden(spawned.ItemId))
+                        {
+                            if (RockData.OutdoorPlainRocks.FirstOrDefault(id => !RockPatches.IsHidden(id) && RockPatches.Exists(id)) is { } plain)
+                            {
+                                location.objects[tile] = new Object(plain, 1) { MinutesUntilReady = 1 };
+                                continue;
+                            }
+                        }
 
                         // only the host wakes a place up, and what it puts out is sent to the others, so there's nothing to keep in step here
                         double roll = Game1.random.NextDouble();
@@ -92,6 +102,9 @@ namespace CustomMining
             RememberTonight(); // what's there now is the ground the next morning is measured against
             return placed;
         }
+
+        /// <summary>Whether any of the game's rocks were stopped from turning up, which is worth a look even with no rocks of your own.</summary>
+        private static bool AnyHidden() => RockData.GameRocks.Any(rock => RockPatches.IsHidden(rock.Id));
 
         /// <summary>The places rocks can turn up above ground: the game's outdoor maps, including the farm.</summary>
         private static IEnumerable<GameLocation> OutdoorPlaces()

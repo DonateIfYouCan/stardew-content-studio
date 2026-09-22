@@ -49,7 +49,27 @@ namespace CustomMining
             new("lava", "The lava floors (80-119)", 80, 119),
             new("skull", "Skull Cavern (121+)", 121, int.MaxValue - 1),
             new("quarrymine", "The Quarry Mine", QuarryMineLevel, QuarryMineLevel),
-            new(VolcanoKey, "The volcano (Ginger Island)", int.MaxValue, int.MaxValue)
+            new(VolcanoKey, "The volcano", int.MaxValue, int.MaxValue)
+        };
+
+        /// <summary>A stretch of item IDs the game fills a place's plain rocks from.</summary>
+        /// <remarks>
+        /// The game picks these by rolling a number in a range, but only some of the numbers in that range are really in its
+        /// data, so which ones exist has to come from the data (see the store's list of the game's rocks).
+        /// </remarks>
+        internal sealed record PlainRange(int First, int Last, string Stem, string Group, string Area);
+
+        /// <summary>The stretches of IDs the game's plain rocks come from.</summary>
+        public static readonly PlainRange[] PlainRanges =
+        {
+            new(31, 42, "Mine rock", "The mines' rocks", "mines"),
+            new(47, 54, "Frozen rock", "The frozen floors' rocks", "frost"),
+            new(55, 58, "Lava rock", "The lava floors' rocks", "lava"),
+            new(760, 762, "Deep lava rock", "The lava floors' rocks", "lava"),
+            new(845, 847, "Dark rock", "The dark floors' rocks", VolcanoKey),
+            new(668, 670, "Quarry rock", "The dark floors' rocks", ""),
+            new(343, 343, "Outdoor rock", "Rocks above ground", ""),
+            new(450, 450, "Outdoor rock, small", "Rocks above ground", "")
         };
 
         /// <summary>
@@ -103,43 +123,62 @@ namespace CustomMining
             };
 
             // the plain rocks, which the game only tells apart by number
-            AddPlain(rocks, "Mine rock", "The mines' rocks", "mines", 31, 41);
-            AddPlain(rocks, "Frozen rock", "The frozen floors' rocks", "frost", 47, 53);
-            AddPlain(rocks, "Lava rock", "The lava floors' rocks", "lava", 55, 57);
-            rocks.Add(new GameRock("760", "Lava rock 4", "The lava floors' rocks", "lava"));
-            rocks.Add(new GameRock("762", "Lava rock 5", "The lava floors' rocks", "lava"));
-            AddPlain(rocks, "Dark rock", "The dark floors' rocks", VolcanoKey, 845, 847);
-            rocks.Add(new GameRock("668", "Quarry rock", "The dark floors' rocks"));
-            rocks.Add(new GameRock("670", "Quarry rock 2", "The dark floors' rocks"));
+            foreach (PlainRange range in PlainRanges)
+            {
+                int n = 1;
+                for (int id = range.First; id <= range.Last; id++)
+                    rocks.Add(new GameRock(id.ToString(), range.First == range.Last ? range.Stem : $"{range.Stem} {n++}", range.Group, range.Area));
+            }
             return rocks.ToArray();
         }
 
-        private static void AddPlain(List<GameRock> rocks, string label, string group, string area, int first, int last)
+        /// <summary>The stretch one of the game's plain rocks belongs to, or null for one this mod doesn't place in a group.</summary>
+        public static PlainRange? PlainRangeOf(string itemId)
         {
-            for (int id = first; id <= last; id++)
-                rocks.Add(new GameRock(id.ToString(), $"{label} {id - first + 1}", group, area));
+            return int.TryParse(itemId, out int id)
+                ? PlainRanges.FirstOrDefault(range => id >= range.First && id <= range.Last)
+                : null;
         }
 
         /// <summary>The plain rock a hidden one is swapped for, so the level still has something to mine there.</summary>
         /// <param name="mineLevel">The mine level being filled.</param>
         /// <param name="isHidden">Whether a rock is one the player stopped turning up.</param>
         /// <returns>The game's item ID for a plain rock that's still turning up, or null if every one of them is hidden.</returns>
-        public static string? PlainRockFor(int mineLevel, Func<string, bool> isHidden)
+        public static string? PlainRockFor(int mineLevel, Func<string, bool> isHidden, Func<string, bool>? exists = null)
         {
-            return PlainRockForArea(AreaOf(mineLevel)?.Key ?? "mines", isHidden);
+            return PlainRockForArea(AreaOf(mineLevel)?.Key ?? "mines", isHidden, exists);
         }
 
         /// <summary>The plain rock a hidden one is swapped for in a cave.</summary>
         /// <param name="area">The cave (see <see cref="Areas"/>).</param>
         /// <param name="isHidden">Whether a rock is one the player stopped turning up.</param>
         /// <returns>The game's item ID for a plain rock that's still turning up, or null if every one of them is hidden.</returns>
-        public static string? PlainRockForArea(string area, Func<string, bool> isHidden)
+        public static string? PlainRockForArea(string area, Func<string, bool> isHidden, Func<string, bool>? exists = null)
         {
             if (area is "quarrymine" or "skull")
                 area = "mines"; // neither has rocks of its own in the list; they're filled with the mines' own
-            IEnumerable<GameRock> plain = GameRocks.Where(rock => rock.Group.EndsWith("rocks"));
-            return plain.FirstOrDefault(rock => rock.Area == area && !isHidden(rock.Id))?.Id
-                ?? plain.FirstOrDefault(rock => !isHidden(rock.Id))?.Id;
+            exists ??= _ => true;
+            IEnumerable<GameRock> plain = GameRocks.Where(rock => rock.Group.EndsWith("rocks") && !isHidden(rock.Id) && exists(rock.Id));
+            return plain.FirstOrDefault(rock => rock.Area == area)?.Id ?? plain.FirstOrDefault()?.Id;
+        }
+
+        /// <summary>The plain rocks the game puts out above ground, which stand in for a hidden one there.</summary>
+        public static readonly string[] OutdoorPlainRocks = { "343", "450" };
+
+        /// <summary>What the editor calls one of the game's rocks, or null for one this mod has no name for.</summary>
+        public static GameRock? Known(string itemId) => GameRocks.FirstOrDefault(rock => rock.Id == itemId);
+
+        /// <summary>The order the editor lists the groups in, so the nodes come before the plain rocks.</summary>
+        public static int GroupOrder(string group)
+        {
+            return group switch
+            {
+                "Ore nodes" => 0,
+                "Gem nodes" => 1,
+                "Geode nodes" => 2,
+                "Other rocks" => 9,
+                _ => 5
+            };
         }
 
         /// <summary>The places above ground the editor offers, by the game's location name.</summary>
@@ -151,7 +190,7 @@ namespace CustomMining
         {
             new("Farm", "Your farm"),
             new("Forest", "Cindersap Forest"),
-            new("Mountain", "The mountain (and the quarry)"),
+            new("Mountain", "The mountain"),
             new("Backwoods", "The backwoods"),
             new("BusStop", "The bus stop"),
             new("Railroad", "The railroad"),

@@ -143,7 +143,7 @@ namespace CustomMining.UI
                 {
                     if (r.Outdoors.ContainsKey(place.Key))
                         r.Outdoors[place.Key] = ReadChance(v);
-                }, "How many of the rocks that turn up there overnight are this one."));
+                }, "How many of the rocks that turn up there overnight are this one. The mountain includes its quarry."));
                 return (box, chance);
             }).ToArray();
             this.SeasonBoxes = RockData.SeasonNames.Select(season => this.On(Page.Where, new Checkbox(char.ToUpper(season[0]) + season[1..], r.Seasons.Count == 0 || r.Seasons.Contains(season, StringComparer.OrdinalIgnoreCase), on =>
@@ -253,12 +253,12 @@ namespace CustomMining.UI
 
             // where: the mines down the left, above ground down the right, seasons under them
             int colW = (rw - 24) / 2;
-            int chanceW = 150;
+            int chanceW = 132;
             y = pageTop + 30;
             this.WhereHeadings = (new Rectangle(rx, pageTop, colW, 28), new Rectangle(rx + colW + 24, pageTop, colW, 28));
             foreach ((Checkbox box, Dropdown chance) in this.AreaRows)
             {
-                box.Bounds = new Rectangle(rx, y, colW - chanceW - 8, 44);
+                box.Bounds = new Rectangle(rx, y, colW - chanceW - 16, 44);
                 chance.Bounds = new Rectangle(rx + colW - chanceW, y, chanceW, 44);
                 y += 52;
             }
@@ -267,14 +267,16 @@ namespace CustomMining.UI
             int outY = pageTop + 30;
             foreach ((Checkbox box, Dropdown chance) in this.OutdoorRows)
             {
-                box.Bounds = new Rectangle(outX, outY, colW - chanceW - 8, 44);
+                box.Bounds = new Rectangle(outX, outY, colW - chanceW - 16, 44);
                 chance.Bounds = new Rectangle(outX + colW - chanceW, outY, chanceW, 44);
                 outY += 52;
             }
+            // the seasons sit under the mines column, two by two: four across would either run into each other or into the
+            // places listed down the right
             this.SeasonsLabel = new Rectangle(rx, seasonsY, colW, 40);
-            int seasonW = (colW - 8) / 4;
+            int seasonW = colW / 2;
             for (int i = 0; i < this.SeasonBoxes.Length; i++)
-                this.SeasonBoxes[i].Bounds = new Rectangle(rx + i * seasonW, seasonsY + 36, seasonW, 44);
+                this.SeasonBoxes[i].Bounds = new Rectangle(rx + (i % 2) * seasonW, seasonsY + 36 + (i / 2) * 48, seasonW, 44);
 
             // what it gives: the list, with the settings for the one picked under it
             int settingsH = 124;

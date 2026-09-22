@@ -310,7 +310,7 @@ namespace CustomMining
         /// <summary>A change to one of the game's rocks as something to draw, so it previews like any other.</summary>
         public CustomMineral AsMineral(GameRockChange change)
         {
-            GameRock? game = RockData.GameRocks.FirstOrDefault(r => r.Id == change.Target);
+            GameRock? game = RockData.Known(change.Target);
             return new CustomMineral
             {
                 Id = change.Target,
@@ -352,6 +352,55 @@ namespace CustomMining
             result.IconLow = Downscale(result.IconHd, 16, 16);
             result.Color = ColorTags.IsKnown(item.Color) ? item.Color : ColorTags.Of(icon);
             return result;
+        }
+
+        /// <summary>
+        /// The game's own rocks, read from its data rather than guessed: anything it counts as a breakable stone, named by
+        /// this mod where it has a name for it.
+        /// </summary>
+        /// <remarks>
+        /// The mine generator picks rocks from number ranges that aren't all filled in - it rolls 31 to 41, but the data
+        /// only holds some of those - so a list built from the ranges alone shows rows with no picture. This asks the data
+        /// which ones are real.
+        /// </remarks>
+        public static List<GameRock> GetVanillaRocks()
+        {
+            Dictionary<string, ObjectData>? objects = OriginalContent.LoadData<Dictionary<string, ObjectData>>("Data/Objects");
+            if (objects == null)
+                return new();
+
+            List<string> ids = new();
+            foreach ((string id, ObjectData data) in objects)
+            {
+                if (data.Category == RockData.StoneCategory && data.Name == RockData.StoneName)
+                    ids.Add(id); // what the game itself checks before letting a pickaxe break something
+            }
+
+            // the plain rocks are numbered over the ones that are really there: the game rolls 31 to 41 but only has some of
+            // those, so numbering by the roll would leave gaps ("Mine rock 2, 4, 6") and rows with no picture
+            Dictionary<string, int> numbered = new();
+            List<GameRock> rocks = new();
+            foreach (string id in ids.OrderBy(id => int.TryParse(id, out int n) ? n : int.MaxValue).ThenBy(id => id, StringComparer.OrdinalIgnoreCase))
+            {
+                if (RockData.Known(id) is { } known && known.Group.EndsWith("nodes"))
+                {
+                    rocks.Add(known);
+                    continue;
+                }
+                if (RockData.PlainRangeOf(id) is { } range)
+                {
+                    numbered[range.Stem] = numbered.GetValueOrDefault(range.Stem) + 1;
+                    rocks.Add(new GameRock(id, range.First == range.Last ? range.Stem : $"{range.Stem} {numbered[range.Stem]}", range.Group, range.Area));
+                    continue;
+                }
+                rocks.Add(RockData.Known(id) ?? new GameRock(id, $"Rock ({id})", "Other rocks"));
+            }
+            return rocks
+                .OrderBy(rock => RockData.GroupOrder(rock.Group))
+                .ThenBy(rock => rock.Group, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(rock => int.TryParse(rock.Id, out int n) ? n : int.MaxValue)
+                .ThenBy(rock => rock.Label, StringComparer.OrdinalIgnoreCase)
+                .ToList();
         }
 
         /// <summary>The game's own minerals, gems and artefacts, by name.</summary>
@@ -596,7 +645,7 @@ namespace CustomMining
         private bool ApplyGameRockJson(string target, string json, IDictionary<string, string> files)
         {
             GameRockChange? change = JsonConvert.DeserializeObject<GameRockChange>(json);
-            if (change == null || string.IsNullOrWhiteSpace(target) || !RockData.GameRocks.Any(r => r.Id == target))
+            if (change == null || string.IsNullOrWhiteSpace(target) || !GetVanillaRocks().Any(r => r.Id == target))
                 return false; // only the game's own
 
             change.Target = target;
@@ -624,7 +673,7 @@ namespace CustomMining
         /// <returns>The new rock, not saved yet, or null if there's no such game rock.</returns>
         public CustomRock? CopyOfGameRock(string itemId)
         {
-            if (RockData.GameRocks.FirstOrDefault(r => r.Id == itemId) is not { } game)
+            if (GetVanillaRocks().FirstOrDefault(r => r.Id == itemId) is not { } game)
                 return null;
 
             CustomRock rock = new() { Name = $"{game.Label} copy" };
@@ -780,7 +829,9 @@ namespace CustomMining
                         Id = itemId,
                         ItemId = "(O)" + itemId,
                         Chance = (float)chance,
-                        Precedence = 0
+                        // the game walks the drops in this order and stops at the first one whose chance comes up, and its
+                        // own list is long, so yours has to be asked first or it's never reached
+                        Precedence = -1
                     });
                 }
             }

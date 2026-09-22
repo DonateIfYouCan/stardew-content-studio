@@ -124,7 +124,7 @@ namespace CustomMining.UI
                 {
                     if (m.Geodes.ContainsKey(geode.Id))
                         m.Geodes[geode.Id] = ReadChance(v);
-                }, "How often a geode of that kind gives this, once it's picked something for you."));
+                }, "How often a geode of that kind gives this instead of one of its usual finds. A geode keeps its own treasure about half the time, so even 100% here is roughly one geode in two."));
                 return (box, chance);
             }).ToArray();
 

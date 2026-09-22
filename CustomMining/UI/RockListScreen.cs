@@ -233,7 +233,7 @@ namespace CustomMining.UI
 
             string? selectedGame = this.GameList.Selected?.Id;
             string search = this.SearchField.Text.Trim();
-            this.GameList.Items = RockData.GameRocks
+            this.GameList.Items = MiningStore.GetVanillaRocks()
                 .Where(rock => search.Length == 0 || rock.Label.Contains(search, StringComparison.OrdinalIgnoreCase) || rock.Group.Contains(search, StringComparison.OrdinalIgnoreCase) || rock.Id == search)
                 .ToList();
             this.GameList.SelectedIndex = this.GameList.Items.FindIndex(rock => rock.Id == selectedGame);
