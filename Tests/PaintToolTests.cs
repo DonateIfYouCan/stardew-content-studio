@@ -364,6 +364,13 @@ namespace Tests
             Assert.Contains(PaintOptions.Blend, PaintOptions.For("Fill", false, Gradients.Straight));
         }
 
+        [Fact]
+        public void TheLayersToolShowsTheLayersAndNothingElse()
+        {
+            Assert.Equal(new[] { PaintOptions.Layers }, PaintOptions.For("Layers", false, Gradients.Off));
+            Assert.DoesNotContain(PaintOptions.Layers, PaintOptions.For("Pencil", false, Gradients.Off)); // other tools keep the column to themselves
+        }
+
         [Theory]
         [InlineData("Picker")]
         [InlineData("ReplaceAll")]

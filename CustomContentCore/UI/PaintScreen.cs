@@ -19,7 +19,7 @@ namespace CustomContentCore.UI
         ** Fields
         *********/
         /// <summary>The tools you can draw with.</summary>
-        private enum Tool { Pencil, Brush, Eraser, Picker, Fill, Line, Rectangle, Ellipse, ReplaceAll, ReplaceBrush, Select, Pan }
+        private enum Tool { Pencil, Brush, Eraser, Picker, Fill, Line, Rectangle, Ellipse, ReplaceAll, ReplaceBrush, Select, Layers, Pan }
 
         /// <summary>Something that changed the image and can be undone.</summary>
         private interface IStroke
@@ -152,7 +152,7 @@ namespace CustomContentCore.UI
             + "Selection: drag a box with the Select tool, then drag inside it to move those pixels. The buttons on the right copy, clear, flip or turn it; with nothing selected, flip and turn work on the whole layer.\n\n"
             + "'Colour' shows the art in a colour without changing it, which helps with sheets like hair that the game colours itself.\n\n"
             + "The colours under the image are the ones this image uses. 'Choose colour' picks any other colour, and those stay in the row while you paint.\n\n"
-            + "Layers (bottom right): paint on a new layer to try something without touching what's below; 'Merge' lays it onto the layer below when you like it. Every tool works on the layer picked in the list, except the eyedropper, which takes the colour you see. Hidden layers aren't saved, and a half-shown layer is saved as it looks. Layers last while this screen is open: saving lays them together into one image.";
+            + "Layers (the Layers tool, key N): paint on a new layer to try something without touching what's below; 'Merge' lays it onto the layer below when you like it. Every tool works on the layer picked in the list, except the eyedropper, which takes the colour you see. Hidden layers aren't saved, and a half-shown layer is saved as it looks. Layers last while this screen is open: saving lays them together into one image.";
 
         /// <summary>How many of the image's colours the palette offers.</summary>
         private const int PaletteSize = 24;
@@ -280,9 +280,6 @@ namespace CustomContentCore.UI
         private readonly Button HideLayerButton;
         private readonly Dropdown OpacityDropdown;
 
-        /// <summary>Where the layers panel goes, and its heading.</summary>
-        private Rectangle LayersArea;
-
         private string? Message;
 
 
@@ -329,6 +326,7 @@ namespace CustomContentCore.UI
                 (Tool.ReplaceAll, "Replace all", "Click a colour to change it everywhere on this layer. Key: A."),
                 (Tool.ReplaceBrush, "Replace drag", "Drag to change only the colour you started on. Key: D."),
                 (Tool.Select, "Select", "Drag a box, then drag inside it to move what's in it. Key: S."),
+                (Tool.Layers, "Layers", "Add, hide, move and merge layers on the right. Clicking the image picks the layer painted there. Key: N."),
                 (Tool.Pan, "Move view", "Drag to move around the image. Key: H. Holding space does this with any tool.")
             })
             {
@@ -475,6 +473,8 @@ namespace CustomContentCore.UI
 
             // tools down the left, under the top bar (which is two rows deep in a narrow window)
             int contentTop = top + (tintFitsOnTop ? 60 : 108);
+            // in a short window the tool buttons get lower rather than running past the bottom
+            toolH = Math.Clamp((bottom - contentTop) / Math.Max(1, this.ToolButtons.Count) - toolGap, 30, 42);
             int ty = contentTop;
             foreach ((_, Button button) in this.ToolButtons)
             {
@@ -493,12 +493,7 @@ namespace CustomContentCore.UI
                 widget.Visible = false;
             this.SizeRow = Rectangle.Empty;
             List<Widget> column = this.ColumnWidgets();
-
-            // the layers panel sits at the bottom of the column: its list (up to four rows before it scrolls) and three rows of buttons
-            int layerRows = Math.Clamp(this.Layers.Layers.Count, 2, 4);
-            int layersH = 30 + layerRows * 32 + 8 + 3 * 42;
-            this.LayersArea = new Rectangle(area.Right - pad - actionW, area.Bottom - 96 - 8 - layersH, actionW, layersH);
-            int columnBottom = this.LayersArea.Y - 12;
+            int columnBottom = area.Bottom - 96 - 8;
             this.ColumnArea = new Rectangle(area.Right - pad - actionW, this.CanvasArea.Y, actionW, columnBottom - this.CanvasArea.Y);
             int step = Math.Clamp((columnBottom - this.CanvasArea.Y - 40 - 34) / Math.Max(7, column.Count), 30, 50);
             int rowH = Math.Max(26, step - 6);
@@ -520,7 +515,8 @@ namespace CustomContentCore.UI
                 ay += step;
             }
 
-            this.LayoutLayers();
+            if (this.Current == Tool.Layers)
+                this.LayoutLayers(); // the whole column, under the tool's name
 
             // the selection buttons share the palette row, so the top row doesn't overflow
             this.ColourButton.Bounds = new Rectangle(this.CanvasArea.X + 52, this.CanvasArea.Bottom + 8, 200, 44);
@@ -558,6 +554,7 @@ namespace CustomContentCore.UI
         private IEnumerable<Widget> AllColumnWidgets => new Widget[]
         {
             this.SpriteButton, this.CopyButton, this.PasteButton, this.ClearButton, this.FlipButton, this.FlipDownButton, this.TurnButton,
+            this.LayerList, this.NewLayerButton, this.CopyLayerButton, this.DeleteLayerButton, this.LayerUpButton, this.LayerDownButton, this.MergeLayerButton, this.HideLayerButton, this.OpacityDropdown,
             this.SizeDownButton, this.SizeField, this.SizeUpButton, this.ShapeCycler, this.PixelPerfectBox, this.FillBox, this.MirrorCycler, this.GradientCycler, this.DirectionDropdown, this.CentreDropdown, this.BlendCycler
         };
 
@@ -591,6 +588,8 @@ namespace CustomContentCore.UI
                         column.Add(this.FlipDownButton);
                         column.Add(this.TurnButton);
                         break;
+                    case PaintOptions.Layers:
+                        break; // laid out on its own (see LayoutLayers): a list that takes the room there is, then its buttons
                 }
             }
             return column;
@@ -612,6 +611,8 @@ namespace CustomContentCore.UI
             if (this.ColumnArea.Width > 0)
             {
                 string toolName = this.ToolButtons.FirstOrDefault(t => t.Tool == this.Current).Button?.Label ?? "";
+                if (this.Layers.Layers.Count > 1 && this.Current is not (Tool.Layers or Tool.Pan))
+                    toolName += $" on {this.Layers.Active.Name}"; // with several layers, say which one the tool paints on
                 Gfx.Text(b, Gfx.Fit(toolName, this.ColumnArea.Width), new Vector2(this.ColumnArea.X, this.ColumnArea.Y));
                 if (!this.SizeRow.IsEmpty && this.SizeField.Visible)
                     Gfx.Text(b, "Size", new Vector2(this.SizeRow.X, this.SizeRow.Y + (this.SizeRow.Height - Gfx.LineHeight) / 2));
@@ -619,8 +620,6 @@ namespace CustomContentCore.UI
                     Gfx.Text(b, Game1.parseText(hint, Gfx.Font, this.ColumnArea.Width), new Vector2(this.ColumnArea.X, this.ColumnArea.Y + 34), Color.DimGray);
             }
             Gfx.Text(b, this.Title, new Vector2(area.X + 36, area.Y + 24), null, Gfx.TitleFont);
-            if (this.LayersArea.Height > 0)
-                Gfx.Text(b, "Layers", new Vector2(this.LayersArea.X, this.LayersArea.Y));
 
             string where = this.Describe(mouseX, mouseY);
             Gfx.Text(b, where, new Vector2(area.Right - 76 - Gfx.Font.MeasureString(where).X, area.Y + 30), Color.DimGray);
@@ -1056,6 +1055,7 @@ namespace CustomContentCore.UI
                     Tool.ReplaceAll => Keys.A,
                     Tool.ReplaceBrush => Keys.D,
                     Tool.Select => Keys.S,
+                    Tool.Layers => Keys.N,
                     _ => Keys.H
                 };
                 Add($"tool.{tool}", button.Label, key, () => this.SetTool(chosen));
@@ -1211,6 +1211,12 @@ namespace CustomContentCore.UI
             // outside; the tools that act on the pixel clicked need it to be on the image
             Point pixel = this.ToCell(x, y);
             bool onImage = this.OnImage(pixel);
+            if (this.Current == Tool.Layers)
+            {
+                if (onImage)
+                    this.PickLayerAt(pixel);
+                return;
+            }
             if (!this.Layers.Active.Visible && this.Current is not (Tool.Picker or Tool.Pan))
             {
                 this.Message = $"'{this.Layers.Active.Name}' is hidden. Show it (or pick another layer) to paint on it.";
@@ -2228,27 +2234,26 @@ namespace CustomContentCore.UI
                 this.Layout(this.Area); // the column beside the canvas shows this tool's settings
         }
 
-        /// <summary>Place the layers panel in <see cref="LayersArea"/>.</summary>
+        /// <summary>Lay out the Layers tool's column: the list takes whatever height is left over its buttons.</summary>
         private void LayoutLayers()
         {
-            Rectangle a = this.LayersArea;
-            int listH = a.Height - 30 - 8 - 3 * 42;
-            this.LayerList.Bounds = new Rectangle(a.X, a.Y + 30, a.Width, listH);
-            int y = this.LayerList.Bounds.Bottom + 8, third = (a.Width - 12) / 3;
-            void Row(params Widget[] widgets)
+            Rectangle a = this.ColumnArea;
+            const int rowH = 40, gap = 8, buttonRows = 4;
+            int buttonsTop = a.Bottom - buttonRows * (rowH + gap);
+            foreach (Widget widget in new Widget[] { this.LayerList, this.NewLayerButton, this.CopyLayerButton, this.DeleteLayerButton, this.LayerUpButton, this.LayerDownButton, this.MergeLayerButton, this.HideLayerButton, this.OpacityDropdown })
+                widget.Visible = true;
+            this.LayerList.Bounds = new Rectangle(a.X, a.Y + 34, a.Width, Math.Max(rowH * 2, buttonsTop - gap - (a.Y + 34)));
+            int y = this.LayerList.Bounds.Bottom + gap, half = (a.Width - gap) / 2;
+            void Row(Widget left, Widget right)
             {
-                int x = a.X, w = (a.Width - 6 * (widgets.Length - 1)) / widgets.Length;
-                foreach (Widget widget in widgets)
-                {
-                    widget.Bounds = new Rectangle(x, y, w, 36);
-                    x += w + 6;
-                }
-                y += 42;
+                left.Bounds = new Rectangle(a.X, y, half, rowH);
+                right.Bounds = new Rectangle(a.X + half + gap, y, a.Width - half - gap, rowH);
+                y += rowH + gap;
             }
-            Row(this.NewLayerButton, this.CopyLayerButton, this.DeleteLayerButton);
-            Row(this.LayerUpButton, this.LayerDownButton, this.MergeLayerButton);
-            this.HideLayerButton.Bounds = new Rectangle(a.X, y, third, 36);
-            this.OpacityDropdown.Bounds = new Rectangle(a.X + third + 6, y, a.Width - third - 6, 36);
+            Row(this.NewLayerButton, this.CopyLayerButton);
+            Row(this.LayerUpButton, this.LayerDownButton);
+            Row(this.MergeLayerButton, this.DeleteLayerButton);
+            Row(this.HideLayerButton, this.OpacityDropdown);
         }
 
         /// <summary>One row of the layers list: the layer's name, and whether it's hidden or partly see-through.</summary>
@@ -2273,6 +2278,24 @@ namespace CustomContentCore.UI
             this.LayerDownButton.Enabled = this.MergeLayerButton.Enabled = this.Layers.ActiveIndex > 0;
             this.HideLayerButton.Label = this.Layers.Active.Visible ? "Hide" : "Show";
             this.OpacityDropdown.Select(this.Layers.Active.Opacity.ToString());
+        }
+
+        /// <summary>Paint on the top visible layer that has something at a pixel, for a click on the image with the Layers tool.</summary>
+        private void PickLayerAt(Point pixel)
+        {
+            int index = pixel.Y * this.Width + pixel.X;
+            for (int i = this.Layers.Layers.Count - 1; i >= 0; i--)
+            {
+                PaintLayer layer = this.Layers.Layers[i];
+                if (layer.Visible && layer.Opacity > 0 && layer.Pixels[index].A > 0)
+                {
+                    this.SelectLayer(i);
+                    this.Message = $"Painting on {layer.Name}.";
+                    Game1.playSound("smallSelect");
+                    return;
+                }
+            }
+            this.Message = "Nothing is painted there on any visible layer.";
         }
 
         /// <summary>Paint on another layer. Anything floating is put down first, on the layer it was lifted from.</summary>

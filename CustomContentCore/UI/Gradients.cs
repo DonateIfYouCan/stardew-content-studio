@@ -157,7 +157,7 @@ namespace CustomContentCore.UI
     internal static class PaintOptions
     {
         /// <summary>The settings a tool uses.</summary>
-        public const string Size = "size", Shape = "shape", PixelPerfect = "pixelperfect", Mirror = "mirror", FillShape = "fill", Gradient = "gradient", Direction = "direction", Centre = "centre", Blend = "blend", Selection = "selection";
+        public const string Size = "size", Shape = "shape", PixelPerfect = "pixelperfect", Mirror = "mirror", FillShape = "fill", Gradient = "gradient", Direction = "direction", Centre = "centre", Blend = "blend", Selection = "selection", Layers = "layers";
 
         /// <summary>The settings to show for a tool, in the order they go down the side.</summary>
         /// <param name="tool">The tool's name, like <c>Pencil</c>.</param>
@@ -215,6 +215,10 @@ namespace CustomContentCore.UI
 
                 case "Select":
                     options.Add(Selection);
+                    break;
+
+                case "Layers":
+                    options.Add(Layers); // the layers list and its buttons
                     break;
             }
             return options;
