@@ -220,6 +220,15 @@ namespace CustomContentCore.UI
         private readonly Button WidthButton;
         private readonly Checkbox GridBox;
         private readonly Checkbox FillBox;
+        private readonly Checkbox PixelPerfectBox;
+
+        /// <summary>Whether a freehand pencil or eraser stroke takes doubled corners back out as it goes (see <see cref="PixelLines.IsDoubledCorner"/>).</summary>
+        private bool PixelPerfect = true;
+
+        /// <summary>While a pixel-perfect stroke is drawn: the pixels it went through, and how often it painted each pixel.</summary>
+        /// <remarks>A pixel is only taken back out if this stroke painted it once, so crossing an earlier part of the stroke leaves it.</remarks>
+        private List<Point>? StrokePath;
+        private Dictionary<int, int>? PaintCounts;
         private readonly Checkbox GuideBox;
         private readonly Dropdown BackgroundCycler;
         private readonly Dropdown TintCycler;
@@ -324,6 +333,8 @@ namespace CustomContentCore.UI
                 "checks",
                 v => this.Background = v,
                 "What's drawn behind see-through pixels: a checkerboard, or a plain colour to see the art against.", prefix: "Behind"));
+            this.PixelPerfectBox = this.Add(new Checkbox("Pixel perfect", true, v => this.PixelPerfect = v,
+                "Take out the doubled corners a freehand line gets, so a diagonal is a clean staircase. Works with a 1-pixel tip."));
             this.FillBox = this.Add(new Checkbox("Fill shape", false, v => { this.FillShapes = v; this.Layout(this.Area); }, "Draw rectangles and ovals filled in instead of as an outline."));
             this.GradientCycler = this.Add(new Dropdown(
                 new() { (Gradients.Off, "one colour"), (Gradients.Straight, "gradient"), (Gradients.Round, "round") },
@@ -472,7 +483,7 @@ namespace CustomContentCore.UI
         private IEnumerable<Widget> AllColumnWidgets => new Widget[]
         {
             this.SpriteButton, this.CopyButton, this.PasteButton, this.ClearButton, this.FlipButton, this.FlipDownButton, this.TurnButton,
-            this.SizeCycler, this.ShapeCycler, this.FillBox, this.MirrorCycler, this.GradientCycler, this.DirectionDropdown, this.CentreDropdown, this.BlendCycler
+            this.SizeCycler, this.ShapeCycler, this.PixelPerfectBox, this.FillBox, this.MirrorCycler, this.GradientCycler, this.DirectionDropdown, this.CentreDropdown, this.BlendCycler
         };
 
         /// <summary>The settings to show beside the canvas for the chosen tool, top to bottom (see <see cref="PaintOptions"/>).</summary>
@@ -486,6 +497,7 @@ namespace CustomContentCore.UI
                     case PaintOptions.Size: column.Add(this.SizeCycler); break;
                     case PaintOptions.Shape: column.Add(this.ShapeCycler); break;
                     case PaintOptions.FillShape: column.Add(this.FillBox); break;
+                    case PaintOptions.PixelPerfect: column.Add(this.PixelPerfectBox); break;
                     case PaintOptions.Mirror: column.Add(this.MirrorCycler); break;
                     case PaintOptions.Gradient: column.Add(this.GradientCycler); break;
                     case PaintOptions.Direction: column.Add(this.DirectionDropdown); break;
@@ -1168,18 +1180,56 @@ namespace CustomContentCore.UI
                 return;
             Color colour = this.Current == Tool.Eraser ? Color.Transparent : this.StrokeColour;
 
-            // join the dots, so a fast drag doesn't leave gaps
+            // join the dots, so a fast drag doesn't leave gaps; each pixel once, since the last one was painted already
             this.StepArea = Rectangle.Empty;
+            bool first = this.LastPixel == null;
             Point from = this.LastPixel ?? pixel;
-            int steps = Math.Max(Math.Abs(pixel.X - from.X), Math.Abs(pixel.Y - from.Y));
-            for (int i = 0; i <= steps; i++)
+            bool pixelPerfect = this.PixelPerfect && this.BrushSize == 1 && this.Current is Tool.Pencil or Tool.Eraser;
+            if (pixelPerfect && first)
             {
-                int px = steps == 0 ? pixel.X : from.X + (pixel.X - from.X) * i / steps;
-                int py = steps == 0 ? pixel.Y : from.Y + (pixel.Y - from.Y) * i / steps;
-                this.PaintDot(px, py, colour);
+                this.StrokePath = new List<Point>();
+                this.PaintCounts = new Dictionary<int, int>();
+            }
+            foreach (Point point in PixelLines.Line(from, pixel))
+            {
+                if (!first && point == from)
+                    continue;
+                first = false;
+                this.PaintDot(point.X, point.Y, colour);
+                if (pixelPerfect && this.StrokePath is { } path)
+                {
+                    path.Add(point);
+                    if (path.Count >= 3 && PixelLines.IsDoubledCorner(path[^3], path[^2], path[^1]))
+                    {
+                        this.Unpaint(path[^2]);
+                        path.RemoveAt(path.Count - 2);
+                    }
+                }
             }
             this.LastPixel = pixel;
             this.Refresh(Rectangle.Intersect(this.StepArea, new Rectangle(0, 0, this.Width, this.Height)));
+        }
+
+        /// <summary>Take a pixel of this stroke back out (with its mirrored copies), putting back what was there before it.</summary>
+        private void Unpaint(Point point)
+        {
+            foreach (Point spot in new[] { point }.Concat(this.MirrorsOf(point.X, point.Y)))
+            {
+                if (spot.X < 0 || spot.Y < 0 || spot.X >= this.Width || spot.Y >= this.Height)
+                    continue;
+                int index = spot.Y * this.Width + spot.X;
+                if (this.PaintCounts == null || !this.PaintCounts.TryGetValue(index, out int count))
+                    continue;
+                if (count > 1)
+                {
+                    this.PaintCounts[index] = count - 1; // the stroke crossed here earlier: that pixel stays
+                    continue;
+                }
+                this.PaintCounts.Remove(index);
+                if (this.StrokeOriginals != null && this.StrokeOriginals.TryGetValue(index, out Color before))
+                    this.Canvas[index] = before;
+                this.StepArea = this.StepArea.IsEmpty ? new Rectangle(spot.X, spot.Y, 1, 1) : Rectangle.Union(this.StepArea, new Rectangle(spot.X, spot.Y, 1, 1));
+            }
         }
 
         private void PaintDot(int x, int y, Color colour)
@@ -1224,6 +1274,8 @@ namespace CustomContentCore.UI
                         continue;
 
                     this.Remember(index);
+                    if (this.PaintCounts != null)
+                        this.PaintCounts[index] = this.PaintCounts.GetValueOrDefault(index) + 1;
                     this.Canvas[index] = strength >= 0.999 ? colour : Blend(this.Canvas[index], colour, strength);
                     this.Grow(px, py);
                     this.StepArea = this.StepArea.IsEmpty
@@ -1589,13 +1641,8 @@ namespace CustomContentCore.UI
                 yield break;
             }
 
-            int steps = Math.Max(Math.Abs(end.X - start.X), Math.Abs(end.Y - start.Y));
-            for (int i = 0; i <= steps; i++)
-            {
-                yield return steps == 0
-                    ? start
-                    : new Point(start.X + (end.X - start.X) * i / steps, start.Y + (end.Y - start.Y) * i / steps);
-            }
+            foreach (Point point in PixelLines.Line(start, end))
+                yield return point;
         }
 
         /// <summary>Whether a pixel is on the rim of an ellipse rather than inside it.</summary>
@@ -1759,12 +1806,7 @@ namespace CustomContentCore.UI
         }
 
         /// <summary>The pixels on a straight line between two points.</summary>
-        private static IEnumerable<Point> LinePoints(Point from, Point to)
-        {
-            int steps = Math.Max(Math.Abs(to.X - from.X), Math.Abs(to.Y - from.Y));
-            for (int i = 0; i <= steps; i++)
-                yield return steps == 0 ? from : new Point(from.X + (to.X - from.X) * i / steps, from.Y + (to.Y - from.Y) * i / steps);
-        }
+        private static IEnumerable<Point> LinePoints(Point from, Point to) => PixelLines.Line(from, to);
 
         /// <summary>Paint one pixel (and its mirrored copies), whatever size the tip is.</summary>
         /// <remarks>A filled shape covers exactly what was dragged; painting it with a big tip made it grow past its corners.</remarks>
@@ -1816,6 +1858,8 @@ namespace CustomContentCore.UI
             }
             this.StrokeOriginals = null;
             this.LastPixel = null;
+            this.StrokePath = null;
+            this.PaintCounts = null;
             this.StrokeArea = Rectangle.Empty;
             this.Message = null;
             this.SyncButtons();

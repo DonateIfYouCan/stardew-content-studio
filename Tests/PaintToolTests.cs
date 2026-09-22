@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using CustomContentCore.UI;
@@ -162,6 +163,98 @@ namespace Tests
         {
             // a fill with a fixed direction is a plain click; one that follows the drag is dragged
             Assert.Equal(needsDrag, Gradients.FollowsDrag(shape, direction, centre));
+        }
+
+        /*********
+        ** Pixel-perfect lines and strokes
+        *********/
+        [Fact]
+        public void ALineStepsEvenly()
+        {
+            // truncating gave runs of 4, 3, 3 and a stub of 1 for this line
+            List<Point> line = PixelLines.Line(new Point(0, 0), new Point(10, 3)).ToList();
+            List<int> runs = line.GroupBy(p => p.Y).Select(g => g.Count()).ToList();
+            Assert.Equal(11, line.Count);
+            Assert.True(runs.Max() - runs.Min() <= 1, $"uneven runs: {string.Join(", ", runs)}");
+        }
+
+        [Fact]
+        public void ALineIsOnePixelPerStep()
+        {
+            List<Point> line = PixelLines.Line(new Point(3, 9), new Point(-7, 2)).ToList();
+            Assert.Equal(11, line.Count); // the longer side is 10 steps
+            for (int i = 1; i < line.Count; i++)
+                Assert.True(Math.Abs(line[i].X - line[i - 1].X) <= 1 && Math.Abs(line[i].Y - line[i - 1].Y) <= 1, "gap in the line");
+            Assert.Equal(new Point(3, 9), line[0]);
+            Assert.Equal(new Point(-7, 2), line[^1]);
+        }
+
+        [Theory]
+        [InlineData(0, 0, 10, 3)]
+        [InlineData(2, 5, 9, 1)]
+        [InlineData(0, 0, 7, 7)]
+        [InlineData(4, 4, 4, 12)]
+        [InlineData(0, 0, 3, 17)]
+        public void ALinesRunsAreEvenWhicheverWayItsDrawn(int x1, int y1, int x2, int y2)
+        {
+            foreach ((Point a, Point b) in new[] { (new Point(x1, y1), new Point(x2, y2)), (new Point(x2, y2), new Point(x1, y1)) })
+            {
+                List<Point> line = PixelLines.Line(a, b).ToList();
+                bool wide = Math.Abs(b.X - a.X) >= Math.Abs(b.Y - a.Y);
+                List<int> runs = line.GroupBy(p => wide ? p.Y : p.X).Select(g => g.Count()).ToList();
+                Assert.True(runs.Max() - runs.Min() <= 1, $"uneven runs from {a} to {b}: {string.Join(", ", runs)}");
+                Assert.Equal(a, line[0]);
+                Assert.Equal(b, line[^1]);
+            }
+        }
+
+        [Fact]
+        public void APixelPerfectStrokeIsACleanStaircase()
+        {
+            // a slow diagonal drag arrives one pixel at a time, right then down; joined as they come, it had 5 doubled corners
+            Point[] samples = { new(0, 0), new(1, 0), new(1, 1), new(2, 1), new(2, 2), new(3, 2), new(3, 3), new(4, 3), new(4, 4) };
+            List<Point> path = new();
+            foreach (Point sample in samples)
+            {
+                path.Add(sample);
+                if (path.Count >= 3 && PixelLines.IsDoubledCorner(path[^3], path[^2], path[^1]))
+                    path.RemoveAt(path.Count - 2); // the paint screen does this as the stroke goes
+            }
+            Assert.Equal(new[] { new Point(0, 0), new Point(1, 1), new Point(2, 2), new Point(3, 3), new Point(4, 4) }, path);
+        }
+
+        [Fact]
+        public void OnlyThePencilAndEraserOfferPixelPerfect()
+        {
+            Assert.Contains(PaintOptions.PixelPerfect, PaintOptions.For("Pencil", false, Gradients.Off));
+            Assert.Contains(PaintOptions.PixelPerfect, PaintOptions.For("Eraser", false, Gradients.Off));
+            foreach (string tool in new[] { "Brush", "Line", "Rectangle", "Fill", "Select" })
+                Assert.DoesNotContain(PaintOptions.PixelPerfect, PaintOptions.For(tool, false, Gradients.Off));
+        }
+
+        [Fact]
+        public void EveryWayOfDrawingALineUsesTheEvenLine()
+        {
+            // shapes, the drag preview and freehand joining all went through their own truncating copy of the maths
+            string code = ReadCore("UI", "PaintScreen.cs");
+            Assert.DoesNotContain(") * i / steps", code);
+            Assert.Contains("PixelLines.Line(from, pixel)", code);
+            Assert.Contains("PixelLines.Line(start, end)", code);
+        }
+
+        [Fact]
+        public void AnLIsADoubledCorner()
+        {
+            Assert.True(PixelLines.IsDoubledCorner(new Point(0, 0), new Point(1, 0), new Point(1, 1)));
+            Assert.True(PixelLines.IsDoubledCorner(new Point(0, 0), new Point(0, 1), new Point(1, 1)));
+        }
+
+        [Fact]
+        public void AStraightRunOrADiagonalIsnt()
+        {
+            Assert.False(PixelLines.IsDoubledCorner(new Point(0, 0), new Point(1, 0), new Point(2, 0)));
+            Assert.False(PixelLines.IsDoubledCorner(new Point(0, 0), new Point(1, 1), new Point(2, 2)));
+            Assert.False(PixelLines.IsDoubledCorner(new Point(0, 0), new Point(1, 0), new Point(0, 0)));
         }
 
         /*********

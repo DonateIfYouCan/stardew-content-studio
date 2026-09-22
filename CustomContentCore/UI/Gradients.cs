@@ -157,7 +157,7 @@ namespace CustomContentCore.UI
     internal static class PaintOptions
     {
         /// <summary>The settings a tool uses.</summary>
-        public const string Size = "size", Shape = "shape", Mirror = "mirror", FillShape = "fill", Gradient = "gradient", Direction = "direction", Centre = "centre", Blend = "blend", Selection = "selection";
+        public const string Size = "size", Shape = "shape", PixelPerfect = "pixelperfect", Mirror = "mirror", FillShape = "fill", Gradient = "gradient", Direction = "direction", Centre = "centre", Blend = "blend", Selection = "selection";
 
         /// <summary>The settings to show for a tool, in the order they go down the side.</summary>
         /// <param name="tool">The tool's name, like <c>Pencil</c>.</param>
@@ -184,7 +184,13 @@ namespace CustomContentCore.UI
 
             switch (tool)
             {
-                case "Pencil" or "Brush" or "Eraser" or "ReplaceBrush":
+                case "Pencil" or "Eraser":
+                    Tip();
+                    options.Add(PixelPerfect); // drawn a pixel at a time, so a doubled corner is worth taking out
+                    options.Add(Mirror);
+                    break;
+
+                case "Brush" or "ReplaceBrush":
                     Tip();
                     options.Add(Mirror);
                     break;
@@ -212,6 +218,45 @@ namespace CustomContentCore.UI
                     break;
             }
             return options;
+        }
+    }
+}
+
+namespace CustomContentCore.UI
+{
+    /// <summary>
+    /// Lines and strokes the way pixel art wants them: even steps, and no doubled corners. Kept apart from the paint screen
+    /// so they can be checked without the game.
+    /// </summary>
+    internal static class PixelLines
+    {
+        /// <summary>The pixels of a straight line, one per step along its longer side, in runs as even as they can be.</summary>
+        /// <remarks>
+        /// Placing each pixel by cutting off the fraction left lopsided lines: (0,0) to (10,3) came out in runs of 4, 3, 3 and a
+        /// stub of 1. Here the pixels are shared out so no run is more than one longer than another (3, 3, 3, 2), which is what
+        /// makes a pixel-art line look clean. Perfectly even and mirror-symmetric can't both be had when the pixels don't
+        /// divide evenly, and even runs matter more.
+        /// </remarks>
+        public static IEnumerable<Microsoft.Xna.Framework.Point> Line(Microsoft.Xna.Framework.Point from, Microsoft.Xna.Framework.Point to)
+        {
+            int dx = Math.Abs(to.X - from.X), dy = Math.Abs(to.Y - from.Y);
+            int sx = Math.Sign(to.X - from.X), sy = Math.Sign(to.Y - from.Y);
+            int steps = Math.Max(dx, dy), shorter = Math.Min(dx, dy);
+            for (int i = 0; i <= steps; i++)
+            {
+                int across = i * (shorter + 1) / (steps + 1); // steps + 1 pixels shared out over shorter + 1 runs
+                yield return dx >= dy
+                    ? new Microsoft.Xna.Framework.Point(from.X + sx * i, from.Y + sy * across)
+                    : new Microsoft.Xna.Framework.Point(from.X + sx * across, from.Y + sy * i);
+            }
+        }
+
+        /// <summary>Whether the middle of three pixels in a stroke is a doubled corner: an L where a diagonal step would do.</summary>
+        /// <remarks>Pixel-perfect drawing takes that middle pixel back out, so a freehand diagonal is a clean staircase.</remarks>
+        public static bool IsDoubledCorner(Microsoft.Xna.Framework.Point a, Microsoft.Xna.Framework.Point b, Microsoft.Xna.Framework.Point c)
+        {
+            static bool Beside(Microsoft.Xna.Framework.Point p, Microsoft.Xna.Framework.Point q) => Math.Abs(p.X - q.X) + Math.Abs(p.Y - q.Y) == 1;
+            return Beside(a, b) && Beside(b, c) && Math.Abs(a.X - c.X) == 1 && Math.Abs(a.Y - c.Y) == 1;
         }
     }
 }
