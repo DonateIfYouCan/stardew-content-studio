@@ -63,6 +63,12 @@ namespace CustomContentCore.UI
         /// <summary>Handle a right-click.</summary>
         public virtual void RightClick(int x, int y) { }
 
+        /// <summary>The right button is still down after a right-click, and the mouse may have moved.</summary>
+        public virtual void RightHeld(int x, int y) { }
+
+        /// <summary>The right button was let go after a right-click.</summary>
+        public virtual void ReleaseRight(int x, int y) { }
+
         public virtual void Scroll(int x, int y, int direction)
         {
             foreach (Widget widget in this.Widgets)
@@ -202,9 +208,15 @@ namespace CustomContentCore.UI
 
         public override void receiveRightClick(int x, int y, bool playSound = true)
         {
-            if (this.Stack.Count > 0)
-                this.Top.RightClick(x, y);
+            if (this.Stack.Count == 0)
+                return;
+            this.RightDown = true;
+            this.Top.RightClick(x, y);
         }
+
+        /// <summary>Whether the right button went down on a screen here and hasn't been let go yet.</summary>
+        /// <remarks>The game only says when the right button is clicked, not held or let go, so that's worked out here each tick.</remarks>
+        private bool RightDown;
 
         public override void receiveScrollWheelAction(int direction)
         {
@@ -241,8 +253,21 @@ namespace CustomContentCore.UI
 
         public override void update(GameTime time)
         {
-            if (this.Stack.Count > 0)
-                this.Top.Update(time);
+            if (this.Stack.Count == 0)
+                return;
+
+            if (this.RightDown)
+            {
+                int mx = Game1.getMouseX(), my = Game1.getMouseY();
+                if (Game1.input.GetMouseState().RightButton == Microsoft.Xna.Framework.Input.ButtonState.Pressed)
+                    this.Top.RightHeld(mx, my);
+                else
+                {
+                    this.RightDown = false;
+                    this.Top.ReleaseRight(mx, my);
+                }
+            }
+            this.Top.Update(time);
         }
 
         public override void draw(SpriteBatch b)

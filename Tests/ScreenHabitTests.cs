@@ -101,7 +101,7 @@ namespace Tests
         [Fact]
         public void LettingGoOfADragKeepsItFloating()
         {
-            string release = MethodBody(PaintScreenCode(), "public override void ReleaseLeft(");
+            string release = MethodBody(PaintScreenCode(), "private void Release(int x, int y)"); // both mouse buttons finish here
             int moving = release.IndexOf("if (this.MovingSelection)", System.StringComparison.Ordinal);
             Assert.True(moving >= 0, "couldn't find where letting go of a moved selection is handled");
             string branch = release[moving..release.IndexOf("return;", moving, System.StringComparison.Ordinal)];

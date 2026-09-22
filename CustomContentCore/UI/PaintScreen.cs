@@ -93,6 +93,25 @@ namespace CustomContentCore.UI
 
         private Tool Current = Tool.Pencil;
         private Color Colour = Color.Black;
+
+        /// <summary>The second colour, painted with the right mouse button. It starts see-through, so the right button erases until another colour is picked.</summary>
+        private Color Colour2 = Color.Transparent;
+
+        /// <summary>Whether what's being drawn now was started with the right button, and so uses the second colour.</summary>
+        private bool StrokeSecondary;
+
+        /// <summary>The colour the button being used paints with.</summary>
+        private Color StrokeColour => this.StrokeSecondary ? this.Colour2 : this.Colour;
+
+        /// <summary>The other colour, which a gradient blends towards.</summary>
+        private Color OtherColour => this.StrokeSecondary ? this.Colour : this.Colour2;
+
+        /// <summary>The gradient for fills, lines and shapes (see <see cref="Gradients"/>), and how its two colours blend.</summary>
+        private string GradientShape = Gradients.Off;
+        private string GradientBlend = Gradients.ThreeBands;
+
+        /// <summary>Whether a gradient is chosen, for the tools that can paint one.</summary>
+        private bool GradientOn => this.GradientShape != Gradients.Off && this.Current is Tool.Fill or Tool.Line or Tool.Rectangle or Tool.Ellipse;
         private int BrushSize = 1;
         private string BrushShape = "square";
         private bool ShowGrid = true;
@@ -105,7 +124,8 @@ namespace CustomContentCore.UI
 
         /// <summary>What the help button explains.</summary>
         private const string HelpText =
-            "Drag on the image to use the tool you picked on the left. Right-click always takes the colour under the cursor, whichever tool that is.\n\n"
+            "Drag on the image to use the tool you picked on the left. The left mouse button paints with the first colour and the right button with the second, which starts see-through so the right button erases until you pick one. X swaps the two. Alt and a click takes the colour under the cursor, whichever tool that is.\n\n"
+            + "Fill, line, rectangle and ellipse can paint a gradient instead, from the colour of the button you drag with to the other colour, from where you press to where you let go. Bands and dithering keep to a few colours, the way pixel art usually does.\n\n"
             + "Moving around: the mouse wheel zooms towards the cursor and the arrow keys move. To drag the image, either pick the 'Move view' tool or hold space while you drag. "
             + "'Width' fills the width with the image and 'Fit' shows all of it.\n\n"
             + "Every key can be changed with the 'Keys' button. As they come: P pencil, B brush, E eraser, I pick a colour, F fill, L line, R rectangle, O oval, A replace all, D replace drag, S select, H move view; C copy, V paste, Delete clears the selection, Z undo, Y redo, + and - zoom, 0 fills the width.\n\n"
@@ -199,6 +219,8 @@ namespace CustomContentCore.UI
         private readonly Cycler BackgroundCycler;
         private readonly Cycler TintCycler;
         private readonly Cycler MirrorCycler;
+        private readonly Cycler GradientCycler;
+        private readonly Cycler BlendCycler;
         private readonly Cycler PaletteCycler;
         private readonly Button ColourButton;
         private readonly Button SpriteButton;
@@ -251,8 +273,8 @@ namespace CustomContentCore.UI
                 (Tool.Pencil, "Pencil", "Draw crisp pixels in the size and shape chosen on the right. Key: P."),
                 (Tool.Brush, "Brush", "Like the pencil, but its edge fades out, which suits bigger sizes and HD sheets. Key: B."),
                 (Tool.Eraser, "Eraser", "Make pixels see-through. Key: E."),
-                (Tool.Picker, "Pick colour", "Take the colour under the cursor. Key: I. Right-click does this with any tool."),
-                (Tool.Fill, "Fill", "Flood one connected area of the same colour. Key: F."),
+                (Tool.Picker, "Pick colour", "Take the colour under the cursor: left click for the first colour, right click for the second. Key: I. Alt and a click does this with any tool."),
+                (Tool.Fill, "Fill", "Flood one connected area of the same colour. Key: F. With a gradient chosen, drag to say which way it runs."),
                 (Tool.Line, "Line", "Drag for a straight line. Key: L. Hold Shift to snap to a corner or straight across."),
                 (Tool.Rectangle, "Rectangle", "Drag for a box. Key: R. Hold Shift to keep it square."),
                 (Tool.Ellipse, "Ellipse", "Drag for an oval. Key: O. Hold Shift to keep it round."),
@@ -294,7 +316,17 @@ namespace CustomContentCore.UI
                 "checks",
                 v => this.Background = v,
                 "What's drawn behind see-through pixels: a checkerboard, or a plain colour to see the art against."));
-            this.FillBox = this.Add(new Checkbox("Fill shape", false, v => this.FillShapes = v, "Draw rectangles and ovals filled in instead of as an outline."));
+            this.FillBox = this.Add(new Checkbox("Fill shape", false, v => { this.FillShapes = v; this.Layout(this.Area); }, "Draw rectangles and ovals filled in instead of as an outline."));
+            this.GradientCycler = this.Add(new Cycler(
+                new() { (Gradients.Off, "One colour"), (Gradients.Straight, "Gradient"), (Gradients.Round, "Round gradient") },
+                Gradients.Off,
+                v => { this.GradientShape = v; this.Layout(this.Area); },
+                "Blend from the colour of the button you drag with to the other colour, from where you press to where you let go. A round gradient spreads out from where you press."));
+            this.BlendCycler = this.Add(new Cycler(
+                new() { (Gradients.ThreeBands, "3 bands"), (Gradients.FiveBands, "5 bands"), (Gradients.Dither, "Dithered"), (Gradients.Smooth, "Smooth") },
+                Gradients.ThreeBands,
+                v => this.GradientBlend = v,
+                "How the two colours blend. Bands and dithering keep to a few colours, the way pixel art usually does; smooth adds a new colour on nearly every pixel."));
             this.MirrorCycler = this.Add(new Cycler(
                 new() { ("off", "Mirror: off"), ("lr", "Mirror: sides"), ("ud", "Mirror: up-down"), ("both", "Mirror: both") },
                 "off",
@@ -375,29 +407,25 @@ namespace CustomContentCore.UI
 
             int paletteH = 56;
             int canvasX = area.X + pad + toolW + 16;
-            int actionW = 170;
+            int actionW = area.Width >= 1400 ? 240 : 170; // wide enough for "Mirror: up-down" where there's room
             this.CanvasArea = new Rectangle(canvasX, contentTop, area.Right - pad - actionW - 16 - canvasX, bottom - contentTop - paletteH - 12);
 
-            // what to do with the selection lives beside the canvas, with how the tools behave under it. In a short window the
-            // rows tighten up rather than running over the Save button below, which used to make saving impossible.
-            Button[] actions = { this.SpriteButton, this.CopyButton, this.PasteButton, this.ClearButton, this.FlipButton, this.FlipDownButton, this.TurnButton };
-            int rows = actions.Length + 4; // the four rows underneath: size, shape, fill, mirror
+            // beside the canvas: only the settings the chosen tool uses, under its name. In a short window the rows tighten up
+            // rather than running over the Save button below, which used to make saving impossible.
+            foreach (Widget widget in this.AllColumnWidgets)
+                widget.Visible = false;
+            List<Widget> column = this.ColumnWidgets();
             int columnBottom = area.Bottom - 96 - 8;
-            int step = Math.Clamp((columnBottom - this.CanvasArea.Y - 40) / rows, 30, 50);
+            this.ColumnArea = new Rectangle(area.Right - pad - actionW, this.CanvasArea.Y, actionW, columnBottom - this.CanvasArea.Y);
+            int step = Math.Clamp((columnBottom - this.CanvasArea.Y - 40 - 34) / Math.Max(7, column.Count), 30, 50);
             int rowH = Math.Max(26, step - 6);
-
-            int ay = this.CanvasArea.Y;
-            foreach (Button button in actions)
+            int ay = this.CanvasArea.Y + 34;
+            foreach (Widget widget in column)
             {
-                button.Bounds = new Rectangle(area.Right - pad - actionW, ay, actionW, rowH);
+                widget.Visible = true;
+                widget.Bounds = new Rectangle(this.ColumnArea.X, ay, actionW, rowH);
                 ay += step;
             }
-
-            ay += 12;
-            this.SizeCycler.Bounds = new Rectangle(area.Right - pad - actionW, ay, actionW, rowH);
-            this.ShapeCycler.Bounds = new Rectangle(area.Right - pad - actionW, ay + step, actionW, rowH);
-            this.FillBox.Bounds = new Rectangle(area.Right - pad - actionW, ay + step * 2, actionW, rowH);
-            this.MirrorCycler.Bounds = new Rectangle(area.Right - pad - actionW, ay + step * 3, actionW, rowH);
 
             // the selection buttons share the palette row, so the top row doesn't overflow
             this.ColourButton.Bounds = new Rectangle(this.CanvasArea.X + 52, this.CanvasArea.Bottom + 8, 200, 44);
@@ -418,10 +446,68 @@ namespace CustomContentCore.UI
             this.ClampView();
         }
 
+        /// <summary>The column beside the canvas where the chosen tool's settings go.</summary>
+        private Rectangle ColumnArea;
+
+        /// <summary>Everything that can go in the column beside the canvas; only the chosen tool's ones are shown.</summary>
+        private IEnumerable<Widget> AllColumnWidgets => new Widget[]
+        {
+            this.SpriteButton, this.CopyButton, this.PasteButton, this.ClearButton, this.FlipButton, this.FlipDownButton, this.TurnButton,
+            this.SizeCycler, this.ShapeCycler, this.FillBox, this.MirrorCycler, this.GradientCycler, this.BlendCycler
+        };
+
+        /// <summary>The settings to show beside the canvas for the chosen tool, top to bottom (see <see cref="PaintOptions"/>).</summary>
+        private List<Widget> ColumnWidgets()
+        {
+            List<Widget> column = new();
+            foreach (string option in PaintOptions.For(this.Current.ToString(), this.FillShapes, this.GradientShape != Gradients.Off))
+            {
+                switch (option)
+                {
+                    case PaintOptions.Size: column.Add(this.SizeCycler); break;
+                    case PaintOptions.Shape: column.Add(this.ShapeCycler); break;
+                    case PaintOptions.FillShape: column.Add(this.FillBox); break;
+                    case PaintOptions.Mirror: column.Add(this.MirrorCycler); break;
+                    case PaintOptions.Gradient: column.Add(this.GradientCycler); break;
+                    case PaintOptions.Blend: column.Add(this.BlendCycler); break;
+                    case PaintOptions.Selection:
+                        if (this.Selection != null && this.CellWidth > 0 && this.CellHeight > 0)
+                            column.Add(this.SpriteButton);
+                        if (this.Selection != null)
+                            column.Add(this.CopyButton);
+                        if (this.Clipboard != null)
+                            column.Add(this.PasteButton);
+                        if (this.Selection != null)
+                            column.Add(this.ClearButton);
+                        column.Add(this.FlipButton);
+                        column.Add(this.FlipDownButton);
+                        column.Add(this.TurnButton);
+                        break;
+                }
+            }
+            return column;
+        }
+
+        /// <summary>A line for the column when the chosen tool has no settings, saying what the mouse buttons do with it.</summary>
+        private string? ToolHint => this.Current switch
+        {
+            Tool.Picker => "Left click takes the first colour, right click the second.",
+            Tool.ReplaceAll => "Click a colour to change it everywhere: left to the first colour, right to the second.",
+            Tool.Pan => "Drag to move around the image. Holding space does this with any tool.",
+            _ => null
+        };
+
         public override void Draw(SpriteBatch b, int mouseX, int mouseY)
         {
             Rectangle area = this.Area;
             Gfx.Panel(b, area);
+            if (this.ColumnArea.Width > 0)
+            {
+                string toolName = this.ToolButtons.FirstOrDefault(t => t.Tool == this.Current).Button?.Label ?? "";
+                Gfx.Text(b, Gfx.Fit(toolName, this.ColumnArea.Width), new Vector2(this.ColumnArea.X, this.ColumnArea.Y));
+                if (this.ToolHint is { } hint)
+                    Gfx.Text(b, Game1.parseText(hint, Gfx.Font, this.ColumnArea.Width), new Vector2(this.ColumnArea.X, this.ColumnArea.Y + 34), Color.DimGray);
+            }
             Gfx.Text(b, this.Title, new Vector2(area.X + 36, area.Y + 24), null, Gfx.TitleFont);
 
             string where = this.Describe(mouseX, mouseY);
@@ -524,11 +610,15 @@ namespace CustomContentCore.UI
             // where the line or rectangle being dragged will land
             if (this.ShapeStart is { } shapeStart)
             {
-                foreach (Point dot in this.ShapePixels(shapeStart, this.ShapeEnd))
+                // a gradient fill shows the way it will run, in its colours; a line or shape shows itself
+                bool gradientFill = this.Current == Tool.Fill;
+                Point shapeEnd = gradientFill ? this.ShapeEnd : this.Constrain(shapeStart, this.ShapeEnd);
+                IEnumerable<Point> dots = gradientFill ? LinePoints(shapeStart, this.ShapeEnd) : this.ShapePixels(shapeStart, this.ShapeEnd);
+                foreach (Point dot in dots)
                 {
                     int sx = dest.X + (dot.X - this.View.X) * this.Zoom, sy = dest.Y + (dot.Y - this.View.Y) * this.Zoom;
                     if (sx >= dest.X && sy >= dest.Y && sx < dest.Right && sy < dest.Bottom)
-                        Gfx.Rect(b, new Rectangle(sx, sy, this.Zoom, this.Zoom), this.Colour);
+                        Gfx.Rect(b, new Rectangle(sx, sy, Math.Max(this.Zoom, gradientFill ? 3 : 1), Math.Max(this.Zoom, gradientFill ? 3 : 1)), this.ShapeColourAt(dot, shapeStart, shapeEnd));
                 }
             }
 
@@ -572,15 +662,19 @@ namespace CustomContentCore.UI
         private void DrawPalette(SpriteBatch b, int mouseX, int mouseY)
         {
             int size = 40, gap = 6;
-            int x = this.CanvasArea.X, y = this.CanvasArea.Bottom + 10;
-            Gfx.Rect(b, new Rectangle(x, y, size, size), this.Colour);
-            Gfx.Outline(b, new Rectangle(x, y, size, size), Color.Black, 2);
+            int x, y = this.CanvasArea.Bottom + 10;
+
+            // the second colour peeks out behind the first, the way most editors show the two
+            DrawSwatch(b, this.BackSwatch, this.Colour2);
+            DrawSwatch(b, this.FrontSwatch, this.Colour);
+
             x = this.SwatchesX;
             foreach (Color colour in this.Swatches)
             {
                 Rectangle box = new(x, y, size, size);
                 Gfx.Rect(b, box, colour);
-                Gfx.Outline(b, box, colour == this.Colour ? Color.White : new Color(60, 56, 52), colour == this.Colour ? 3 : 1);
+                bool first = colour == this.Colour, second = colour == this.Colour2;
+                Gfx.Outline(b, box, first ? Color.White : second ? Color.Black : new Color(60, 56, 52), first || second ? 3 : 1);
                 x += size + gap;
                 if (x + size > this.PaletteCycler.Bounds.X - 16)
                     break;
@@ -593,6 +687,8 @@ namespace CustomContentCore.UI
         *********/
         public override void LeftClick(int x, int y)
         {
+            if (this.StrokeSecondary && this.IsDrawing)
+                return; // the right button is already drawing
             if ((Panning || this.Current == Tool.Pan) && this.CanvasArea.Contains(x, y))
             {
                 this.DragFrom = new Point(x, y);
@@ -601,15 +697,87 @@ namespace CustomContentCore.UI
             }
             if (this.CanvasArea.Contains(x, y))
             {
-                this.StartStroke(x, y);
+                this.StrokeSecondary = false;
+                if (PickingWithAlt)
+                    this.PickColour(x, y);
+                else
+                    this.StartStroke(x, y);
                 return;
             }
-            if (this.ClickPalette(x, y))
+            if (this.ClickSwatches(x, y, secondary: false) || this.ClickPalette(x, y, secondary: false))
                 return;
             base.LeftClick(x, y);
         }
 
+        /// <summary>Handle a right-click: the same as the left button, painting with the second colour.</summary>
+        /// <remarks>Taking a colour with any tool, which the right button used to do, is Alt and a click now.</remarks>
+        public override void RightClick(int x, int y)
+        {
+            if (this.IsDrawing || this.DragFrom != null)
+                return; // the left button is already busy
+            if (this.CanvasArea.Contains(x, y))
+            {
+                if (Panning || this.Current is Tool.Pan or Tool.Select)
+                    return; // moving the view and selecting are left-button things
+                this.StrokeSecondary = true;
+                if (PickingWithAlt)
+                    this.PickColour(x, y);
+                else
+                    this.StartStroke(x, y);
+                return;
+            }
+            if (this.ClickSwatches(x, y, secondary: true))
+                return;
+            this.ClickPalette(x, y, secondary: true);
+        }
+
         public override void LeftHeld(int x, int y)
+        {
+            if (!this.StrokeSecondary)
+                this.Held(x, y);
+        }
+
+        public override void RightHeld(int x, int y)
+        {
+            if (this.StrokeSecondary)
+                this.Held(x, y);
+        }
+
+        public override void ReleaseLeft(int x, int y)
+        {
+            if (!this.StrokeSecondary)
+                this.Release(x, y);
+        }
+
+        public override void ReleaseRight(int x, int y)
+        {
+            if (!this.StrokeSecondary)
+                return;
+            this.Release(x, y);
+            this.StrokeSecondary = false;
+        }
+
+        /// <summary>Whether a stroke, shape or gradient is being drawn right now.</summary>
+        private bool IsDrawing => this.StrokeOriginals != null || this.ShapeStart != null;
+
+        /// <summary>Whether Alt is held, which makes a click take the colour under the cursor whatever the tool.</summary>
+        private static bool PickingWithAlt => Game1.input.GetKeyboardState().IsKeyDown(Keys.LeftAlt) || Game1.input.GetKeyboardState().IsKeyDown(Keys.RightAlt);
+
+        /// <summary>Take the colour under the cursor into the colour of the button that clicked.</summary>
+        private void PickColour(int x, int y)
+        {
+            if (this.ToPixel(x, y) is not { } pixel)
+                return;
+            Color picked = this.Canvas[pixel.Y * this.Width + pixel.X];
+            if (this.StrokeSecondary)
+                this.Colour2 = picked;
+            else
+                this.Colour = picked;
+            Game1.playSound("smallSelect");
+        }
+
+        /// <summary>The mouse moved with a button down: carry on whatever that button started.</summary>
+        private void Held(int x, int y)
         {
             if (this.DragFrom is { } start)
             {
@@ -649,7 +817,8 @@ namespace CustomContentCore.UI
                 this.PaintAt(x, y);
         }
 
-        public override void ReleaseLeft(int x, int y)
+        /// <summary>The button was let go: finish whatever it started.</summary>
+        private void Release(int x, int y)
         {
             if (this.DragFrom != null)
             {
@@ -674,22 +843,27 @@ namespace CustomContentCore.UI
             {
                 this.StrokeOriginals = new Dictionary<int, Color>();
                 this.StrokeArea = Rectangle.Empty;
-                foreach (Point pixel in this.ShapePixels(start, this.ShapeEnd))
-                    this.PaintDot(pixel.X, pixel.Y, this.Colour);
+                if (this.Current == Tool.Fill)
+                    this.FillGradient(start, this.ShapeEnd);
+                else
+                {
+                    Point end = this.Constrain(start, this.ShapeEnd);
+                    bool filled = this.FillShapes && this.Current is Tool.Rectangle or Tool.Ellipse;
+                    foreach (Point pixel in this.ShapePixels(start, this.ShapeEnd))
+                    {
+                        Color colour = this.ShapeColourAt(pixel, start, end);
+                        if (filled)
+                            this.PaintPixel(pixel.X, pixel.Y, colour);
+                        else
+                            this.PaintDot(pixel.X, pixel.Y, colour);
+                    }
+                }
                 this.Refresh(this.StrokeArea);
                 this.ShapeStart = null;
             }
             this.CommitStroke();
         }
 
-        /// <summary>Handle a right-click: always take the colour under the cursor, whichever tool is chosen.</summary>
-        public override void RightClick(int x, int y)
-        {
-            if (this.ToPixel(x, y) is not { } pixel)
-                return;
-            this.Colour = this.Canvas[pixel.Y * this.Width + pixel.X];
-            Game1.playSound("smallSelect");
-        }
 
         public override void Scroll(int x, int y, int direction)
         {
@@ -754,6 +928,7 @@ namespace CustomContentCore.UI
 
             Add("copy", "Copy the selection", Keys.C, this.CopySelection);
             Add("paste", "Paste", Keys.V, this.PasteClipboard);
+            Add("swap", "Swap the two colours", Keys.X, this.SwapColours);
             Add("clear", "Clear the selection", Keys.Delete, this.ClearSelection);
             Add("undo", "Undo", Keys.Z, this.Undo);
             Add("redo", "Redo", Keys.Y, this.Redo);
@@ -768,7 +943,45 @@ namespace CustomContentCore.UI
         }
 
         /// <summary>Handle a click on one of the palette colours.</summary>
-        private bool ClickPalette(int x, int y)
+        /// <summary>Where the first colour's swatch is drawn, in front.</summary>
+        private Rectangle FrontSwatch => new(this.CanvasArea.X, this.CanvasArea.Bottom + 8, 30, 30);
+
+        /// <summary>Where the second colour's swatch is drawn, behind and below the first.</summary>
+        private Rectangle BackSwatch => new(this.CanvasArea.X + 14, this.CanvasArea.Bottom + 22, 30, 30);
+
+        /// <summary>Draw one colour swatch, with a checkerboard under it so a see-through colour shows as one.</summary>
+        private static void DrawSwatch(SpriteBatch b, Rectangle box, Color colour)
+        {
+            Gfx.Rect(b, box, new Color(200, 200, 200));
+            int half = box.Width / 2;
+            Gfx.Rect(b, new Rectangle(box.X, box.Y, half, half), new Color(150, 150, 150));
+            Gfx.Rect(b, new Rectangle(box.X + half, box.Y + half, box.Width - half, box.Height - half), new Color(150, 150, 150));
+            Gfx.Rect(b, box, colour);
+            Gfx.Outline(b, box, Color.Black, 2);
+        }
+
+        /// <summary>A click on the two swatches: choose that colour, or swap them with the right button.</summary>
+        private bool ClickSwatches(int x, int y, bool secondary)
+        {
+            bool front = this.FrontSwatch.Contains(x, y), back = !front && this.BackSwatch.Contains(x, y);
+            if (!front && !back)
+                return false;
+            if (secondary)
+                this.SwapColours();
+            else
+                this.ChooseColour(secondary: back);
+            return true;
+        }
+
+        /// <summary>Swap the first and second colours.</summary>
+        private void SwapColours()
+        {
+            (this.Colour, this.Colour2) = (this.Colour2, this.Colour);
+            Game1.playSound("smallSelect");
+        }
+
+        /// <summary>A click on the palette: the left button takes that colour as the first, the right as the second.</summary>
+        private bool ClickPalette(int x, int y, bool secondary)
         {
             int size = 40, gap = 6;
             int px = this.SwatchesX, py = this.CanvasArea.Bottom + 10;
@@ -778,7 +991,10 @@ namespace CustomContentCore.UI
             {
                 if (new Rectangle(px, py, size, size).Contains(x, y))
                 {
-                    this.Colour = colour;
+                    if (secondary)
+                        this.Colour2 = colour;
+                    else
+                        this.Colour = colour;
                     Game1.playSound("smallSelect");
                     return true;
                 }
@@ -837,8 +1053,7 @@ namespace CustomContentCore.UI
 
             if (this.Current == Tool.Picker)
             {
-                this.Colour = this.Canvas[pixel.Y * this.Width + pixel.X];
-                Game1.playSound("smallSelect");
+                this.PickColour(x, y);
                 return;
             }
 
@@ -862,8 +1077,9 @@ namespace CustomContentCore.UI
                 return;
             }
 
-            // a line or rectangle is only drawn when you let go, so you can see where it will land first
-            if (this.Current is Tool.Line or Tool.Rectangle or Tool.Ellipse)
+            // a line or rectangle is only drawn when you let go, so you can see where it will land first; a gradient fill too,
+            // since the drag is what says which way the gradient runs
+            if (this.Current is Tool.Line or Tool.Rectangle or Tool.Ellipse || (this.Current == Tool.Fill && this.GradientOn))
             {
                 this.ShapeStart = pixel;
                 this.ShapeEnd = pixel;
@@ -876,7 +1092,7 @@ namespace CustomContentCore.UI
 
             if (this.Current == Tool.Fill)
             {
-                this.Fill(pixel, this.Colour);
+                this.Fill(pixel, this.StrokeColour);
                 this.Refresh(this.StrokeArea);
                 this.CommitStroke();
                 return;
@@ -895,7 +1111,7 @@ namespace CustomContentCore.UI
         {
             if (this.ToPixel(x, y) is not { } pixel)
                 return;
-            Color colour = this.Current == Tool.Eraser ? Color.Transparent : this.Colour;
+            Color colour = this.Current == Tool.Eraser ? Color.Transparent : this.StrokeColour;
 
             // join the dots, so a fast drag doesn't leave gaps
             this.StepArea = Rectangle.Empty;
@@ -1116,6 +1332,7 @@ namespace CustomContentCore.UI
         {
             if (this.Clipboard is not { } pixels)
                 return;
+            this.SetTool(Tool.Select); // so the paste can be dragged into place, whichever tool was in use
             this.DropSelection(); // a paste already floating is put down first
             Point at = this.Selection is { } area ? new Point(area.X, area.Y) : this.View;
 
@@ -1363,7 +1580,8 @@ namespace CustomContentCore.UI
         /// <summary>Swap one colour for another everywhere in the image.</summary>
         private void ReplaceEverywhere(Color target)
         {
-            if (target == this.Colour)
+            Color colour = this.StrokeColour;
+            if (target == colour)
                 return;
             List<int> changed = new();
             Rectangle area = Rectangle.Empty;
@@ -1371,7 +1589,7 @@ namespace CustomContentCore.UI
             {
                 if (this.Canvas[i] != target)
                     continue;
-                this.Canvas[i] = this.Colour;
+                this.Canvas[i] = colour;
                 changed.Add(i);
                 int x = i % this.Width, y = i / this.Width;
                 area = area.IsEmpty ? new Rectangle(x, y, 1, 1) : Rectangle.Union(area, new Rectangle(x, y, 1, 1));
@@ -1382,7 +1600,7 @@ namespace CustomContentCore.UI
                 this.Message = "No pixels of that colour.";
                 return;
             }
-            this.Done.Add(new ColourStroke(area, changed.ToArray(), target, this.Colour));
+            this.Done.Add(new ColourStroke(area, changed.ToArray(), target, colour));
             this.TrimHistory();
             this.Undone.Clear();
             this.Refresh(area);
@@ -1393,10 +1611,36 @@ namespace CustomContentCore.UI
         /// <summary>Replace the connected area of one colour, like a paint bucket.</summary>
         private void Fill(Point start, Color colour)
         {
-            Color target = this.Canvas[start.Y * this.Width + start.X];
-            if (target == colour)
+            if (this.Canvas[start.Y * this.Width + start.X] == colour)
                 return;
+            foreach (int index in this.FloodRegion(start))
+            {
+                this.Remember(index);
+                this.Canvas[index] = colour;
+                this.Grow(index % this.Width, index / this.Width);
+            }
+        }
 
+        /// <summary>Fill the area around where the drag started with a gradient, running from there to where it ended.</summary>
+        private void FillGradient(Point start, Point end)
+        {
+            foreach (int index in this.FloodRegion(start))
+            {
+                int x = index % this.Width, y = index / this.Width;
+                this.Remember(index);
+                this.Canvas[index] = Gradients.At(this.GradientShape, this.GradientBlend, new Point(x, y), start, end, this.StrokeColour, this.OtherColour);
+                this.Grow(x, y);
+            }
+        }
+
+        /// <summary>The pixels a fill would change: the ones joined to the start that are the same colour it is.</summary>
+        private List<int> FloodRegion(Point start)
+        {
+            List<int> region = new();
+            if (start.X < 0 || start.Y < 0 || start.X >= this.Width || start.Y >= this.Height)
+                return region;
+            Color target = this.Canvas[start.Y * this.Width + start.X];
+            bool[] seen = new bool[this.Canvas.Length];
             Stack<Point> todo = new();
             todo.Push(start);
             while (todo.Count > 0)
@@ -1405,15 +1649,47 @@ namespace CustomContentCore.UI
                 if (p.X < 0 || p.Y < 0 || p.X >= this.Width || p.Y >= this.Height)
                     continue;
                 int index = p.Y * this.Width + p.X;
-                if (this.Canvas[index] != target)
+                if (seen[index] || this.Canvas[index] != target)
                     continue;
-                this.Remember(index);
-                this.Canvas[index] = colour;
-                this.Grow(p.X, p.Y);
+                seen[index] = true;
+                region.Add(index);
                 todo.Push(new Point(p.X + 1, p.Y));
                 todo.Push(new Point(p.X - 1, p.Y));
                 todo.Push(new Point(p.X, p.Y + 1));
                 todo.Push(new Point(p.X, p.Y - 1));
+            }
+            return region;
+        }
+
+        /// <summary>The colour of one pixel of a line or shape: the button's colour, or its place in the gradient.</summary>
+        private Color ShapeColourAt(Point pixel, Point start, Point end)
+        {
+            return this.GradientOn
+                ? Gradients.At(this.GradientShape, this.GradientBlend, pixel, start, end, this.StrokeColour, this.OtherColour)
+                : this.StrokeColour;
+        }
+
+        /// <summary>The pixels on a straight line between two points.</summary>
+        private static IEnumerable<Point> LinePoints(Point from, Point to)
+        {
+            int steps = Math.Max(Math.Abs(to.X - from.X), Math.Abs(to.Y - from.Y));
+            for (int i = 0; i <= steps; i++)
+                yield return steps == 0 ? from : new Point(from.X + (to.X - from.X) * i / steps, from.Y + (to.Y - from.Y) * i / steps);
+        }
+
+        /// <summary>Paint one pixel (and its mirrored copies), whatever size the tip is.</summary>
+        /// <remarks>A filled shape covers exactly what was dragged; painting it with a big tip made it grow past its corners.</remarks>
+        private void PaintPixel(int x, int y, Color colour)
+        {
+            int size = this.BrushSize;
+            this.BrushSize = 1;
+            try
+            {
+                this.PaintDot(x, y, colour);
+            }
+            finally
+            {
+                this.BrushSize = size;
             }
         }
 
@@ -1560,6 +1836,10 @@ namespace CustomContentCore.UI
         /// <summary>Say which colour a swatch is when the cursor is over it.</summary>
         public override string? GetTooltip(int x, int y)
         {
+            if (this.FrontSwatch.Contains(x, y))
+                return "First colour: the left mouse button paints with it. Click to choose it; X swaps the two.";
+            if (this.BackSwatch.Contains(x, y))
+                return "Second colour: the right mouse button paints with it. It starts see-through, so the right button erases. Click to choose it; X swaps the two.";
             int size = 40, gap = 6;
             int px = this.SwatchesX, py = this.CanvasArea.Bottom + 10;
             if (y >= py && y <= py + size)
@@ -1581,11 +1861,17 @@ namespace CustomContentCore.UI
         private IEnumerable<Color> Swatches => this.Recent.Concat(this.Palette);
 
         /// <summary>Open the colour picker and keep what comes back within reach.</summary>
-        private void ChooseColour()
+        private void ChooseColour() => this.ChooseColour(secondary: false);
+
+        /// <summary>Pick the first or second colour with the colour picker.</summary>
+        private void ChooseColour(bool secondary)
         {
-            this.Root.Push(new ColourPickerScreen(this.Colour, colour =>
+            this.Root.Push(new ColourPickerScreen(secondary ? this.Colour2 : this.Colour, colour =>
             {
-                this.Colour = colour;
+                if (secondary)
+                    this.Colour2 = colour;
+                else
+                    this.Colour = colour;
                 this.Recent.Remove(colour);
                 this.Recent.Insert(0, colour);
                 if (this.Recent.Count > 6)
@@ -1602,18 +1888,16 @@ namespace CustomContentCore.UI
             this.Message = null;
             foreach ((Tool candidate, Button button) in this.ToolButtons)
                 button.Toggled = candidate == tool;
+            if (this.Area.Width > 0)
+                this.Layout(this.Area); // the column beside the canvas shows this tool's settings
         }
 
         private void SyncButtons()
         {
             this.UndoButton.Enabled = this.Done.Count > 0;
             this.RedoButton.Visible = this.Undone.Count > 0;
-            this.SpriteButton.Visible = this.Selection != null && this.CellWidth > 0 && this.CellHeight > 0;
-            this.CopyButton.Visible = this.Selection != null;
-            this.ClearButton.Visible = this.Selection != null;
-            this.PasteButton.Visible = this.Clipboard != null;
             if (this.Area.Width > 0)
-                this.Layout(this.Area); // the palette row shifts as those buttons come and go
+                this.Layout(this.Area); // the column beside the canvas shows what applies to the tool and the selection now
         }
 
         private void Save()
