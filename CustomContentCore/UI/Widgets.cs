@@ -161,7 +161,8 @@ namespace CustomContentCore.UI
             Rectangle source = this.Checked ? OptionsCheckbox.sourceRectChecked : OptionsCheckbox.sourceRectUnchecked;
             int y = this.Bounds.Y + (this.Bounds.Height - 36) / 2;
             b.Draw(Game1.mouseCursors, new Vector2(this.Bounds.X, y), source, Color.White, 0f, Vector2.Zero, 4f, SpriteEffects.None, 1f);
-            Gfx.Text(b, this.Label, new Vector2(this.Bounds.X + 48, this.Bounds.Y + (this.Bounds.Height - Gfx.LineHeight) / 2));
+            // cut the label to the room it was given, so a long one doesn't run under whatever sits beside it
+            Gfx.Text(b, Gfx.Fit(this.Label, this.Bounds.Width - 48), new Vector2(this.Bounds.X + 48, this.Bounds.Y + (this.Bounds.Height - Gfx.LineHeight) / 2));
         }
 
         public override bool Click(int x, int y)

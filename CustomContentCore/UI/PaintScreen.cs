@@ -278,7 +278,7 @@ namespace CustomContentCore.UI
         private readonly Button LayerDownButton;
         private readonly Button MergeLayerButton;
         private readonly Button HideLayerButton;
-        private readonly Dropdown OpacityDropdown;
+        private readonly NumberField OpacityField;
 
         private string? Message;
 
@@ -415,11 +415,14 @@ namespace CustomContentCore.UI
             this.LayerDownButton = this.Add(new Button("Down", () => this.ChangeLayers(() => this.Layers.MoveActive(-1), null), "Move this layer down, under the one below it."));
             this.MergeLayerButton = this.Add(new Button("Merge", () => this.ChangeLayers(this.Layers.MergeDown, "Merged it into the layer below."), "Lay this layer onto the one below and make them one."));
             this.HideLayerButton = this.Add(new Button("Hide", this.ToggleLayerVisible, "Hide or show this layer. Hidden layers aren't saved."));
-            this.OpacityDropdown = this.Add(new Dropdown(
-                new() { ("100", "100%"), ("75", "75%"), ("50", "50%"), ("25", "25%") },
-                "100",
-                v => { this.Layers.Active.Opacity = int.Parse(v); this.RefreshAll(); },
-                "How much of this layer shows over the ones below. It's saved as it looks.", prefix: "Shows"));
+            this.OpacityField = this.Add(new NumberField(100, percent =>
+            {
+                int opacity = (int)System.Math.Round(percent);
+                if (this.Layers.Active.Opacity == opacity)
+                    return;
+                this.Layers.Active.Opacity = opacity;
+                this.RefreshAll();
+            }, min: 0, max: 100, decimals: 0, tooltip: "How much of this layer shows over the ones below, as a number you can type. It's saved as it looks."));
 
             this.SaveButton = this.Add(new Button("Save", this.Save));
             this.CancelButton = this.Add(new Button("Cancel", this.Cancel));
@@ -554,7 +557,7 @@ namespace CustomContentCore.UI
         private IEnumerable<Widget> AllColumnWidgets => new Widget[]
         {
             this.SpriteButton, this.CopyButton, this.PasteButton, this.ClearButton, this.FlipButton, this.FlipDownButton, this.TurnButton,
-            this.LayerList, this.NewLayerButton, this.CopyLayerButton, this.DeleteLayerButton, this.LayerUpButton, this.LayerDownButton, this.MergeLayerButton, this.HideLayerButton, this.OpacityDropdown,
+            this.LayerList, this.NewLayerButton, this.CopyLayerButton, this.DeleteLayerButton, this.LayerUpButton, this.LayerDownButton, this.MergeLayerButton, this.HideLayerButton, this.OpacityField,
             this.SizeDownButton, this.SizeField, this.SizeUpButton, this.ShapeCycler, this.PixelPerfectBox, this.FillBox, this.MirrorCycler, this.GradientCycler, this.DirectionDropdown, this.CentreDropdown, this.BlendCycler
         };
 
@@ -2241,7 +2244,7 @@ namespace CustomContentCore.UI
             Rectangle a = new(this.ColumnArea.X, this.ColumnArea.Y, this.ColumnArea.Width, this.CanvasArea.Bottom - this.ColumnArea.Y);
             const int rowH = 40, gap = 8, buttonRows = 4;
             int buttonsTop = a.Bottom + gap - buttonRows * (rowH + gap);
-            foreach (Widget widget in new Widget[] { this.LayerList, this.NewLayerButton, this.CopyLayerButton, this.DeleteLayerButton, this.LayerUpButton, this.LayerDownButton, this.MergeLayerButton, this.HideLayerButton, this.OpacityDropdown })
+            foreach (Widget widget in new Widget[] { this.LayerList, this.NewLayerButton, this.CopyLayerButton, this.DeleteLayerButton, this.LayerUpButton, this.LayerDownButton, this.MergeLayerButton, this.HideLayerButton, this.OpacityField })
                 widget.Visible = true;
             this.LayerList.Bounds = new Rectangle(a.X, a.Y + 34, a.Width, Math.Max(rowH * 2, buttonsTop - gap - (a.Y + 34)));
             int y = this.LayerList.Bounds.Bottom + gap, half = (a.Width - gap) / 2;
@@ -2254,7 +2257,7 @@ namespace CustomContentCore.UI
             Row(this.NewLayerButton, this.CopyLayerButton);
             Row(this.LayerUpButton, this.LayerDownButton);
             Row(this.MergeLayerButton, this.DeleteLayerButton);
-            Row(this.HideLayerButton, this.OpacityDropdown);
+            Row(this.HideLayerButton, this.OpacityField);
         }
 
         /// <summary>One row of the layers list: the layer's name, and whether it's hidden or partly see-through.</summary>
@@ -2278,7 +2281,7 @@ namespace CustomContentCore.UI
             this.LayerUpButton.Enabled = this.Layers.ActiveIndex < layers.Count - 1;
             this.LayerDownButton.Enabled = this.MergeLayerButton.Enabled = this.Layers.ActiveIndex > 0;
             this.HideLayerButton.Label = this.Layers.Active.Visible ? "Hide" : "Show";
-            this.OpacityDropdown.Select(this.Layers.Active.Opacity.ToString());
+            this.OpacityField.Set(this.Layers.Active.Opacity);
         }
 
         /// <summary>Paint on the top visible layer that has something at a pixel, for a click on the image with the Layers tool.</summary>

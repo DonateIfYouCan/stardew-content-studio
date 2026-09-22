@@ -45,8 +45,8 @@ namespace CustomMining
         public static readonly MineArea[] Areas =
         {
             new("mines", "The mines (1-39)", 1, 39),
-            new("frost", "The frozen floors (40-79)", 40, 79),
-            new("lava", "The lava floors (80-119)", 80, 119),
+            new("frost", "Frozen floors (40-79)", 40, 79),
+            new("lava", "Lava floors (80-119)", 80, 119),
             new("skull", "Skull Cavern (121+)", 121, int.MaxValue - 1),
             new("quarrymine", "The Quarry Mine", QuarryMineLevel, QuarryMineLevel),
             new(VolcanoKey, "The volcano", int.MaxValue, int.MaxValue)

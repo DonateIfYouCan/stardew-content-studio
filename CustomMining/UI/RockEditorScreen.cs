@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
 using CustomContentCore;
 using CustomContentCore.UI;
@@ -61,8 +60,8 @@ namespace CustomMining.UI
         private readonly TextField HitsField;
         private readonly TextField ExperienceField;
 
-        private readonly (Checkbox Box, Dropdown Chance)[] AreaRows;
-        private readonly (Checkbox Box, Dropdown Chance)[] OutdoorRows;
+        private readonly (Checkbox Box, NumberField Chance)[] AreaRows;
+        private readonly (Checkbox Box, NumberField Chance)[] OutdoorRows;
         private readonly Checkbox[] SeasonBoxes;
 
         private readonly ScrollList<RockDrop> DropList;
@@ -70,7 +69,7 @@ namespace CustomMining.UI
         private readonly Button RemoveDropButton;
         private readonly TextField MinField;
         private readonly TextField MaxField;
-        private readonly Dropdown DropChance;
+        private readonly NumberField DropChance;
 
         private readonly Button SaveButton;
         private readonly Button CancelButton;
@@ -114,16 +113,17 @@ namespace CustomMining.UI
                 Checkbox box = this.On(Page.Where, new Checkbox(area.Label, current > 0, on =>
                 {
                     if (on)
-                        r.Places[area.Key] = ReadChance(this.AreaChance(area.Key));
+                        r.Places[area.Key] = MineralEditorScreen.AsChance(this.AreaChance(area.Key));
                     else
                         r.Places.Remove(area.Key);
                     this.SyncPage();
                 }));
-                Dropdown chance = this.On(Page.Where, new Dropdown(ChanceOptions(current), ChanceValue(current > 0 ? current : 0.1), v =>
+                NumberField chance = this.On(Page.Where, new NumberField(MineralEditorScreen.AsPercent(current > 0 ? current : 0.1), percent =>
                 {
                     if (r.Places.ContainsKey(area.Key))
-                        r.Places[area.Key] = ReadChance(v);
-                }, "How many of the rocks down there are this one."));
+                        r.Places[area.Key] = MineralEditorScreen.AsChance(percent);
+                }, min: MineralEditorScreen.MinPercent, max: 100, decimals: 2,
+                    tooltip: "How many of the rocks down there are this one, as a percentage you can type. At 100% every rock the level picks is yours; the rest of the level's own rocks are the ones put out another way, like ore nodes."));
                 return (box, chance);
             }).ToArray();
 
@@ -134,16 +134,17 @@ namespace CustomMining.UI
                 Checkbox box = this.On(Page.Where, new Checkbox(place.Label, current > 0, on =>
                 {
                     if (on)
-                        r.Outdoors[place.Key] = ReadChance(this.OutdoorChance(place.Key));
+                        r.Outdoors[place.Key] = MineralEditorScreen.AsChance(this.OutdoorChance(place.Key));
                     else
                         r.Outdoors.Remove(place.Key);
                     this.SyncPage();
                 }));
-                Dropdown chance = this.On(Page.Where, new Dropdown(ChanceOptions(current), ChanceValue(current > 0 ? current : 0.1), v =>
+                NumberField chance = this.On(Page.Where, new NumberField(MineralEditorScreen.AsPercent(current > 0 ? current : 0.1), percent =>
                 {
                     if (r.Outdoors.ContainsKey(place.Key))
-                        r.Outdoors[place.Key] = ReadChance(v);
-                }, "How many of the rocks that turn up there overnight are this one. The mountain includes its quarry."));
+                        r.Outdoors[place.Key] = MineralEditorScreen.AsChance(percent);
+                }, min: MineralEditorScreen.MinPercent, max: 100, decimals: 2,
+                    tooltip: "How many of the rocks that turn up there overnight are this one. The mountain includes its quarry."));
                 return (box, chance);
             }).ToArray();
             this.SeasonBoxes = RockData.SeasonNames.Select(season => this.On(Page.Where, new Checkbox(char.ToUpper(season[0]) + season[1..], r.Seasons.Count == 0 || r.Seasons.Contains(season, StringComparer.OrdinalIgnoreCase), on =>
@@ -164,7 +165,8 @@ namespace CustomMining.UI
             this.RemoveDropButton = this.On(Page.Drops, new Button("Remove", this.RemoveDrop));
             this.MinField = this.On(Page.Drops, new TextField("1", v => { if (this.DropList.Selected is { } drop) drop.Min = int.TryParse(v, out int n) ? Math.Max(1, n) : 1; }, numbersOnly: true, limit: 3));
             this.MaxField = this.On(Page.Drops, new TextField("1", v => { if (this.DropList.Selected is { } drop) drop.Max = int.TryParse(v, out int n) ? Math.Max(1, n) : 1; }, numbersOnly: true, limit: 3));
-            this.DropChance = this.On(Page.Drops, new Dropdown(ChanceOptions(1), ChanceValue(1), v => { if (this.DropList.Selected is { } drop) drop.Chance = ReadChance(v); }, "How often the rock gives it at all."));
+            this.DropChance = this.On(Page.Drops, new NumberField(100, percent => { if (this.DropList.Selected is { } drop) drop.Chance = MineralEditorScreen.AsChance(percent); },
+                min: MineralEditorScreen.MinPercent, max: 100, decimals: 2, tooltip: "How often the rock gives it at all."));
 
             this.SaveButton = this.Add(new Button("Save", this.Save));
             this.CancelButton = this.Add(new Button("Cancel", () => this.Root.Pop()));
@@ -253,21 +255,21 @@ namespace CustomMining.UI
 
             // where: the mines down the left, above ground down the right, seasons under them
             int colW = (rw - 24) / 2;
-            int chanceW = 132;
+            int chanceW = 100;
             y = pageTop + 30;
             this.WhereHeadings = (new Rectangle(rx, pageTop, colW, 28), new Rectangle(rx + colW + 24, pageTop, colW, 28));
-            foreach ((Checkbox box, Dropdown chance) in this.AreaRows)
+            foreach ((Checkbox box, NumberField chance) in this.AreaRows)
             {
-                box.Bounds = new Rectangle(rx, y, colW - chanceW - 16, 44);
+                box.Bounds = new Rectangle(rx, y, colW - chanceW - 8, 44);
                 chance.Bounds = new Rectangle(rx + colW - chanceW, y, chanceW, 44);
                 y += 52;
             }
             int seasonsY = y + 20;
             int outX = rx + colW + 24;
             int outY = pageTop + 30;
-            foreach ((Checkbox box, Dropdown chance) in this.OutdoorRows)
+            foreach ((Checkbox box, NumberField chance) in this.OutdoorRows)
             {
-                box.Bounds = new Rectangle(outX, outY, colW - chanceW - 16, 44);
+                box.Bounds = new Rectangle(outX, outY, colW - chanceW - 8, 44);
                 chance.Bounds = new Rectangle(outX + colW - chanceW, outY, chanceW, 44);
                 outY += 52;
             }
@@ -290,7 +292,7 @@ namespace CustomMining.UI
             this.Labels.Add((this.MaxField, new Rectangle(rx + 120 + fieldW + 12, y, 40, 48), "to"));
             this.MaxField.Bounds = new Rectangle(rx + 120 + fieldW + 56, y, fieldW, 48);
             this.Labels.Add((this.DropChance, new Rectangle(rx + 120 + fieldW * 2 + 72, y, 100, 48), "How often"));
-            this.DropChance.Bounds = new Rectangle(rx + 120 + fieldW * 2 + 176, y, 200, 48);
+            this.DropChance.Bounds = new Rectangle(rx + 120 + fieldW * 2 + 196, y, 140, 48);
 
             // a game rock only gets new looks, so its one control goes on the page with no tabs
             if (this.GameChange != null)
@@ -413,9 +415,9 @@ namespace CustomMining.UI
 
             if (this.Current == Page.Where)
             {
-                foreach ((Checkbox box, Dropdown chance) in this.AreaRows)
+                foreach ((Checkbox box, NumberField chance) in this.AreaRows)
                     chance.Visible = box.Checked;
-                foreach ((Checkbox box, Dropdown chance) in this.OutdoorRows)
+                foreach ((Checkbox box, NumberField chance) in this.OutdoorRows)
                     chance.Visible = box.Checked;
                 bool anyOutdoors = this.OutdoorRows.Any(row => row.Box.Checked);
                 foreach (Checkbox box in this.SeasonBoxes)
@@ -430,23 +432,10 @@ namespace CustomMining.UI
         }
 
         /// <summary>The chance picked for a part of the mines now, as a stored value.</summary>
-        private string AreaChance(string area) => this.AreaRows[Array.FindIndex(RockData.Areas, a => a.Key == area)].Chance.Value;
+        private double AreaChance(string area) => this.AreaRows[Array.FindIndex(RockData.Areas, a => a.Key == area)].Chance.Value;
 
-        /// <summary>The chance picked for a place above ground now, as a stored value.</summary>
-        private string OutdoorChance(string place) => this.OutdoorRows[Array.FindIndex(RockData.OutdoorPlaces, p => p.Key == place)].Chance.Value;
-
-        /// <summary>The chances to offer, with the one it already has added if it isn't one of them.</summary>
-        private static List<(string Value, string Label)> ChanceOptions(double current)
-        {
-            List<double> chances = new() { 0.01, 0.02, 0.05, 0.1, 0.2, 0.35, 0.5, 0.75, 1 };
-            if (current > 0 && !chances.Any(c => Math.Abs(c - current) < 0.0001))
-                chances.Add(current);
-            return chances.OrderBy(c => c).Select(c => (ChanceValue(c), MiningData.ChanceLabel(c))).ToList();
-        }
-
-        private static string ChanceValue(double chance) => chance.ToString("0.#####", CultureInfo.InvariantCulture);
-
-        private static double ReadChance(string value) => MiningData.CleanChance(double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double chance) ? chance : 0.1);
+        /// <summary>The chance typed for a place above ground now, in percent.</summary>
+        private double OutdoorChance(string place) => this.OutdoorRows[Array.FindIndex(RockData.OutdoorPlaces, p => p.Key == place)].Chance.Value;
 
         private void RefreshDrops()
         {
@@ -463,8 +452,7 @@ namespace CustomMining.UI
             {
                 this.MinField.Text = Math.Max(1, drop.Min).ToString();
                 this.MaxField.Text = Math.Max(Math.Max(1, drop.Min), drop.Max).ToString();
-                this.DropChance.Options = ChanceOptions(drop.Chance);
-                this.DropChance.Select(ChanceValue(MiningData.CleanChance(drop.Chance)));
+                this.DropChance.Set(MineralEditorScreen.AsPercent(drop.Chance));
             }
             this.SyncPage();
         }

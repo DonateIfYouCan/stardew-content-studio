@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
 using CustomContentCore;
 using CustomContentCore.UI;
@@ -17,9 +16,6 @@ namespace CustomMining.UI
         /*********
         ** Fields
         *********/
-        /// <summary>The chances the editor offers, as a share of one.</summary>
-        private static readonly double[] ChancePresets = { 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.35, 0.5, 1 };
-
         /// <summary>The editor's pages.</summary>
         private enum Page { Item, Geodes, Digging, Gifts }
 
@@ -62,8 +58,8 @@ namespace CustomMining.UI
         private readonly Cycler ColourCycler;
         private readonly Checkbox MuseumBox;
 
-        private readonly (Checkbox Box, Dropdown Chance)[] GeodeRows;
-        private readonly (Checkbox Box, Dropdown Chance)[] DigRows;
+        private readonly (Checkbox Box, NumberField Chance)[] GeodeRows;
+        private readonly (Checkbox Box, NumberField Chance)[] DigRows;
 
         private readonly ScrollList<(string Name, string Label)> GiftList;
 
@@ -115,16 +111,17 @@ namespace CustomMining.UI
                 Checkbox box = this.On(Page.Geodes, new Checkbox(geode.Label, current > 0, on =>
                 {
                     if (on)
-                        m.Geodes[geode.Id] = ReadChance(this.GeodeChance(geode.Id));
+                        m.Geodes[geode.Id] = AsChance(this.GeodeChance(geode.Id));
                     else
                         m.Geodes.Remove(geode.Id);
                     this.SyncPage();
                 }));
-                Dropdown chance = this.On(Page.Geodes, new Dropdown(ChanceOptions(current), ChanceValue(current > 0 ? current : 0.05), v =>
+                NumberField chance = this.On(Page.Geodes, new NumberField(AsPercent(current > 0 ? current : 0.05), percent =>
                 {
                     if (m.Geodes.ContainsKey(geode.Id))
-                        m.Geodes[geode.Id] = ReadChance(v);
-                }, "How often a geode of that kind gives this instead of one of its usual finds. A geode keeps its own treasure about half the time, so even 100% here is roughly one geode in two."));
+                        m.Geodes[geode.Id] = AsChance(percent);
+                }, min: MinPercent, max: 100, decimals: 2,
+                    tooltip: "How often a geode of that kind gives this instead of one of its usual finds. Type any number you like, down to 0.1%. A geode keeps its own treasure about half the time, so even 100% here is roughly one geode in two."));
                 return (box, chance);
             }).ToArray();
 
@@ -135,16 +132,17 @@ namespace CustomMining.UI
                 Checkbox box = this.On(Page.Digging, new Checkbox(place.Label, current > 0, on =>
                 {
                     if (on)
-                        m.DigSpots[place.Key] = ReadChance(this.DigChance(place.Key));
+                        m.DigSpots[place.Key] = AsChance(this.DigChance(place.Key));
                     else
                         m.DigSpots.Remove(place.Key);
                     this.SyncPage();
                 }));
-                Dropdown chance = this.On(Page.Digging, new Dropdown(ChanceOptions(current), ChanceValue(current > 0 ? current : 0.05), v =>
+                NumberField chance = this.On(Page.Digging, new NumberField(AsPercent(current > 0 ? current : 0.05), percent =>
                 {
                     if (m.DigSpots.ContainsKey(place.Key))
-                        m.DigSpots[place.Key] = ReadChance(v);
-                }, "How often an artefact spot dug there gives this."));
+                        m.DigSpots[place.Key] = AsChance(percent);
+                }, min: MinPercent, max: 100, decimals: 2,
+                    tooltip: "How often an artefact spot dug there gives this. Type any number you like, down to 0.1%."));
                 return (box, chance);
             }).ToArray();
 
@@ -235,10 +233,10 @@ namespace CustomMining.UI
 
             // the geodes it comes out of: one row each, the chance beside it
             y = pageTop;
-            foreach ((Checkbox box, Dropdown chance) in this.GeodeRows)
+            foreach ((Checkbox box, NumberField chance) in this.GeodeRows)
             {
                 box.Bounds = new Rectangle(rx, y, half, 44);
-                chance.Bounds = new Rectangle(rx + half + 16, y, 240, 44);
+                chance.Bounds = new Rectangle(rx + half + 16, y, 160, 44);
                 y += 52;
             }
 
@@ -251,8 +249,8 @@ namespace CustomMining.UI
             {
                 int cx = rx + (i / rows) * (colW + 24);
                 int cy = digTop + (i % rows) * rowH;
-                this.DigRows[i].Box.Bounds = new Rectangle(cx, cy, colW - 200, rowH - 6);
-                this.DigRows[i].Chance.Bounds = new Rectangle(cx + colW - 192, cy, 192, rowH - 6);
+                this.DigRows[i].Box.Bounds = new Rectangle(cx, cy, colW - 158, rowH - 6);
+                this.DigRows[i].Chance.Bounds = new Rectangle(cx + colW - 150, cy, 150, rowH - 6);
             }
 
             this.GiftList.Bounds = new Rectangle(rx, pageTop + 40, rw, bottom - pageTop - 40);
@@ -360,13 +358,13 @@ namespace CustomMining.UI
             // a chance only shows for something it's actually found in
             if (this.Current == Page.Geodes)
             {
-                foreach ((Checkbox box, Dropdown chance) in this.GeodeRows)
+                foreach ((Checkbox box, NumberField chance) in this.GeodeRows)
                     chance.Visible = box.Checked;
             }
             if (this.Current == Page.Digging)
             {
                 bool dug = MiningData.CanBeDugUp(this.Item.Kind);
-                foreach ((Checkbox box, Dropdown chance) in this.DigRows)
+                foreach ((Checkbox box, NumberField chance) in this.DigRows)
                 {
                     box.Visible = dug;
                     chance.Visible = dug && box.Checked;
@@ -374,24 +372,20 @@ namespace CustomMining.UI
             }
         }
 
-        /// <summary>The chance picked for a geode now, as a stored value.</summary>
-        private string GeodeChance(string geodeId) => this.GeodeRows[Array.FindIndex(MiningData.Geodes, g => g.Id == geodeId)].Chance.Value;
+        /// <summary>The smallest chance worth offering, in percent: below this the game would round it away.</summary>
+        internal const double MinPercent = 0.1;
 
-        /// <summary>The chance picked for a place now, as a stored value.</summary>
-        private string DigChance(string place) => this.DigRows[Array.FindIndex(MiningData.DigPlaces, p => p.Key == place)].Chance.Value;
+        /// <summary>The chance typed for a geode now, in percent.</summary>
+        private double GeodeChance(string geodeId) => this.GeodeRows[Array.FindIndex(MiningData.Geodes, g => g.Id == geodeId)].Chance.Value;
 
-        /// <summary>The chances to offer, with the one it already has added if it isn't one of them.</summary>
-        private static List<(string Value, string Label)> ChanceOptions(double current)
-        {
-            List<double> chances = ChancePresets.ToList();
-            if (current > 0 && !chances.Any(c => Math.Abs(c - current) < 0.0001))
-                chances.Add(current); // a copy of the game's keeps its own odds
-            return chances.OrderBy(c => c).Select(c => (ChanceValue(c), MiningData.ChanceLabel(c))).ToList();
-        }
+        /// <summary>The chance typed for a place now, in percent.</summary>
+        private double DigChance(string place) => this.DigRows[Array.FindIndex(MiningData.DigPlaces, p => p.Key == place)].Chance.Value;
 
-        private static string ChanceValue(double chance) => chance.ToString("0.#####", CultureInfo.InvariantCulture);
+        /// <summary>A stored chance (0 to 1) as the percentage the player types.</summary>
+        internal static double AsPercent(double chance) => Math.Round(MiningData.CleanChance(chance) * 100, 2);
 
-        private static double ReadChance(string value) => MiningData.CleanChance(double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double chance) ? chance : 0.05);
+        /// <summary>A typed percentage as the chance that's stored (0 to 1).</summary>
+        internal static double AsChance(double percent) => MiningData.CleanChance(percent / 100);
 
         private void SyncImage()
         {

@@ -40,6 +40,19 @@ feel about them as a gift. It can also give the game's own new art, or stop one 
 - What you add is real to the game: minerals and artefacts can be donated to the museum and count towards its rewards,
   gems count as gems (so the gemologist profession pays out), and everything sells and ships like the game's own.
 
+## Screenshots
+
+![The mineral editor's geode page](../docs/screenshots/0.5.0-mineral-geodes.png)
+*A mineral: which geodes give it and how often, typed as a percentage.*
+
+![The rock editor's where page](../docs/screenshots/0.5.0-rock-where.png)
+*A rock: the caves and the places above ground it turns up in, and the seasons.*
+
+![The game's own rocks](../docs/screenshots/0.5.0-game-rocks.png)
+*Every rock the mines are filled with, to reskin or hold back.*
+
+All images in the screenshots are made for the demo.
+
 ## Files
 
 | Path | What it is |

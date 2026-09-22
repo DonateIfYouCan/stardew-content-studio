@@ -41,11 +41,6 @@ namespace CustomPaintings.UI
             (-150, "Animate: fast"), (-300, "Animate: medium"), (-600, "Animate: slow")
         };
 
-        private static readonly (float Chance, string Label)[] Chances =
-        {
-            (0.01f, "1% per catch"), (0.02f, "2% per catch"), (0.05f, "5% per catch"), (0.1f, "10% per catch"), (0.15f, "15% per catch"), (0.25f, "25% per catch"), (0.5f, "50% per catch"), (1f, "100% per catch")
-        };
-
         private readonly PaintingStore Store;
         private readonly bool IsNew;
         private readonly CustomPainting? Painting;
@@ -91,7 +86,7 @@ namespace CustomPaintings.UI
         private readonly Button AddFishingButton;
         private readonly Cycler SourceShopCycler;
         private readonly Cycler SourceLocationCycler;
-        private readonly Cycler SourceChanceCycler;
+        private readonly NumberField SourceChanceField;
         private readonly TextField SourcePriceField;
         private readonly Checkbox SourceOnceBox;
         private readonly Button RemoveSourceButton;
@@ -203,11 +198,11 @@ namespace CustomPaintings.UI
             this.AddFishingButton = this.Add(new Button("+ Fishing", () => this.AddSource(new Source { Type = "Fishing", Location = "GingerIsland", Chance = 0.05f }), "Make it a possible catch while fishing."));
             this.SourceShopCycler = this.Add(new Cycler(GetShopOptions(), null, v => { if (this.SelectedSource != null) this.SelectedSource.Shop = v; }));
             this.SourceLocationCycler = this.Add(new Cycler(Names.FishingLocations.Select(l => (l.Id, l.Label)).ToList(), null, v => { if (this.SelectedSource != null) this.SelectedSource.Location = v; }));
-            this.SourceChanceCycler = this.Add(new Cycler(Chances.Select(c => (c.Chance.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture), c.Label)).ToList(), null, v =>
+            this.SourceChanceField = this.Add(new NumberField(5, percent =>
             {
                 if (this.SelectedSource != null)
-                    this.SelectedSource.Chance = float.Parse(v, System.Globalization.CultureInfo.InvariantCulture);
-            }));
+                    this.SelectedSource.Chance = (float)Math.Clamp(percent / 100, 0.0001, 1);
+            }, min: 0.01, max: 100, decimals: 2, tooltip: "How often a catch here is this painting, as a percentage you can type."));
             this.SourcePriceField = this.Add(new TextField("", v =>
             {
                 if (this.SelectedSource != null)
@@ -357,7 +352,7 @@ namespace CustomPaintings.UI
             this.SourceShopCycler.Bounds = new Rectangle(rightX, y, halfW, 48);
             this.SourceLocationCycler.Bounds = new Rectangle(rightX, y, halfW, 48);
             this.SourcePriceField.Bounds = new Rectangle(rightX + halfW + gap + 70, y, halfW - 70, 48);
-            this.SourceChanceCycler.Bounds = new Rectangle(rightX + halfW + gap, y, halfW, 48);
+            this.SourceChanceField.Bounds = new Rectangle(rightX + halfW + gap, y, halfW, 48);
             this.SourceOnceBox.Bounds = new Rectangle(rightX, y + 54, halfW, 44);
             this.RemoveSourceButton.Bounds = new Rectangle(rightX + rightW - 150, y + 54, 150, 44);
 
@@ -1007,7 +1002,7 @@ namespace CustomPaintings.UI
             this.SourceShopCycler.Visible = shop;
             this.SourcePriceField.Visible = shop;
             this.SourceLocationCycler.Visible = fishing;
-            this.SourceChanceCycler.Visible = fishing;
+            this.SourceChanceField.Visible = fishing;
             this.SourceOnceBox.Visible = fishing;
             this.RemoveSourceButton.Visible = source != null;
 
@@ -1026,15 +1021,7 @@ namespace CustomPaintings.UI
                 }
                 this.SourceLocationCycler.Index = Math.Max(0, location);
 
-                int chance = 0;
-                float best = float.MaxValue;
-                for (int i = 0; i < Chances.Length; i++)
-                {
-                    float diff = Math.Abs(Chances[i].Chance - source!.Chance);
-                    if (diff < best)
-                        (best, chance) = (diff, i);
-                }
-                this.SourceChanceCycler.Index = chance;
+                this.SourceChanceField.Set(Math.Round(source!.Chance * 100, 2));
                 this.SourceOnceBox.Checked = source!.Once;
             }
         }
