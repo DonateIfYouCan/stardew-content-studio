@@ -64,7 +64,11 @@ feel about them as a gift. It can also give the game's own new art, or stop one 
 - The museum takes minerals, gems and artefacts alike (as it does the game's own diamonds and rubies); turning off
   "Can be donated to the museum" is what keeps one out.
 - Above ground, a rock of yours takes the place of one the game spawned overnight, so it follows the game's own rules
-  about where rocks can appear (and nothing spawns on the beach, in the desert, or anywhere in winter).
+  about where rocks can appear (nothing on the beach, in the desert, or anywhere in winter). That covers every way the
+  game has of putting a rock out: the daily weeds-and-stones spawn, the mountain quarry, the quarry on the Hill-top and
+  Four Corners farms (and any farm map that spawns mountain ore), and Ginger Island's mussel nodes.
+- Nothing is swapped on the day you load a save: the morning's rocks are worked out by comparing a place against how it
+  was left the night before.
 - Stopping one of the game's rocks turning up covers the caves (the mines, Skull Cavern, the Quarry Mine and the
   volcano), where a plain rock of that cave stands in. It doesn't reach rocks spawned above ground.
 - The game calls every rock "Stone", so a rock's name is only ever seen in the editor.

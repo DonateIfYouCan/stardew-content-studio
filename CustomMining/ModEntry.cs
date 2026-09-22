@@ -34,6 +34,19 @@ namespace CustomMining
 
             helper.Events.GameLoop.GameLaunched += (_, _) => Store.Reload();
             helper.Events.GameLoop.UpdateTicked += this.OnUpdateTicked;
+
+            // rocks above ground: note what each place holds tonight, and swap a share of what it gained by morning.
+            // Only the host wakes the world up, and what it puts out is sent to everyone else.
+            helper.Events.GameLoop.SaveLoaded += (_, _) => { if (Context.IsMainPlayer) OutdoorRocks.RememberTonight(); };
+            helper.Events.GameLoop.DayEnding += (_, _) => { if (Context.IsMainPlayer) OutdoorRocks.RememberTonight(); };
+            helper.Events.GameLoop.DayStarted += (_, _) =>
+            {
+                if (!Context.IsMainPlayer)
+                    return;
+                int placed = OutdoorRocks.PlaceThisMorning(Store, Store.File.Rocks, this.Monitor);
+                if (placed > 0)
+                    this.Monitor.Log($"Put out {placed} of your rocks above ground this morning.", LogLevel.Trace);
+            };
             helper.Events.Content.AssetRequested += (_, e) => Store.OnAssetRequested(e);
 
             helper.ConsoleCommands.Add("cmine_editor", "Opens the mineral editor.\nUsage: cmine_editor [mineral name to edit]", (_, args) =>

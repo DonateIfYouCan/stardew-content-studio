@@ -90,6 +90,19 @@ namespace Tests
             Assert.Contains("isNew: true", code);
         }
 
+        [Fact]
+        public void RocksAboveGroundArentTiedToOneOfTheGamesSpawningRoutes()
+        {
+            // the farm quarry, the mountain quarry and the island's mussel nodes each run after the shared code they build
+            // on, so hooking one method misses the others; this is done by comparing a place against last night instead
+            string code = System.IO.File.ReadAllText(System.IO.Path.Combine(Root(), "CustomMining", "OutdoorRocks.cs"));
+            Assert.Contains("DayEnding", System.IO.File.ReadAllText(System.IO.Path.Combine(Root(), "CustomMining", "ModEntry.cs")));
+            Assert.Contains("DayStarted", System.IO.File.ReadAllText(System.IO.Path.Combine(Root(), "CustomMining", "ModEntry.cs")));
+            Assert.Contains("IsMainPlayer", System.IO.File.ReadAllText(System.IO.Path.Combine(Root(), "CustomMining", "ModEntry.cs"))); // the host wakes the world up, not the players
+            Assert.Contains("IsBreakableStone", code);
+            Assert.DoesNotContain("quarryDayUpdate", code); // no single spawning route is singled out
+        }
+
         private static string Root() => System.IO.Path.GetFullPath(System.IO.Path.Combine(System.AppContext.BaseDirectory, "..", "..", "..", ".."));
 
         /// <summary>The mods in this repo and whether they let their items be sent one at a time.</summary>
