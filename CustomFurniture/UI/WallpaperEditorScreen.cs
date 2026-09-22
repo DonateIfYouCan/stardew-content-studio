@@ -21,6 +21,10 @@ namespace CustomFurniture.UI
         private readonly bool IsNew;
         private readonly Action<string> OnSaved;
 
+        /// <summary>When editing new art for one of the game's own wallpapers or floors: which one, and the change being made; null for your own.</summary>
+        private readonly GameWallpaper? GameItem;
+        private readonly GameWallpaperChange? GameChange;
+
         private readonly CropWidget Cropper;
         private readonly TextField NameField;
         private readonly Cycler TypeCycler;
@@ -77,6 +81,21 @@ namespace CustomFurniture.UI
             this.LoadImage();
         }
 
+        /// <summary>Edit new art for one of the game's own wallpapers or floors.</summary>
+        /// <param name="store">The furniture store.</param>
+        /// <param name="item">The game wallpaper or floor.</param>
+        /// <param name="change">The change to it (a new one if it has none yet).</param>
+        /// <param name="onSaved">Called after saving, with its name.</param>
+        public WallpaperEditorScreen(FurnitureStore store, GameWallpaper item, GameWallpaperChange change, Action<string> onSaved)
+            : this(store, new CustomWallpaper { Id = item.Target, Name = item.Label, Image = change.Image, Crop = change.Crop, IsFloor = item.IsFloor, Resolution = change.Resolution }, isNew: false, onSaved)
+        {
+            this.GameItem = item;
+            this.GameChange = change;
+            // it's the game's own: what it is and what it's called stay the game's, only the art is yours
+            this.NameField.Visible = false;
+            this.TypeCycler.Visible = false;
+        }
+
         /// <summary>Called when a screen opened from here closes again, such as the paint screen.</summary>
         public override void OnResume()
         {
@@ -118,10 +137,13 @@ namespace CustomFurniture.UI
 
             int rightX = this.Cropper.Bounds.Right + 32, rightW = area.Right - pad - this.Cropper.Bounds.Right - 32;
             int labelW = 110, y = top;
-            this.NameField.Bounds = new Rectangle(rightX + labelW, y, rightW - labelW, 48);
-            y += 60;
-            this.TypeCycler.Bounds = new Rectangle(rightX + labelW, y, rightW - labelW, 48);
-            y += 60;
+            if (this.GameItem == null) // the game's own keeps its name and type, so those rows aren't there
+            {
+                this.NameField.Bounds = new Rectangle(rightX + labelW, y, rightW - labelW, 48);
+                y += 60;
+                this.TypeCycler.Bounds = new Rectangle(rightX + labelW, y, rightW - labelW, 48);
+                y += 60;
+            }
             this.DetailCycler.Bounds = new Rectangle(rightX + labelW, y, rightW - labelW, 48);
             y += 72;
             this.PreviewArea = new Rectangle(rightX, y + 36, rightW, bottom - (y + 36) - 12);
@@ -134,11 +156,15 @@ namespace CustomFurniture.UI
         {
             Rectangle area = this.Area;
             Gfx.Panel(b, area);
-            Gfx.Text(b, this.IsNew ? "New wallpaper or floor" : $"Edit '{this.Item.Name}'", new Vector2(area.X + 36, area.Y + 24), null, Gfx.TitleFont);
+            string title = this.GameItem != null ? $"New art for the game's {this.GameItem.Label}" : this.IsNew ? "New wallpaper or floor" : $"Edit '{this.Item.Name}'";
+            Gfx.Text(b, title, new Vector2(area.X + 36, area.Y + 24), null, Gfx.TitleFont);
             string shape = this.Item.IsFloor ? "square" : "tall strip";
             Gfx.Text(b, Gfx.Fit($"Your image - drag the box to move it, scroll to resize ({shape})", this.Cropper.Bounds.Width), new Vector2(this.Cropper.Bounds.X, this.Cropper.Bounds.Y - 36), Color.DimGray);
-            Gfx.Text(b, "Name", new Vector2(this.NameField.Bounds.X - 110, this.NameField.Bounds.Y + 10));
-            Gfx.Text(b, "Type", new Vector2(this.TypeCycler.Bounds.X - 110, this.TypeCycler.Bounds.Y + 10));
+            if (this.GameItem == null)
+            {
+                Gfx.Text(b, "Name", new Vector2(this.NameField.Bounds.X - 110, this.NameField.Bounds.Y + 10));
+                Gfx.Text(b, "Type", new Vector2(this.TypeCycler.Bounds.X - 110, this.TypeCycler.Bounds.Y + 10));
+            }
             Gfx.Text(b, "Detail", new Vector2(this.DetailCycler.Bounds.X - 110, this.DetailCycler.Bounds.Y + 10));
             Gfx.Text(b, "Tiled preview", new Vector2(this.PreviewArea.X, this.PreviewArea.Y - 36), Color.DimGray);
 
@@ -269,6 +295,15 @@ namespace CustomFurniture.UI
 
             int w = this.Item.IsFloor ? WallpaperSets.FloorSize : WallpaperSets.WallpaperWidth;
             int h = this.Item.IsFloor ? WallpaperSets.FloorSize : WallpaperSets.WallpaperHeight;
+            if (this.GameItem != null && GameWallpapers.LoadOriginal(this.GameItem) is { } original)
+            {
+                this.Root.Push(new ChoiceScreen(
+                    $"Paint a copy of the game's {this.GameItem.Label} ({w}x{h}). The game's own art is never changed.\n\nWhat size do you want to draw at?",
+                    ("The game's size (1x)", $"{w}x{h}: one pixel is one game pixel.", () => this.OpenPaint(original)),
+                    ("Twice the size (2x)", $"{w * 2}x{h * 2}: room for finer detail.", () => this.OpenPaint(ImageProcessor.Enlarge(original, 2))),
+                    ("Four times the size (4x)", $"{w * 4}x{h * 4}: the usual size for HD art.", () => this.OpenPaint(ImageProcessor.Enlarge(original, 4)))));
+                return;
+            }
             this.Root.Push(new ChoiceScreen(
                 $"Paint a new {(this.Item.IsFloor ? "floor tile" : "wallpaper strip")} from scratch. The game draws it at {w}x{h}.\n\nWhat size do you want to draw at?",
                 ("The game's size (1x)", $"{w}x{h}: one pixel is one game pixel.", () => this.OpenPaint(Blank(w, h))),
@@ -309,6 +344,30 @@ namespace CustomFurniture.UI
 
         private void Save()
         {
+            if (this.GameChange is { } change)
+            {
+                if (string.IsNullOrWhiteSpace(this.Item.Image))
+                {
+                    this.ShowError("Choose an image, or paint one.");
+                    return;
+                }
+                change.Image = this.Item.Image;
+                change.Crop = this.Item.Crop;
+                change.Resolution = this.Item.Resolution;
+                try
+                {
+                    this.Store.SaveGameWallpaperChange(change);
+                }
+                catch (Exception ex)
+                {
+                    this.ShowError($"Couldn't save: {ex.Message}");
+                    return;
+                }
+                Game1.playSound("newArtifact");
+                this.Root.Pop();
+                this.OnSaved(this.Item.Name);
+                return;
+            }
             if (string.IsNullOrWhiteSpace(this.Item.Name))
             {
                 this.ShowError("Give it a name.");

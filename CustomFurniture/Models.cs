@@ -13,6 +13,32 @@ namespace CustomFurniture
 
         /// <summary>Changes to the game's own furniture: new art, or hidden from the catalogue and shops. One per game item.</summary>
         public List<GameFurnitureChange> GameChanges { get; set; } = new();
+
+        /// <summary>Changes to the game's own wallpapers and floors: new art, or taken out of the shops. One per game item.</summary>
+        public List<GameWallpaperChange> GameWallpaperChanges { get; set; } = new();
+    }
+
+    /// <summary>A change to one of the game's own wallpapers or floors.</summary>
+    internal sealed class GameWallpaperChange
+    {
+        /// <summary>The game item's ID, like <c>(WP)12</c> or <c>(FL)MoreFloors:3</c>.</summary>
+        public string Target { get; set; } = "";
+
+        /// <summary>The new art's image file, relative to the <c>images</c> folder; empty to keep the game's.</summary>
+        public string Image { get; set; } = "";
+
+        /// <summary>The area of the image to use as <c>[x, y, width, height]</c>, or null for the biggest area that fits.</summary>
+        public int[]? Crop { get; set; }
+
+        /// <summary>How detailed it's drawn: 1 = the game's own resolution, up to 8; 0 = auto (matches your zoom).</summary>
+        public int Resolution { get; set; }
+
+        /// <summary>Whether it's taken out of the catalogue and every shop. Rooms already using it keep it.</summary>
+        public bool Hidden { get; set; }
+
+        /// <summary>Whether this changes nothing any more, so it can be dropped.</summary>
+        [Newtonsoft.Json.JsonIgnore]
+        public bool IsEmpty => string.IsNullOrWhiteSpace(this.Image) && !this.Hidden;
     }
 
     /// <summary>A change to one of the game's own pieces of furniture. Its type, size, name and price stay the game's.</summary>

@@ -415,6 +415,18 @@ namespace CustomContentCore
             return result;
         }
 
+        /// <summary>Convert premultiplied-alpha pixels (as the game's textures hold them) back to straight alpha.</summary>
+        public static Color[] Unpremultiply(Color[] pixels)
+        {
+            Color[] result = new Color[pixels.Length];
+            for (int i = 0; i < pixels.Length; i++)
+            {
+                Color c = pixels[i];
+                result[i] = c.A is 0 or 255 ? c : new Color(Math.Min(255, c.R * 255 / c.A), Math.Min(255, c.G * 255 / c.A), Math.Min(255, c.B * 255 / c.A), c.A);
+            }
+            return result;
+        }
+
         /// <summary>Load the frame styles: built-in ones plus images in the frames folder.</summary>
         public static List<FrameStyle> LoadFrames(string folder, Action<string> warn)
         {

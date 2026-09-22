@@ -121,6 +121,15 @@ namespace CustomFurniture
         /// <summary>The custom wallpapers and floors.</summary>
         public WallpaperSets Wallpapers { get; }
 
+        /// <summary>The game's own wallpapers and floors, with new art for some and some taken out of the shops.</summary>
+        public GameWallpapers GameWallpapers { get; }
+
+        /// <summary>The change to one game wallpaper or floor, if there is one.</summary>
+        public GameWallpaperChange? GetGameWallpaperChange(string target) => this.File.GameWallpaperChanges.FirstOrDefault(c => string.Equals(c.Target, target, StringComparison.OrdinalIgnoreCase));
+
+        /// <summary>Whether an item ID after the game-item mark is a wallpaper or floor rather than furniture.</summary>
+        private static bool IsWallpaperTarget(string target) => target.StartsWith("(WP)", StringComparison.Ordinal) || target.StartsWith("(FL)", StringComparison.Ordinal);
+
 
         /*********
         ** Public methods
@@ -131,6 +140,7 @@ namespace CustomFurniture
             this.Monitor = monitor;
             this.Manifest = manifest;
             this.Wallpapers = new WallpaperSets(monitor, manifest);
+            this.GameWallpapers = new GameWallpapers(monitor, setId => setId == this.Wallpapers.WallpaperSetId || setId == this.Wallpapers.FloorSetId);
             Directory.CreateDirectory(Path.Combine(helper.DirectoryPath, ImageFolderName));
         }
 
@@ -151,6 +161,11 @@ namespace CustomFurniture
             foreach (GameFurnitureChange change in this.File.GameChanges)
             {
                 if (CustomContent.FindImage(change.Sheet, this.ImageFolder) is { } path)
+                    files.Add(path);
+            }
+            foreach (GameWallpaperChange change in this.File.GameWallpaperChanges)
+            {
+                if (CustomContent.FindImage(change.Image, this.ImageFolder) is { } path)
                     files.Add(path);
             }
             return files;
@@ -311,12 +326,14 @@ namespace CustomFurniture
             this.GameHidden = hidden;
 
             this.Wallpapers.Reload(this.File.Wallpapers, this.Decode);
+            this.GameWallpapers.Reload(this.File.GameWallpaperChanges, data => this.Wallpapers.Load(data, this.Decode));
 
             this.Helper.GameContent.InvalidateCache(asset =>
                 asset.Name.IsEquivalentTo("Data/Furniture")
                 || asset.Name.IsEquivalentTo("Data/AdditionalWallpaperFlooring")
                 || asset.Name.IsEquivalentTo("Data/Shops")
                 || asset.Name.StartsWith($"Mods/{this.Manifest.UniqueID}/")
+                || this.GameWallpapers.Affects(asset.Name)
             );
             this.Monitor.Log($"Loaded {this.Loaded.Count} custom furniture item(s) and {this.Wallpapers.Count} wallpaper(s)/floor(s)"
                 + (this.GameReplaced.Count + this.GameHidden.Count > 0 ? $"; {this.GameReplaced.Count} game item(s) with new art, {this.GameHidden.Count} hidden" : "") + ".", LogLevel.Info);
@@ -377,6 +394,7 @@ namespace CustomFurniture
 
         public void OnAssetRequested(AssetRequestedEventArgs e)
         {
+            this.GameWallpapers.OnAssetRequested(e); // new art written into the game's own wallpaper textures
             string prefix = $"Mods/{this.Manifest.UniqueID}/";
             if (this.Wallpapers.IsSheet(e.NameWithoutLocale.Name))
             {
@@ -432,6 +450,7 @@ namespace CustomFurniture
             return file.Furniture.Select(f => f.Id)
                 .Concat(file.Wallpapers.Select(w => WallpaperItemId(w.Id))) // wallpaper and floors share this file, so their IDs are marked apart
                 .Concat(file.GameChanges.Where(c => !string.IsNullOrWhiteSpace(c.Target)).Select(c => GameItemId(c.Target))) // one per game item, so each is held on its own
+                .Concat(file.GameWallpaperChanges.Where(c => !string.IsNullOrWhiteSpace(c.Target)).Select(c => GameItemId(c.Target)))
                 .Where(id => !string.IsNullOrWhiteSpace(id) && id != WallpaperPrefix && id != CustomContent.GameItemPrefix)
                 .ToList();
         }
@@ -450,7 +469,9 @@ namespace CustomFurniture
             object? item = itemId.StartsWith(WallpaperPrefix, StringComparison.Ordinal)
                 ? file.Wallpapers.FirstOrDefault(w => string.Equals(w.Id, itemId.Substring(WallpaperPrefix.Length), StringComparison.OrdinalIgnoreCase))
                 : itemId.StartsWith(CustomContent.GameItemPrefix, StringComparison.Ordinal)
-                    ? file.GameChanges.FirstOrDefault(c => string.Equals(c.Target, itemId.Substring(CustomContent.GameItemPrefix.Length), StringComparison.OrdinalIgnoreCase))
+                    ? IsWallpaperTarget(itemId.Substring(CustomContent.GameItemPrefix.Length))
+                        ? file.GameWallpaperChanges.FirstOrDefault(c => string.Equals(c.Target, itemId.Substring(CustomContent.GameItemPrefix.Length), StringComparison.OrdinalIgnoreCase))
+                        : file.GameChanges.FirstOrDefault(c => string.Equals(c.Target, itemId.Substring(CustomContent.GameItemPrefix.Length), StringComparison.OrdinalIgnoreCase))
                     : file.Furniture.FirstOrDefault(f => string.Equals(f.Id, itemId, StringComparison.OrdinalIgnoreCase));
             return item == null
                 ? null
@@ -469,7 +490,10 @@ namespace CustomFurniture
             if (itemId.StartsWith(WallpaperPrefix, StringComparison.Ordinal))
                 return this.ApplyWallpaperJson(itemId.Substring(WallpaperPrefix.Length), json, files);
             if (itemId.StartsWith(CustomContent.GameItemPrefix, StringComparison.Ordinal))
-                return this.ApplyGameChangeJson(itemId.Substring(CustomContent.GameItemPrefix.Length), json, files);
+            {
+                string target = itemId.Substring(CustomContent.GameItemPrefix.Length);
+                return IsWallpaperTarget(target) ? this.ApplyGameWallpaperJson(target, json, files) : this.ApplyGameChangeJson(target, json, files);
+            }
 
             CustomFurnitureItem? item = JsonConvert.DeserializeObject<CustomFurnitureItem>(json);
             if (item == null)
@@ -509,7 +533,10 @@ namespace CustomFurniture
             {
                 // taking out a change to a game item puts that item back as the game has it
                 string target = itemId.Substring(CustomContent.GameItemPrefix.Length);
-                if (file.GameChanges.RemoveAll(c => string.Equals(c.Target, target, StringComparison.OrdinalIgnoreCase)) == 0)
+                int removed = IsWallpaperTarget(target)
+                    ? file.GameWallpaperChanges.RemoveAll(c => string.Equals(c.Target, target, StringComparison.OrdinalIgnoreCase))
+                    : file.GameChanges.RemoveAll(c => string.Equals(c.Target, target, StringComparison.OrdinalIgnoreCase));
+                if (removed == 0)
                     return false;
                 this.Save(file);
                 return true;
@@ -538,6 +565,28 @@ namespace CustomFurniture
             change.Sheet = this.TakeImage(change.Sheet, files);
             this.SaveGameChange(change);
             return true;
+        }
+
+        /// <summary>Write one change to a game wallpaper or floor that a player made.</summary>
+        private bool ApplyGameWallpaperJson(string target, string json, IDictionary<string, string> files)
+        {
+            GameWallpaperChange? change = JsonConvert.DeserializeObject<GameWallpaperChange>(json);
+            if (change == null || this.GameWallpapers.Get(target) == null)
+                return false; // only the game's own wallpapers and floors
+            change.Target = target;
+            change.Image = this.TakeImage(change.Image, files);
+            this.SaveGameWallpaperChange(change);
+            return true;
+        }
+
+        /// <summary>Save a change to a game wallpaper or floor, replacing any earlier one; a change that changes nothing is dropped.</summary>
+        public void SaveGameWallpaperChange(GameWallpaperChange change)
+        {
+            FurnitureFile file = this.ReadFile();
+            file.GameWallpaperChanges.RemoveAll(c => string.Equals(c.Target, change.Target, StringComparison.OrdinalIgnoreCase));
+            if (!change.IsEmpty)
+                file.GameWallpaperChanges.Add(change);
+            this.Save(file);
         }
 
         /// <summary>Save a change to a game furniture item, replacing any earlier one; a change that changes nothing is dropped.</summary>
@@ -689,6 +738,7 @@ namespace CustomFurniture
 
         private void EditShops(IDictionary<string, ShopData> shops)
         {
+            this.GameWallpapers.EditShops(shops);
             if (this.GameHidden.Count > 0)
             {
                 HashSet<string> hiddenItems = this.GameHidden.Select(id => "(F)" + id).ToHashSet(StringComparer.OrdinalIgnoreCase);

@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.Linq;
 using System;
 
 namespace CustomContentCore
@@ -98,6 +100,26 @@ namespace CustomContentCore
 
             // a whole file changes the list itself (its settings, or every item at once), which is the Host's own business
             return hostLetsPlayersChange ? Verdict.Yes : new Verdict(false, OnlyWhatTheyAdded);
+        }
+    }
+
+    /// <summary>Keeping items out of the game's shops, which mostly sell through queries rather than item by item.</summary>
+    public static class ShopConditions
+    {
+        /// <summary>Add item IDs to a shop entry's per-item condition, so its query (like <c>ALL_ITEMS (WP)</c>) leaves them out.</summary>
+        /// <param name="condition">The condition the entry has already, if any; it's kept.</param>
+        /// <param name="ids">The qualified item IDs to leave out, like <c>(WP)12</c>.</param>
+        /// <remarks>
+        /// This is how the game itself keeps a few out (<c>!ITEM_ID Target (WP)12 (WP)21</c>). It writes the base ones both
+        /// ways - Joja's random wallpaper leaves out plain <c>21</c> - so an ID without a set name goes in both ways too.
+        /// </remarks>
+        public static string AddExclusion(string? condition, IEnumerable<string> ids)
+        {
+            IEnumerable<string> forms = ids.SelectMany(id => id.StartsWith("(") && id.IndexOf(')') is var close and > 0 && !id.Contains(':')
+                ? new[] { id, id.Substring(close + 1) }
+                : new[] { id });
+            string exclusion = "!ITEM_ID Target " + string.Join(" ", forms);
+            return string.IsNullOrWhiteSpace(condition) ? exclusion : $"{condition}, {exclusion}";
         }
     }
 }

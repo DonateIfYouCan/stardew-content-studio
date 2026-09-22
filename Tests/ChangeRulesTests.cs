@@ -230,6 +230,21 @@ namespace Tests
             Assert.Matches(@"this\.Others = list\.Locks\s*\.Where\([^)]*PlayerId != me", code);
         }
 
+        [Fact]
+        public void AHiddenItemIsAddedToAShopsCondition()
+        {
+            Assert.Equal("!ITEM_ID Target (WP)12 12", ShopConditions.AddExclusion(null, new[] { "(WP)12" }));
+            Assert.Equal("!ITEM_ID Target (WP)MoreWalls:3", ShopConditions.AddExclusion("", new[] { "(WP)MoreWalls:3" }));
+        }
+
+        [Fact]
+        public void TheGamesOwnExclusionsAreKept()
+        {
+            // the Catalogue already leaves some out; adding ours mustn't bring those back
+            string existing = "!ITEM_ID Target (WP)12 (WP)21";
+            Assert.Equal(existing + ", !ITEM_ID Target (WP)40 40", ShopConditions.AddExclusion(existing, new[] { "(WP)40" }));
+        }
+
         private static string Root() => Path.GetFullPath(Path.Combine(System.AppContext.BaseDirectory, "..", "..", "..", ".."));
     }
 }
