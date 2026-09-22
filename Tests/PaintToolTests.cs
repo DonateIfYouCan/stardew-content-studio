@@ -448,5 +448,38 @@ namespace Tests
             string root = System.IO.Path.GetFullPath(System.IO.Path.Combine(System.AppContext.BaseDirectory, "..", "..", "..", ".."));
             return System.IO.File.ReadAllText(System.IO.Path.Combine(new[] { root, "CustomContentCore" }.Concat(path).ToArray()));
         }
+
+        /*********
+        ** Zoom and the edges of the image
+        *********/
+        [Fact]
+        public void ZoomStepsGrowWithTheZoom()
+        {
+            Assert.Equal(2, PaintScreen.ZoomStep(1, 1)); // at least one each step
+            Assert.Equal(30, PaintScreen.ZoomStep(24, 1)); // a quarter more, so 24x is no longer the end
+            Assert.Equal(1, PaintScreen.ZoomStep(1, -1)); // never below 1x
+            Assert.Equal(24, PaintScreen.ZoomStep(30, -1)); // and back the same way
+
+            // from 1x to 200x in a couple of dozen steps, not two hundred
+            int zoom = 1, steps = 0;
+            while (zoom < 200)
+            {
+                zoom = PaintScreen.ZoomStep(zoom, 1);
+                steps++;
+            }
+            Assert.InRange(steps, 1, 30);
+        }
+
+        [Theory]
+        [InlineData(0, 8, 0)]
+        [InlineData(7, 8, 0)]
+        [InlineData(8, 8, 1)]
+        [InlineData(-1, 8, -1)] // just left of the image is pixel -1, not 0, so a drag that starts there doesn't paint column 0
+        [InlineData(-8, 8, -1)]
+        [InlineData(-9, 8, -2)]
+        public void ScreenPointsOffTheImageAreOffTheImage(int offset, int zoom, int pixel)
+        {
+            Assert.Equal(pixel, PaintScreen.FloorDiv(offset, zoom));
+        }
     }
 }

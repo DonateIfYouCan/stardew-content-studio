@@ -317,8 +317,8 @@ namespace CustomContentCore.UI
                 "The shape of the tip. A square tip is the usual one for pixel art.", prefix: "Tip"));
             this.UndoButton = this.Add(new Button("Undo", this.Undo, "Take back the last stroke."));
             this.RedoButton = this.Add(new Button("Redo", this.Redo));
-            this.ZoomOutButton = this.Add(new Button("-", () => this.SetZoom(this.Zoom - 1, this.CanvasArea.Center), "Zoom out."));
-            this.ZoomInButton = this.Add(new Button("+", () => this.SetZoom(this.Zoom + 1, this.CanvasArea.Center), "Zoom in. The mouse wheel works too."));
+            this.ZoomOutButton = this.Add(new Button("-", () => this.SetZoom(this.ZoomStep(-1), this.CanvasArea.Center), "Zoom out."));
+            this.ZoomInButton = this.Add(new Button("+", () => this.SetZoom(this.ZoomStep(1), this.CanvasArea.Center), "Zoom in. The mouse wheel works too."));
             this.FitButton = this.Add(new Button("Fit", this.Fit, "Show the whole image."));
             this.WidthButton = this.Add(new Button("Width", this.FitWidth, "Fill the width with the image, which is how it opens."));
             this.GridBox = this.Add(new Checkbox("Grid", true, v => this.ShowGrid = v, "Lines showing where each sprite in the sheet begins, and (zoomed right in) where each pixel is."));
@@ -727,11 +727,16 @@ namespace CustomContentCore.UI
             }
 
             // outline the pixel under the cursor, the size of the tip for the tools that have one
-            if (this.ToPixel(mouseX, mouseY) is { } pixel && this.Zoom >= 3)
+            // (a tip reaches in from off the image too, so it's shown there, clipped to the canvas)
+            bool hasTip = this.Current is Tool.Pencil or Tool.Brush or Tool.Eraser or Tool.ReplaceBrush or Tool.Line or Tool.Rectangle or Tool.Ellipse;
+            if (this.Inner.Contains(mouseX, mouseY) && this.Zoom >= 3 && (hasTip || this.ToPixel(mouseX, mouseY) != null))
             {
+                Point pixel = this.ToCell(mouseX, mouseY);
                 int tip = this.Current is Tool.Pencil or Tool.Brush or Tool.Eraser or Tool.ReplaceBrush ? this.BrushSize : 1;
-                Rectangle box = new(dest.X + (pixel.X - view.X) * this.Zoom, dest.Y + (pixel.Y - view.Y) * this.Zoom, this.Zoom * tip, this.Zoom * tip);
-                Gfx.Outline(b, box, Color.White, 1);
+                Point corner = tip > 1 ? this.TipCorner(pixel.X, pixel.Y) : pixel;
+                Rectangle box = Rectangle.Intersect(new Rectangle(dest.X + (corner.X - view.X) * this.Zoom, dest.Y + (corner.Y - view.Y) * this.Zoom, this.Zoom * tip, this.Zoom * tip), this.Inner);
+                if (box.Width > 0 && box.Height > 0)
+                    Gfx.Outline(b, box, Color.White, 1);
             }
         }
 
@@ -864,30 +869,24 @@ namespace CustomContentCore.UI
                 this.ClampView();
                 return;
             }
+            // off the image counts too: a selection or shape dragged past the edge just stops at it
             if (this.DraggingSelection && this.ShapeStart is { } from)
             {
-                if (this.ToPixel(x, y) is { } to)
-                    this.Selection = Rectangle.Intersect(
-                        new Rectangle(Math.Min(from.X, to.X), Math.Min(from.Y, to.Y), Math.Abs(to.X - from.X) + 1, Math.Abs(to.Y - from.Y) + 1),
-                        new Rectangle(0, 0, this.Width, this.Height));
+                this.Selection = this.SelectionBetween(from, this.ToCell(x, y));
                 return;
             }
-            if (this.MovingSelection && this.Selection is { } moving)
+            if (this.MovingSelection && this.Selection != null)
             {
-                if (this.ToPixel(x, y) is { } at)
-                {
-                    Rectangle moved = this.MoveStartedAs;
-                    moved.X = Math.Clamp(this.MoveStartedAs.X + at.X - this.MoveGrabbedAt.X, -moved.Width + 1, this.Width - 1);
-                    moved.Y = Math.Clamp(this.MoveStartedAs.Y + at.Y - this.MoveGrabbedAt.Y, -moved.Height + 1, this.Height - 1);
-                    this.Selection = moved;
-                    _ = moving;
-                }
+                Point at = this.ToCell(x, y);
+                Rectangle moved = this.MoveStartedAs;
+                moved.X = Math.Clamp(this.MoveStartedAs.X + at.X - this.MoveGrabbedAt.X, -moved.Width + 1, this.Width - 1);
+                moved.Y = Math.Clamp(this.MoveStartedAs.Y + at.Y - this.MoveGrabbedAt.Y, -moved.Height + 1, this.Height - 1);
+                this.Selection = moved;
                 return;
             }
             if (this.ShapeStart != null)
             {
-                if (this.ToPixel(x, y) is { } pixel)
-                    this.ShapeEnd = pixel;
+                this.ShapeEnd = this.ToCell(x, y);
                 return;
             }
             if (this.StrokeOriginals != null)
@@ -907,7 +906,7 @@ namespace CustomContentCore.UI
                 this.DraggingSelection = false;
                 this.ShapeStart = null;
                 if (this.Selection is { Width: <= 1, Height: <= 1 })
-                    this.Selection = null; // a plain click clears the selection
+                    this.Selection = null; // a plain click clears the selection, and so does a drag that missed the image
                 this.SyncButtons();
                 return;
             }
@@ -949,7 +948,7 @@ namespace CustomContentCore.UI
         {
             if (this.CanvasArea.Contains(x, y))
             {
-                this.SetZoom(this.Zoom + (direction > 0 ? 1 : -1), new Point(x, y));
+                this.SetZoom(this.ZoomStep(direction > 0 ? 1 : -1), new Point(x, y));
                 return;
             }
             base.Scroll(x, y, direction);
@@ -1014,8 +1013,8 @@ namespace CustomContentCore.UI
             Add("clear", "Clear the selection", Keys.Delete, this.ClearSelection);
             Add("undo", "Undo", Keys.Z, this.Undo);
             Add("redo", "Redo", Keys.Y, this.Redo);
-            Add("zoomIn", "Zoom in", Keys.OemPlus, () => this.SetZoom(this.Zoom + 1, this.CanvasArea.Center));
-            Add("zoomOut", "Zoom out", Keys.OemMinus, () => this.SetZoom(this.Zoom - 1, this.CanvasArea.Center));
+            Add("zoomIn", "Zoom in", Keys.OemPlus, () => this.SetZoom(this.ZoomStep(1), this.CanvasArea.Center));
+            Add("zoomOut", "Zoom out", Keys.OemMinus, () => this.SetZoom(this.ZoomStep(-1), this.CanvasArea.Center));
             Add("fitWidth", "Fill the width", Keys.D0, this.FitWidth);
             Add("left", "Move left", Keys.Left, () => { this.View.X -= 8; this.ClampView(); });
             Add("right", "Move right", Keys.Right, () => { this.View.X += 8; this.ClampView(); });
@@ -1120,17 +1119,44 @@ namespace CustomContentCore.UI
         /// <summary>The image pixel under a screen point, if the cursor is over the image.</summary>
         private Point? ToPixel(int x, int y)
         {
-            Rectangle inner = this.Inner;
-            if (!inner.Contains(x, y))
+            if (!this.Inner.Contains(x, y))
                 return null;
-            int px = this.View.X + (x - inner.X) / this.Zoom;
-            int py = this.View.Y + (y - inner.Y) / this.Zoom;
-            return px >= 0 && py >= 0 && px < this.Width && py < this.Height ? new Point(px, py) : null;
+            Point cell = this.ToCell(x, y);
+            return this.OnImage(cell) ? cell : null;
         }
+
+        /// <summary>
+        /// Where a screen point is in image pixels, on the image or not: left of it is negative, right of it is past its width.
+        /// Strokes, shapes and selections work in these, so they can start or run off the image and only the part on it counts.
+        /// </summary>
+        private Point ToCell(int x, int y)
+        {
+            Rectangle inner = this.Inner;
+            return new Point(this.View.X + FloorDiv(x - inner.X, this.Zoom), this.View.Y + FloorDiv(y - inner.Y, this.Zoom));
+        }
+
+        /// <summary>The selection a drag between two cells makes: the box between them, cut to the image, or none if it misses the image.</summary>
+        private Rectangle? SelectionBetween(Point from, Point to)
+        {
+            Rectangle box = Rectangle.Intersect(
+                new Rectangle(Math.Min(from.X, to.X), Math.Min(from.Y, to.Y), Math.Abs(to.X - from.X) + 1, Math.Abs(to.Y - from.Y) + 1),
+                new Rectangle(0, 0, this.Width, this.Height));
+            return box.Width > 0 && box.Height > 0 ? box : null;
+        }
+
+        private bool OnImage(Point cell) => cell.X >= 0 && cell.Y >= 0 && cell.X < this.Width && cell.Y < this.Height;
+
+        /// <summary>Divide rounding down, so the pixels left of the image are -1, -2... rather than two of them being 0.</summary>
+        internal static int FloorDiv(int value, int by) => value >= 0 ? value / by : -((-value + by - 1) / by);
 
         private void StartStroke(int x, int y)
         {
-            if (this.ToPixel(x, y) is not { } pixel)
+            // selecting, shapes and brushes can start off the image, so a corner is easy to grab and a big tip reaches in from
+            // outside; the tools that act on the pixel clicked need it to be on the image
+            Point pixel = this.ToCell(x, y);
+            bool onImage = this.OnImage(pixel);
+            bool needsPixel = this.Current is Tool.Picker or Tool.Fill or Tool.ReplaceAll or Tool.ReplaceBrush;
+            if (needsPixel && !onImage)
                 return;
 
             if (this.Current == Tool.Picker)
@@ -1154,7 +1180,7 @@ namespace CustomContentCore.UI
                     this.DraggingSelection = true;
                     this.ShapeStart = pixel;
                     this.ShapeEnd = pixel;
-                    this.Selection = new Rectangle(pixel.X, pixel.Y, 1, 1);
+                    this.Selection = this.SelectionBetween(pixel, pixel);
                 }
                 return;
             }
@@ -1200,8 +1226,8 @@ namespace CustomContentCore.UI
 
         private void PaintAt(int x, int y)
         {
-            if (this.ToPixel(x, y) is not { } pixel)
-                return;
+            // off the image too: the tip paints whatever part of it reaches the image, and the line from the last spot is joined
+            Point pixel = this.ToCell(x, y);
             Color colour = this.Current == Tool.Eraser ? Color.Transparent : this.StrokeColour;
 
             // join the dots, so a fast drag doesn't leave gaps; each pixel once, since the last one was painted already
@@ -1256,12 +1282,17 @@ namespace CustomContentCore.UI
             }
         }
 
+        /// <summary>Paint one dab of the tip centred on a pixel, with its mirrored copies.</summary>
         private void PaintDot(int x, int y, Color colour)
         {
-            this.PaintBrush(x, y, colour);
-            foreach (Point mirrored in this.MirrorsOf(x, y))
+            Point corner = this.TipCorner(x, y);
+            this.PaintBrush(corner.X, corner.Y, colour);
+            foreach (Point mirrored in this.MirrorsOf(corner.X, corner.Y))
                 this.PaintBrush(mirrored.X, mirrored.Y, colour);
         }
+
+        /// <summary>The top left of a tip centred on a pixel (for an even size, the extra row and column go right and down).</summary>
+        private Point TipCorner(int x, int y) => new(x - (this.BrushSize - 1) / 2, y - (this.BrushSize - 1) / 2);
 
         /// <summary>
         /// Every pixel a line or shape being dragged will cover when it's let go, with its colour: the tip at each point of it
@@ -1276,10 +1307,14 @@ namespace CustomContentCore.UI
             foreach (Point point in this.ShapePixels(start, rawEnd))
             {
                 Color colour = this.ShapeColourAt(point, start, end);
-                foreach (Point spot in new[] { point }.Concat(this.MirrorsOf(point.X, point.Y)))
+                Point corner = filled ? point : this.TipCorner(point.X, point.Y);
+                foreach (Point spot in new[] { corner }.Concat(this.MirrorsOf(corner.X, corner.Y)))
                 {
                     if (filled)
-                        pixels[spot] = colour;
+                    {
+                        if (this.OnImage(spot))
+                            pixels[spot] = colour; // a shape dragged off the image shows only the part on it
+                    }
                     else
                         foreach (Point covered in this.TipPixels(spot.X, spot.Y))
                             pixels[covered] = colour;
@@ -1994,10 +2029,23 @@ namespace CustomContentCore.UI
         /*********
         ** View
         *********/
+        /// <summary>The most zoom: until one pixel is half the view across. More would show less than two pixels, which is no use.</summary>
+        private int MaxZoom => Math.Max(24, Math.Min(this.Inner.Width, this.Inner.Height) / 2);
+
+        /// <summary>The zoom one step in or out: a quarter more or less, so high zoom doesn't take dozens of clicks, and at least one.</summary>
+        internal static int ZoomStep(int zoom, int direction)
+        {
+            return direction > 0
+                ? Math.Max(zoom + 1, (int)Math.Round(zoom * 1.25))
+                : Math.Max(1, Math.Min(zoom - 1, (int)Math.Round(zoom / 1.25)));
+        }
+
+        private int ZoomStep(int direction) => ZoomStep(this.Zoom, direction);
+
         private void SetZoom(int zoom, Point around)
         {
             int old = this.Zoom;
-            this.Zoom = Math.Clamp(zoom, 1, 24);
+            this.Zoom = Math.Clamp(zoom, 1, this.MaxZoom);
             if (this.Zoom == old)
                 return;
 
@@ -2013,7 +2061,7 @@ namespace CustomContentCore.UI
         private void FitWidth()
         {
             Rectangle inner = this.Inner;
-            this.Zoom = Math.Clamp(inner.Width / Math.Max(1, this.Width), 1, 24);
+            this.Zoom = Math.Clamp(inner.Width / Math.Max(1, this.Width), 1, this.MaxZoom);
             this.View = Point.Zero;
             this.CentreView();
             this.ClampView();
