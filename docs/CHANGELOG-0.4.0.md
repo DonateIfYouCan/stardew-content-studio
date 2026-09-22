@@ -12,7 +12,8 @@ Your own fish, made in the editor (press `K`, then **Fish**):
 - **Fish tanks and ponds:** how it swims in a tank (the picture can be turned level and mirrored), and the colour of its roe.
 - **Gifts:** which villagers love, like, dislike or hate it.
 
-The game's own fish have a tab too: new art for the item and the tank, or stop one biting anywhere (crab pots included).
+The game's own fish have a tab too: new art for the item and the tank, stop one biting anywhere (crab pots included), or
+**make your own copy** of one to change as you like, starting from its picture, places, seasons and catching data.
 
 In a shared game each fish, and each change to a game fish, is held and sent on its own, with the same rules as the other
 mods: players can add and delete their own fish, and changing the Host's fish or the game's needs the Host's
@@ -36,6 +37,14 @@ game can hold several projects and switch between them:
 With more than five sections the start page lays them out in two columns, so each keeps its description. It also shows the
 theme in use.
 
+## Paint
+
+- **Zoom** goes far past 24x now, until one pixel nearly fills the view, and each step is about a quarter, so it gets there quickly.
+- **Start off the image:** selections, lines, rectangles, ellipses and brush strokes can start in the grey around the image and
+  run off it; only the part on the image counts. Dragging from outside a corner selects right up to it, and an ellipse dragged
+  past the edge leaves the part that's on the image.
+- **The tip is centred on the cursor**, so a big brush reaches into the image from any side.
+
 ## Also
 
-- `dotnet test` runs 191 checks.
+- `dotnet test` runs 203 checks.
