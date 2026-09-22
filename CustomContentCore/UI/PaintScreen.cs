@@ -31,31 +31,42 @@ namespace CustomContentCore.UI
             long Bytes { get; }
 
             /// <summary>Put the image back (<paramref name="undo"/>) or forward again.</summary>
-            void Apply(Color[] canvas, int width, bool undo);
+            void Apply(PaintLayerStack layers, bool undo);
         }
 
-        /// <summary>A stroke stored as the rectangle it covered, before and after.</summary>
-        private sealed record AreaStroke(Rectangle Area, Color[] Before, Color[] After) : IStroke
+        /// <summary>A stroke on one layer, stored as the rectangle it covered, before and after.</summary>
+        private sealed record AreaStroke(int LayerId, Rectangle Area, Color[] Before, Color[] After) : IStroke
         {
             public long Bytes => (long)this.Area.Width * this.Area.Height * 8;
 
-            public void Apply(Color[] canvas, int width, bool undo)
+            public void Apply(PaintLayerStack layers, bool undo)
             {
-                Paste(canvas, undo ? this.Before : this.After, this.Area, width);
+                if (layers.Find(this.LayerId) is { } layer)
+                    Paste(layer.Pixels, undo ? this.Before : this.After, this.Area, layers.Width);
             }
         }
 
-        /// <summary>One colour swapped for another across the image, stored as the pixels it hit.</summary>
-        private sealed record ColourStroke(Rectangle Area, int[] Pixels, Color Before, Color After) : IStroke
+        /// <summary>One colour swapped for another across a layer, stored as the pixels it hit.</summary>
+        private sealed record ColourStroke(int LayerId, Rectangle Area, int[] Pixels, Color Before, Color After) : IStroke
         {
             public long Bytes => (long)this.Pixels.Length * 4;
 
-            public void Apply(Color[] canvas, int width, bool undo)
+            public void Apply(PaintLayerStack layers, bool undo)
             {
+                if (layers.Find(this.LayerId) is not { } layer)
+                    return;
                 Color colour = undo ? this.Before : this.After;
                 foreach (int index in this.Pixels)
-                    canvas[index] = colour;
+                    layer.Pixels[index] = colour;
             }
+        }
+
+        /// <summary>A change to the layers themselves (added, taken out, moved or merged), stored as all of them before and after.</summary>
+        private sealed record LayersStroke(Rectangle Area, (List<PaintLayer> Layers, int Active) Before, (List<PaintLayer> Layers, int Active) After) : IStroke
+        {
+            public long Bytes => (long)(this.Before.Layers.Count + this.After.Layers.Count) * this.Area.Width * this.Area.Height * 4;
+
+            public void Apply(PaintLayerStack layers, bool undo) => layers.Restore(undo ? this.Before : this.After);
         }
 
         /// <summary>How many strokes can be undone. Each one only keeps the pixels it touched.</summary>
@@ -64,8 +75,11 @@ namespace CustomContentCore.UI
         private readonly int Width;
         private readonly int Height;
 
-        /// <summary>The pixels being edited (straight alpha).</summary>
-        private readonly Color[] Canvas;
+        /// <summary>The image's layers; what's shown and saved is them laid over each other.</summary>
+        private readonly PaintLayerStack Layers;
+
+        /// <summary>The pixels being painted on (straight alpha): the layer chosen in the layers list.</summary>
+        private Color[] Canvas => this.Layers.Active.Pixels;
 
         /// <summary>The size of one sprite in the image, for the grid; 0 for no grid.</summary>
         private readonly int CellWidth;
@@ -135,9 +149,10 @@ namespace CustomContentCore.UI
             + "'Width' fills the width with the image and 'Fit' shows all of it.\n\n"
             + "Every key can be changed with the 'Keys' button. As they come: P pencil, B brush, E eraser, I pick a colour, F fill, L line, R rectangle, O oval, A replace all, D replace drag, S select, H move view; C copy, V paste, Delete clears the selection, Z undo, Y redo, + and - zoom, 0 fills the width.\n\n"
             + "Shapes: hold Shift to keep a line straight or a box square, and tick 'Fill shape' for solid rectangles and ovals.\n\n"
-            + "Selection: drag a box with the Select tool, then drag inside it to move those pixels. The buttons on the right copy, clear, flip or turn it; with nothing selected, flip and turn work on the whole image.\n\n"
+            + "Selection: drag a box with the Select tool, then drag inside it to move those pixels. The buttons on the right copy, clear, flip or turn it; with nothing selected, flip and turn work on the whole layer.\n\n"
             + "'Colour' shows the art in a colour without changing it, which helps with sheets like hair that the game colours itself.\n\n"
-            + "The colours under the image are the ones this image uses. 'Choose colour' picks any other colour, and those stay in the row while you paint.";
+            + "The colours under the image are the ones this image uses. 'Choose colour' picks any other colour, and those stay in the row while you paint.\n\n"
+            + "Layers (bottom right): paint on a new layer to try something without touching what's below; 'Merge' lays it onto the layer below when you like it. Every tool works on the layer picked in the list, except the eyedropper, which takes the colour you see. Hidden layers aren't saved, and a half-shown layer is saved as it looks. Layers last while this screen is open: saving lays them together into one image.";
 
         /// <summary>How many of the image's colours the palette offers.</summary>
         private const int PaletteSize = 24;
@@ -254,6 +269,20 @@ namespace CustomContentCore.UI
         private readonly Button SaveButton;
         private readonly Button CancelButton;
 
+        // layers, under the tool's settings
+        private readonly ScrollList<PaintLayer> LayerList;
+        private readonly Button NewLayerButton;
+        private readonly Button CopyLayerButton;
+        private readonly Button DeleteLayerButton;
+        private readonly Button LayerUpButton;
+        private readonly Button LayerDownButton;
+        private readonly Button MergeLayerButton;
+        private readonly Button HideLayerButton;
+        private readonly Dropdown OpacityDropdown;
+
+        /// <summary>Where the layers panel goes, and its heading.</summary>
+        private Rectangle LayersArea;
+
         private string? Message;
 
 
@@ -272,7 +301,7 @@ namespace CustomContentCore.UI
         {
             this.Width = image.Width;
             this.Height = image.Height;
-            this.Canvas = (Color[])image.Data.Clone();
+            this.Layers = new PaintLayerStack((Color[])image.Data.Clone(), image.Width, image.Height);
             this.CellWidth = cellWidth;
             this.CellHeight = cellHeight;
             this.PartWidth = partWidth;
@@ -297,7 +326,7 @@ namespace CustomContentCore.UI
                 (Tool.Line, "Line", "Drag for a straight line. Key: L. Hold Shift to snap to a corner or straight across."),
                 (Tool.Rectangle, "Rectangle", "Drag for a box. Key: R. Hold Shift to keep it square."),
                 (Tool.Ellipse, "Ellipse", "Drag for an oval. Key: O. Hold Shift to keep it round."),
-                (Tool.ReplaceAll, "Replace all", "Click a colour to change it everywhere in the image. Key: A."),
+                (Tool.ReplaceAll, "Replace all", "Click a colour to change it everywhere on this layer. Key: A."),
                 (Tool.ReplaceBrush, "Replace drag", "Drag to change only the colour you started on. Key: D."),
                 (Tool.Select, "Select", "Drag a box, then drag inside it to move what's in it. Key: S."),
                 (Tool.Pan, "Move view", "Drag to move around the image. Key: H. Holding space does this with any tool.")
@@ -369,18 +398,36 @@ namespace CustomContentCore.UI
             this.CopyButton = this.Add(new Button("Copy", this.CopySelection, "Copy what's selected."));
             this.PasteButton = this.Add(new Button("Paste", this.PasteClipboard, "Put what you copied in the top left of the selection (or of the view)."));
             this.ClearButton = this.Add(new Button("Clear", this.ClearSelection, "Make everything in the selection see-through."));
-            this.FlipButton = this.Add(new Button("Flip", () => this.MirrorArea(horizontal: true), "Mirror left to right: the selection, or the whole image when nothing is selected."));
-            this.FlipDownButton = this.Add(new Button("Flip down", () => this.MirrorArea(horizontal: false), "Mirror top to bottom: the selection, or the whole image when nothing is selected."));
+            this.FlipButton = this.Add(new Button("Flip", () => this.MirrorArea(horizontal: true), "Mirror left to right: the selection, or the whole layer when nothing is selected."));
+            this.FlipDownButton = this.Add(new Button("Flip down", () => this.MirrorArea(horizontal: false), "Mirror top to bottom: the selection, or the whole layer when nothing is selected."));
             this.TurnButton = this.Add(new Button("Turn", this.Turn, "Turn a quarter turn clockwise. The piece being turned has to be square."));
             this.SpriteField = this.Add(new TextField("", this.GoToSprite, numbersOnly: true, limit: 5));
             this.SpriteButton = this.Add(new Button("Whole sprite", this.SelectSprite, "Grow the selection to the whole sprite it's in, which is handy for copying one sprite over another."));
             this.ColourButton = this.Add(new Button("Choose colour", this.ChooseColour, "Pick any colour, or type its red, green and blue values. The eyedropper takes a colour out of the image instead."));
             this.HelpButton = this.Add(new Button("?", () => this.Root.Push(new HelpScreen("Painting", HelpText)), "How this screen works."));
             this.KeysButton = this.Add(new Button("Keys", () => this.Root.Push(new KeysScreen(this.Bindings, CoreMod.Config.PaintKeys, CoreMod.SaveConfig)), "Change the keys used here."));
+            this.LayerList = this.Add(new ScrollList<PaintLayer>(32, this.DrawLayerRow)
+            {
+                OnSelect = (_, row) => this.SelectLayer(this.Layers.Layers.Count - 1 - row) // the list shows the top layer first
+            });
+            this.NewLayerButton = this.Add(new Button("New", () => this.ChangeLayers(this.Layers.AddEmpty, "Added an empty layer above."), "Add an empty layer above this one, to paint on without touching what's below."));
+            this.CopyLayerButton = this.Add(new Button("Copy", () => this.ChangeLayers(this.Layers.Duplicate, "Copied the layer."), "Add a copy of this layer above it."));
+            this.DeleteLayerButton = this.Add(new Button("Delete", () => this.ChangeLayers(this.Layers.RemoveActive, "Took the layer out. Undo puts it back."), "Take this layer out. Undo puts it back."));
+            this.LayerUpButton = this.Add(new Button("Up", () => this.ChangeLayers(() => this.Layers.MoveActive(1), null), "Move this layer up, over the one above it."));
+            this.LayerDownButton = this.Add(new Button("Down", () => this.ChangeLayers(() => this.Layers.MoveActive(-1), null), "Move this layer down, under the one below it."));
+            this.MergeLayerButton = this.Add(new Button("Merge", () => this.ChangeLayers(this.Layers.MergeDown, "Merged it into the layer below."), "Lay this layer onto the one below and make them one."));
+            this.HideLayerButton = this.Add(new Button("Hide", this.ToggleLayerVisible, "Hide or show this layer. Hidden layers aren't saved."));
+            this.OpacityDropdown = this.Add(new Dropdown(
+                new() { ("100", "100%"), ("75", "75%"), ("50", "50%"), ("25", "25%") },
+                "100",
+                v => { this.Layers.Active.Opacity = int.Parse(v); this.RefreshAll(); },
+                "How much of this layer shows over the ones below. It's saved as it looks.", prefix: "Shows"));
+
             this.SaveButton = this.Add(new Button("Save", this.Save));
             this.CancelButton = this.Add(new Button("Cancel", this.Cancel));
             this.Bindings = this.BuildBindings();
             this.SetTool(Tool.Pencil);
+            this.SyncLayers();
             this.SyncButtons();
         }
 
@@ -446,7 +493,12 @@ namespace CustomContentCore.UI
                 widget.Visible = false;
             this.SizeRow = Rectangle.Empty;
             List<Widget> column = this.ColumnWidgets();
-            int columnBottom = area.Bottom - 96 - 8;
+
+            // the layers panel sits at the bottom of the column: its list (up to four rows before it scrolls) and three rows of buttons
+            int layerRows = Math.Clamp(this.Layers.Layers.Count, 2, 4);
+            int layersH = 30 + layerRows * 32 + 8 + 3 * 42;
+            this.LayersArea = new Rectangle(area.Right - pad - actionW, area.Bottom - 96 - 8 - layersH, actionW, layersH);
+            int columnBottom = this.LayersArea.Y - 12;
             this.ColumnArea = new Rectangle(area.Right - pad - actionW, this.CanvasArea.Y, actionW, columnBottom - this.CanvasArea.Y);
             int step = Math.Clamp((columnBottom - this.CanvasArea.Y - 40 - 34) / Math.Max(7, column.Count), 30, 50);
             int rowH = Math.Max(26, step - 6);
@@ -467,6 +519,8 @@ namespace CustomContentCore.UI
                 }
                 ay += step;
             }
+
+            this.LayoutLayers();
 
             // the selection buttons share the palette row, so the top row doesn't overflow
             this.ColourButton.Bounds = new Rectangle(this.CanvasArea.X + 52, this.CanvasArea.Bottom + 8, 200, 44);
@@ -565,6 +619,8 @@ namespace CustomContentCore.UI
                     Gfx.Text(b, Game1.parseText(hint, Gfx.Font, this.ColumnArea.Width), new Vector2(this.ColumnArea.X, this.ColumnArea.Y + 34), Color.DimGray);
             }
             Gfx.Text(b, this.Title, new Vector2(area.X + 36, area.Y + 24), null, Gfx.TitleFont);
+            if (this.LayersArea.Height > 0)
+                Gfx.Text(b, "Layers", new Vector2(this.LayersArea.X, this.LayersArea.Y));
 
             string where = this.Describe(mouseX, mouseY);
             Gfx.Text(b, where, new Vector2(area.Right - 36 - Gfx.Font.MeasureString(where).X, area.Y + 30), Color.DimGray);
@@ -850,7 +906,7 @@ namespace CustomContentCore.UI
         {
             if (this.ToPixel(x, y) is not { } pixel)
                 return;
-            Color picked = this.Canvas[pixel.Y * this.Width + pixel.X];
+            Color picked = this.Layers.CompositeAt(pixel.Y * this.Width + pixel.X); // the colour you see, whichever layer it's on
             if (this.StrokeSecondary)
                 this.Colour2 = picked;
             else
@@ -1155,6 +1211,12 @@ namespace CustomContentCore.UI
             // outside; the tools that act on the pixel clicked need it to be on the image
             Point pixel = this.ToCell(x, y);
             bool onImage = this.OnImage(pixel);
+            if (!this.Layers.Active.Visible && this.Current is not (Tool.Picker or Tool.Pan))
+            {
+                this.Message = $"'{this.Layers.Active.Name}' is hidden. Show it (or pick another layer) to paint on it.";
+                Game1.playSound("cancel");
+                return;
+            }
             bool needsPixel = this.Current is Tool.Picker or Tool.Fill or Tool.ReplaceAll or Tool.ReplaceBrush;
             if (needsPixel && !onImage)
                 return;
@@ -1808,7 +1870,7 @@ namespace CustomContentCore.UI
                 this.Message = "No pixels of that colour.";
                 return;
             }
-            this.Done.Add(new ColourStroke(area, changed.ToArray(), target, colour));
+            this.Done.Add(new ColourStroke(this.Layers.Active.Id, area, changed.ToArray(), target, colour));
             this.TrimHistory();
             this.Undone.Clear();
             this.Refresh(area);
@@ -1958,7 +2020,7 @@ namespace CustomContentCore.UI
                     if (x >= 0 && y >= 0 && x < this.StrokeArea.Width && y < this.StrokeArea.Height)
                         before[y * this.StrokeArea.Width + x] = colour;
                 }
-                this.Done.Add(new AreaStroke(this.StrokeArea, before, Cut(this.Canvas, this.StrokeArea, this.Width)));
+                this.Done.Add(new AreaStroke(this.Layers.Active.Id, this.StrokeArea, before, Cut(this.Canvas, this.StrokeArea, this.Width)));
                 this.TrimHistory();
                 this.Undone.Clear();
             }
@@ -1990,8 +2052,9 @@ namespace CustomContentCore.UI
             IStroke stroke = this.Done[^1];
             this.Done.RemoveAt(this.Done.Count - 1);
             this.Undone.Add(stroke);
-            stroke.Apply(this.Canvas, this.Width, undo: true);
+            stroke.Apply(this.Layers, undo: true);
             this.Refresh(stroke.Area);
+            this.SyncLayers();
             this.SyncButtons();
         }
 
@@ -2003,8 +2066,9 @@ namespace CustomContentCore.UI
             IStroke stroke = this.Undone[^1];
             this.Undone.RemoveAt(this.Undone.Count - 1);
             this.Done.Add(stroke);
-            stroke.Apply(this.Canvas, this.Width, undo: false);
+            stroke.Apply(this.Layers, undo: false);
             this.Refresh(stroke.Area);
+            this.SyncLayers();
             this.SyncButtons();
         }
 
@@ -2018,7 +2082,8 @@ namespace CustomContentCore.UI
             {
                 for (int x = 0; x < area.Width; x++)
                 {
-                    Color c = this.Canvas[(area.Y + y) * this.Width + area.X + x];
+                    // every visible layer laid over each other, as it will be saved
+                    Color c = this.Layers.CompositeAt((area.Y + y) * this.Width + area.X + x);
                     part[y * area.Width + x] = Color.FromNonPremultiplied(c.R, c.G, c.B, c.A);
                 }
             }
@@ -2163,6 +2228,94 @@ namespace CustomContentCore.UI
                 this.Layout(this.Area); // the column beside the canvas shows this tool's settings
         }
 
+        /// <summary>Place the layers panel in <see cref="LayersArea"/>.</summary>
+        private void LayoutLayers()
+        {
+            Rectangle a = this.LayersArea;
+            int listH = a.Height - 30 - 8 - 3 * 42;
+            this.LayerList.Bounds = new Rectangle(a.X, a.Y + 30, a.Width, listH);
+            int y = this.LayerList.Bounds.Bottom + 8, third = (a.Width - 12) / 3;
+            void Row(params Widget[] widgets)
+            {
+                int x = a.X, w = (a.Width - 6 * (widgets.Length - 1)) / widgets.Length;
+                foreach (Widget widget in widgets)
+                {
+                    widget.Bounds = new Rectangle(x, y, w, 36);
+                    x += w + 6;
+                }
+                y += 42;
+            }
+            Row(this.NewLayerButton, this.CopyLayerButton, this.DeleteLayerButton);
+            Row(this.LayerUpButton, this.LayerDownButton, this.MergeLayerButton);
+            this.HideLayerButton.Bounds = new Rectangle(a.X, y, third, 36);
+            this.OpacityDropdown.Bounds = new Rectangle(a.X + third + 6, y, a.Width - third - 6, 36);
+        }
+
+        /// <summary>One row of the layers list: the layer's name, and whether it's hidden or partly see-through.</summary>
+        private void DrawLayerRow(SpriteBatch b, PaintLayer layer, Rectangle row, bool selected, bool hover)
+        {
+            string detail = !layer.Visible ? "hidden" : layer.Opacity < 100 ? $"{layer.Opacity}%" : "";
+            Vector2 size = Gfx.Font.MeasureString(detail);
+            Gfx.Text(b, Gfx.Fit(layer.Name, row.Width - (int)size.X - 28), new Vector2(row.X + 8, row.Y + (row.Height - Gfx.LineHeight) / 2), layer.Visible ? null : Color.Gray);
+            if (detail.Length > 0)
+                Gfx.Text(b, detail, new Vector2(row.Right - size.X - 8, row.Y + (row.Height - Gfx.LineHeight) / 2), Color.DimGray);
+        }
+
+        /// <summary>Show the layers as they are now: the list, which one is chosen, and which buttons apply.</summary>
+        private void SyncLayers()
+        {
+            List<PaintLayer> layers = this.Layers.Layers;
+            this.LayerList.Items = Enumerable.Reverse(layers).ToList();
+            this.LayerList.SelectedIndex = layers.Count - 1 - this.Layers.ActiveIndex;
+            this.LayerList.EnsureVisible(this.LayerList.SelectedIndex);
+            this.DeleteLayerButton.Enabled = layers.Count > 1;
+            this.LayerUpButton.Enabled = this.Layers.ActiveIndex < layers.Count - 1;
+            this.LayerDownButton.Enabled = this.MergeLayerButton.Enabled = this.Layers.ActiveIndex > 0;
+            this.HideLayerButton.Label = this.Layers.Active.Visible ? "Hide" : "Show";
+            this.OpacityDropdown.Select(this.Layers.Active.Opacity.ToString());
+        }
+
+        /// <summary>Paint on another layer. Anything floating is put down first, on the layer it was lifted from.</summary>
+        private void SelectLayer(int index)
+        {
+            this.DropSelection();
+            this.Layers.Select(index);
+            this.SyncLayers();
+        }
+
+        /// <summary>Add, take out, move or merge layers as one step that undo takes back.</summary>
+        /// <param name="change">The change; returns whether anything changed.</param>
+        /// <param name="message">What to say afterwards, if anything.</param>
+        private void ChangeLayers(Func<bool> change, string? message)
+        {
+            this.DropSelection();
+            var before = this.Layers.Snapshot();
+            if (!change())
+                return;
+            this.Done.Add(new LayersStroke(new Rectangle(0, 0, this.Width, this.Height), before, this.Layers.Snapshot()));
+            this.TrimHistory();
+            this.Undone.Clear();
+            this.RefreshAll();
+            this.SyncLayers();
+            this.SyncButtons();
+            if (message != null)
+                this.Message = message;
+        }
+
+        /// <inheritdoc cref="ChangeLayers(Func{bool}, string?)"/>
+        private void ChangeLayers(Func<PaintLayer> change, string? message) => this.ChangeLayers(() => { change(); return true; }, message);
+
+        /// <summary>Hide or show the layer being painted on. Like the view settings, it isn't a step undo takes back.</summary>
+        private void ToggleLayerVisible()
+        {
+            this.Layers.Active.Visible = !this.Layers.Active.Visible;
+            this.RefreshAll();
+            this.SyncLayers();
+        }
+
+        /// <summary>Redraw the whole image, after something changed how the layers look together.</summary>
+        private void RefreshAll() => this.Refresh(new Rectangle(0, 0, this.Width, this.Height));
+
         private void SyncButtons()
         {
             this.UndoButton.Enabled = this.Done.Count > 0;
@@ -2174,7 +2327,7 @@ namespace CustomContentCore.UI
         private void Save()
         {
             this.DropSelection();
-            this.OnSave(new Pixels((Color[])this.Canvas.Clone(), this.Width, this.Height));
+            this.OnSave(new Pixels(this.Layers.Flatten(), this.Width, this.Height)); // the visible layers, as they're shown
             Game1.playSound("newArtifact");
             this.Root.Pop();
         }
