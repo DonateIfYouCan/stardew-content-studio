@@ -2237,9 +2237,10 @@ namespace CustomContentCore.UI
         /// <summary>Lay out the Layers tool's column: the list takes whatever height is left over its buttons.</summary>
         private void LayoutLayers()
         {
-            Rectangle a = this.ColumnArea;
+            // ending where the canvas ends: the palette row under the canvas (with its order dropdown) runs under this column too
+            Rectangle a = new(this.ColumnArea.X, this.ColumnArea.Y, this.ColumnArea.Width, this.CanvasArea.Bottom - this.ColumnArea.Y);
             const int rowH = 40, gap = 8, buttonRows = 4;
-            int buttonsTop = a.Bottom - buttonRows * (rowH + gap);
+            int buttonsTop = a.Bottom + gap - buttonRows * (rowH + gap);
             foreach (Widget widget in new Widget[] { this.LayerList, this.NewLayerButton, this.CopyLayerButton, this.DeleteLayerButton, this.LayerUpButton, this.LayerDownButton, this.MergeLayerButton, this.HideLayerButton, this.OpacityDropdown })
                 widget.Visible = true;
             this.LayerList.Bounds = new Rectangle(a.X, a.Y + 34, a.Width, Math.Max(rowH * 2, buttonsTop - gap - (a.Y + 34)));
