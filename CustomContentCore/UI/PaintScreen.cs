@@ -164,6 +164,13 @@ namespace CustomContentCore.UI
         /// <summary>The pixels lifted for a move (the hole left behind is filled with see-through).</summary>
         private Color[]? Floating;
 
+        /// <summary>What the image looked like where pixels were lifted out of it, kept while they float so putting them down is one undo step.</summary>
+        /// <remarks>Empty for a paste: nothing was taken out, so there's nothing to put back.</remarks>
+        private Dictionary<int, Color>? LiftOriginals;
+
+        /// <summary>The part of the image the lifted pixels came from.</summary>
+        private Rectangle LiftArea;
+
         /// <summary>What was copied, ready to paste.</summary>
         private Color[]? Clipboard;
         private Point ClipboardSize;
@@ -660,8 +667,7 @@ namespace CustomContentCore.UI
             }
             if (this.MovingSelection)
             {
-                this.MovingSelection = false;
-                this.DropSelection();
+                this.MovingSelection = false; // still floating: dragging it again leaves where it was untouched
                 return;
             }
             if (this.ShapeStart is { } start)
@@ -847,6 +853,7 @@ namespace CustomContentCore.UI
                 }
                 else
                 {
+                    this.DropSelection();
                     this.DraggingSelection = true;
                     this.ShapeStart = pixel;
                     this.ShapeEnd = pixel;
@@ -1012,13 +1019,30 @@ namespace CustomContentCore.UI
                 }
             }
             this.Refresh(area);
+
+            // held apart until the pixels are put down: a stroke left open would paint wherever the mouse is dragged next
+            this.LiftOriginals = this.StrokeOriginals;
+            this.LiftArea = this.StrokeArea;
+            this.StrokeOriginals = null;
+            this.StrokeArea = Rectangle.Empty;
         }
 
-        /// <summary>Put the pixels being dragged down where the selection now is.</summary>
+        /// <summary>Put the floating pixels down where the selection now is, as one undo step with lifting them.</summary>
+        /// <remarks>
+        /// Until then they float over the image: moving them again, or a paste, leaves what's underneath alone. They're put down
+        /// by anything that finishes with them - a new selection, another tool, undo, saving.
+        /// </remarks>
         private void DropSelection()
         {
             if (this.Floating is not { } pixels || this.Selection is not { } area)
+            {
+                this.Floating = null;
                 return;
+            }
+            this.StrokeOriginals = this.LiftOriginals ?? new Dictionary<int, Color>();
+            this.StrokeArea = this.LiftArea;
+            this.LiftOriginals = null;
+            this.LiftArea = Rectangle.Empty;
             for (int y = 0; y < area.Height; y++)
             {
                 for (int x = 0; x < area.Width; x++)
@@ -1045,6 +1069,7 @@ namespace CustomContentCore.UI
         {
             if (this.CellWidth <= 0 || this.CellHeight <= 0 || !int.TryParse(text, out int number))
                 return;
+            this.DropSelection(); // the selection is about to become another size
 
             int perRow = Math.Max(1, this.Width / this.CellWidth);
             int rows = Math.Max(1, this.Height / this.CellHeight);
@@ -1064,6 +1089,7 @@ namespace CustomContentCore.UI
         /// <summary>Grow the selection to cover the whole sprite (or sprites) it touches.</summary>
         private void SelectSprite()
         {
+            this.DropSelection(); // the selection is about to become another size
             if (this.Selection is not { } area || this.CellWidth <= 0 || this.CellHeight <= 0)
                 return;
             int left = area.X / this.CellWidth * this.CellWidth;
@@ -1079,7 +1105,7 @@ namespace CustomContentCore.UI
         {
             if (this.Selection is not { } area)
                 return;
-            this.Clipboard = Cut(this.Canvas, area, this.Width);
+            this.Clipboard = this.Floating is { } floating ? (Color[])floating.Clone() : Cut(this.Canvas, area, this.Width);
             this.ClipboardSize = new Point(area.Width, area.Height);
             this.Message = $"Copied {area.Width}x{area.Height} pixels.";
             this.SyncButtons();
@@ -1090,26 +1116,16 @@ namespace CustomContentCore.UI
         {
             if (this.Clipboard is not { } pixels)
                 return;
+            this.DropSelection(); // a paste already floating is put down first
             Point at = this.Selection is { } area ? new Point(area.X, area.Y) : this.View;
-            this.StrokeOriginals = new Dictionary<int, Color>();
-            this.StrokeArea = Rectangle.Empty;
-            for (int y = 0; y < this.ClipboardSize.Y; y++)
-            {
-                for (int x = 0; x < this.ClipboardSize.X; x++)
-                {
-                    int px = at.X + x, py = at.Y + y;
-                    if (px < 0 || py < 0 || px >= this.Width || py >= this.Height)
-                        continue;
-                    int index = py * this.Width + px;
-                    this.Remember(index);
-                    this.Canvas[index] = pixels[y * this.ClipboardSize.X + x];
-                    this.Grow(px, py);
-                }
-            }
-            this.Refresh(this.StrokeArea);
-            this.CommitStroke();
+
+            // it floats until it's put down, so dragging it into place never takes the pixels it passes over
+            this.Floating = (Color[])pixels.Clone();
+            this.LiftOriginals = new Dictionary<int, Color>();
+            this.LiftArea = Rectangle.Empty;
             this.Selection = new Rectangle(at.X, at.Y, this.ClipboardSize.X, this.ClipboardSize.Y);
-            this.Message = "Pasted.";
+            this.Message = "Pasted. Drag it into place.";
+            this.SyncButtons();
         }
 
         /// <summary>Make everything in the selection see-through.</summary>
@@ -1117,6 +1133,17 @@ namespace CustomContentCore.UI
         {
             if (this.Selection is not { } area)
                 return;
+            if (this.Floating != null)
+            {
+                // floating pixels are thrown away; a lifted piece leaves its hole, a paste leaves nothing at all
+                this.Floating = null;
+                this.StrokeOriginals = this.LiftOriginals;
+                this.StrokeArea = this.LiftArea;
+                this.LiftOriginals = null;
+                this.LiftArea = Rectangle.Empty;
+                this.CommitStroke();
+                return;
+            }
             this.StrokeOriginals = new Dictionary<int, Color>();
             this.StrokeArea = Rectangle.Empty;
             for (int y = 0; y < area.Height; y++)
@@ -1145,6 +1172,17 @@ namespace CustomContentCore.UI
                 this.Message = $"Turning needs a square piece; this one is {area.Width}x{area.Height}.";
                 return;
             }
+            if (this.Floating is { } floatingSquare)
+            {
+                // turn only what's floating, not the image under it
+                int n = area.Width;
+                Color[] turned = new Color[floatingSquare.Length];
+                for (int y = 0; y < n; y++)
+                    for (int x = 0; x < n; x++)
+                        turned[y * n + x] = floatingSquare[(n - 1 - x) * n + y];
+                this.Floating = turned;
+                return;
+            }
 
             Color[] square = Cut(this.Canvas, area, this.Width);
             this.StrokeOriginals = new Dictionary<int, Color>();
@@ -1168,6 +1206,18 @@ namespace CustomContentCore.UI
         private void MirrorArea(bool horizontal)
         {
             Rectangle area = this.Working;
+            if (this.Floating is { } floating)
+            {
+                // mirror only what's floating, not the image under it
+                Color[] mirrored = new Color[floating.Length];
+                for (int y = 0; y < area.Height; y++)
+                    for (int x = 0; x < area.Width; x++)
+                        mirrored[y * area.Width + x] = horizontal
+                            ? floating[y * area.Width + (area.Width - 1 - x)]
+                            : floating[(area.Height - 1 - y) * area.Width + x];
+                this.Floating = mirrored;
+                return;
+            }
             Color[] copy = Cut(this.Canvas, area, this.Width);
             this.StrokeOriginals = new Dictionary<int, Color>();
             this.StrokeArea = Rectangle.Empty;
@@ -1419,6 +1469,7 @@ namespace CustomContentCore.UI
 
         private void Undo()
         {
+            this.DropSelection(); // undo then takes back the whole move or paste
             if (this.Done.Count == 0)
                 return;
             IStroke stroke = this.Done[^1];
@@ -1431,6 +1482,7 @@ namespace CustomContentCore.UI
 
         private void Redo()
         {
+            this.DropSelection();
             if (this.Undone.Count == 0)
                 return;
             IStroke stroke = this.Undone[^1];
@@ -1544,6 +1596,8 @@ namespace CustomContentCore.UI
         /// <summary>Switch tools and show which one is in use.</summary>
         private void SetTool(Tool tool)
         {
+            if (tool != Tool.Select)
+                this.DropSelection(); // another tool works on the image, so the floating pixels become part of it
             this.Current = tool;
             this.Message = null;
             foreach ((Tool candidate, Button button) in this.ToolButtons)
@@ -1564,6 +1618,7 @@ namespace CustomContentCore.UI
 
         private void Save()
         {
+            this.DropSelection();
             this.OnSave(new Pixels((Color[])this.Canvas.Clone(), this.Width, this.Height));
             Game1.playSound("newArtifact");
             this.Root.Pop();
