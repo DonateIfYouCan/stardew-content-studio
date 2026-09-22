@@ -1,7 +1,7 @@
 {
   "Name": "Content Studio: Characters",
   "Author": "DonateIfYouCan",
-  "Version": "0.4.3",
+  "Version": "0.5.0",
   "Description": "Villager portraits (per emotion) and sprites, and the farmer's body, hair, clothes and hats, in HD.",
   "UniqueID": "DonateIfYouCan.CustomCharacters",
   "EntryDll": "CustomCharacters.dll",
