@@ -71,16 +71,15 @@ namespace CustomMining
         /// <param name="kind">What it is.</param>
         /// <param name="inMuseum">Whether it can be donated to the museum.</param>
         /// <remarks>
-        /// The museum takes anything of type Arch or Minerals unless it's tagged <c>not_museum_donatable</c>, and takes
-        /// anything tagged <c>museum_donatable</c>. So a gem needs the tag to be donatable, and the others to be refused.
+        /// The museum works off the tags the game makes from the type: it takes anything tagged <c>item_type_arch</c> or
+        /// <c>item_type_minerals</c> (so gems too, which are Minerals), and anything tagged <c>museum_donatable</c>, and
+        /// refuses anything tagged <c>not_museum_donatable</c>. Every kind here is one of those two types, so the only tag
+        /// worth writing is the one that keeps something out.
         /// </remarks>
         public static List<string> TagsFor(string kind, bool inMuseum)
         {
             List<string> tags = new() { "custom_mineral" };
-            bool donatableByType = kind is Artifact or Mineral;
-            if (inMuseum && !donatableByType)
-                tags.Add("museum_donatable");
-            if (!inMuseum && donatableByType)
+            if (!inMuseum)
                 tags.Add("not_museum_donatable");
             return tags;
         }

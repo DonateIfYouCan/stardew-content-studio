@@ -57,7 +57,8 @@ feel about them as a gift. It can also give the game's own new art, or stop one 
 ## Notes
 
 - Don't delete something you've found: ones in your world, in chests or donated to the museum become Error Items.
-- A gem is kept out of the museum by the game, so "Can be donated to the museum" lets one in on purpose.
+- The museum takes minerals, gems and artefacts alike (as it does the game's own diamonds and rubies); turning off
+  "Can be donated to the museum" is what keeps one out.
 - Rocks only turn up in the mines and Skull Cavern for now; the quarry and the farm spawn their rocks another way.
 - The game calls every rock "Stone", so a rock's name is only ever seen in the editor.
 - In multiplayer, every player needs the mod. With the Core's content sharing on, everyone uses the Host's set.

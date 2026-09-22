@@ -106,7 +106,7 @@ namespace CustomMining.UI
             List<(string, string)> colours = ColorTags.Colors.Select(c => (c.Name, ColorTags.Label(c.Name))).ToList();
             colours.Insert(0, ("", "From the picture"));
             this.ColourCycler = this.On(Page.Item, new Cycler(colours, m.Color, v => m.Color = v, "Its colour, which the game uses for colour-matching bundles and dyeing."));
-            this.MuseumBox = this.On(Page.Item, new Checkbox("Can be donated to the museum", m.InMuseum, v => m.InMuseum = v, "Whether Gunther takes it for the museum, and it counts towards the museum's rewards."));
+            this.MuseumBox = this.On(Page.Item, new Checkbox("Can be donated to the museum", m.InMuseum, v => m.InMuseum = v, "Whether Gunther takes it for the museum, where it counts towards the museum's rewards."));
 
             // geodes
             this.GeodeRows = MiningData.Geodes.Select(geode =>
@@ -295,7 +295,7 @@ namespace CustomMining.UI
                 {
                     Page.Geodes => "Clint opens geodes for you. A chance is how often a geode of that kind gives this one.",
                     Page.Digging => "Artefact spots are the wiggling worms you dig up with a hoe.",
-                    _ => "Minerals and artefacts can go in the museum; a gem needs to be let in on the Mineral page."
+                    _ => "Minerals, gems and artefacts can all go in the museum, unless you say otherwise on the Mineral page."
                 };
             Gfx.Message(b, this.Message ?? help, this.CancelButton.Bounds.X - area.X - 60, new Vector2(area.X + 36, area.Bottom - 70), this.Message != null ? this.MessageColor : Color.DimGray);
         }

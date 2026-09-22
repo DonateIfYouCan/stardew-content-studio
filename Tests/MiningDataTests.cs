@@ -18,22 +18,16 @@ namespace Tests
         }
 
         [Fact]
-        public void MineralsAndArtefactsGoInTheMuseumWithoutBeingTold()
+        public void EveryKindGoesInTheMuseumWithoutBeingTold()
         {
-            // the museum takes type Arch or Minerals unless it's told not to, so those kinds need no tag to be let in
-            foreach (string kind in new[] { MiningData.Mineral, MiningData.Artifact })
+            // the museum goes by the type the game tags it with, and gems are Minerals like the rest, so nothing needs a
+            // tag to be let in - only one to keep it out (the game's own diamonds and rubies are donated the same way)
+            foreach (string kind in new[] { MiningData.Mineral, MiningData.Artifact, MiningData.Gem })
             {
                 Assert.DoesNotContain("museum_donatable", MiningData.TagsFor(kind, inMuseum: true));
+                Assert.DoesNotContain("not_museum_donatable", MiningData.TagsFor(kind, inMuseum: true));
                 Assert.Contains("not_museum_donatable", MiningData.TagsFor(kind, inMuseum: false));
             }
-        }
-
-        [Fact]
-        public void AGemIsOnlyLetIntoTheMuseumWhenItsAskedFor()
-        {
-            // a gem is type Minerals too, but the game keeps gems out, so it takes a tag to let one in
-            Assert.Contains("museum_donatable", MiningData.TagsFor(MiningData.Gem, inMuseum: true));
-            Assert.DoesNotContain("not_museum_donatable", MiningData.TagsFor(MiningData.Gem, inMuseum: false));
         }
 
         [Fact]
