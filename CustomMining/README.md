@@ -29,9 +29,10 @@ feel about them as a gift. It can also give the game's own new art, or stop one 
   can't be finished.
 - **Make my own copy** starts one of yours from the game's: its picture, kind, price, colour, geodes, dig spots and gift
   tastes, all yours to change. The game's stays as it is.
-- Editor section **Rocks** (press `K`): rocks of your own that turn up in the mines in place of the game's, with a
-  picture, how many hits they take, the mining experience they give, which parts of the mines they appear in and how
-  often, and what they give when broken (any of your minerals, the game's minerals, gems and artefacts, or ores and
+- Editor section **Rocks** (press `K`): rocks of your own that turn up in place of the game's, with a picture, how many
+  hits they take, the mining experience they give, where they appear and how often - the four parts of the mines, and
+  above ground on the farm, the forest, the mountain and quarry, the backwoods, the bus stop, the railroad, town, Secret
+  Woods and Ginger Island, in the seasons you pick - and what they give when broken (any of your minerals, the game's minerals, gems and artefacts, or ores and
   other bits). What they give is on top of what any rock gives.
 - **The game's rocks** (second tab of Rocks): every rock and ore node the mines are filled with, from copper and iridium
   nodes to gem, geode and bone nodes and the plain grey rocks. Give one new art, stop the mines putting it out (a plain
@@ -62,8 +63,10 @@ feel about them as a gift. It can also give the game's own new art, or stop one 
 - Don't delete something you've found: ones in your world, in chests or donated to the museum become Error Items.
 - The museum takes minerals, gems and artefacts alike (as it does the game's own diamonds and rubies); turning off
   "Can be donated to the museum" is what keeps one out.
-- Rocks only turn up in the mines and Skull Cavern for now; the quarry, the farm and the volcano fill themselves another
-  way, so stopping a rock turning up doesn't reach those.
+- Above ground, a rock of yours takes the place of one the game spawned overnight, so it follows the game's own rules
+  about where rocks can appear (and nothing spawns on the beach, in the desert, or anywhere in winter).
+- Stopping one of the game's rocks turning up only covers the mines; the quarry, the farm and the volcano fill
+  themselves another way.
 - The game calls every rock "Stone", so a rock's name is only ever seen in the editor.
 - In multiplayer, every player needs the mod. With the Core's content sharing on, everyone uses the Host's set.
 

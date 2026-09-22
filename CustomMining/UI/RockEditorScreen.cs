@@ -32,6 +32,12 @@ namespace CustomMining.UI
         private readonly GameRockChange? GameChange;
 
         private Page Current = Page.Rock;
+
+        /// <summary>Where the "In the mines" and "Above ground" headings go on the Where page.</summary>
+        private (Rectangle Mines, Rectangle Outdoors) WhereHeadings;
+
+        /// <summary>Where the seasons heading goes on the Where page.</summary>
+        private Rectangle SeasonsLabel;
         private readonly Dictionary<string, Pixels?> Images = new(StringComparer.OrdinalIgnoreCase);
         private Texture2D? PreviewIcon;
         private bool ArtDirty = true;
@@ -56,6 +62,8 @@ namespace CustomMining.UI
         private readonly TextField ExperienceField;
 
         private readonly (Checkbox Box, Dropdown Chance)[] AreaRows;
+        private readonly (Checkbox Box, Dropdown Chance)[] OutdoorRows;
+        private readonly Checkbox[] SeasonBoxes;
 
         private readonly ScrollList<RockDrop> DropList;
         private readonly Button AddDropButton;
@@ -118,6 +126,33 @@ namespace CustomMining.UI
                 }, "How many of the rocks down there are this one."));
                 return (box, chance);
             }).ToArray();
+
+            // above ground
+            this.OutdoorRows = RockData.OutdoorPlaces.Select(place =>
+            {
+                double current = r.Outdoors.GetValueOrDefault(place.Key);
+                Checkbox box = this.On(Page.Where, new Checkbox(place.Label, current > 0, on =>
+                {
+                    if (on)
+                        r.Outdoors[place.Key] = ReadChance(this.OutdoorChance(place.Key));
+                    else
+                        r.Outdoors.Remove(place.Key);
+                    this.SyncPage();
+                }));
+                Dropdown chance = this.On(Page.Where, new Dropdown(ChanceOptions(current), ChanceValue(current > 0 ? current : 0.1), v =>
+                {
+                    if (r.Outdoors.ContainsKey(place.Key))
+                        r.Outdoors[place.Key] = ReadChance(v);
+                }, "How many of the rocks that turn up there overnight are this one."));
+                return (box, chance);
+            }).ToArray();
+            this.SeasonBoxes = RockData.SeasonNames.Select(season => this.On(Page.Where, new Checkbox(char.ToUpper(season[0]) + season[1..], r.Seasons.Count == 0 || r.Seasons.Contains(season, StringComparer.OrdinalIgnoreCase), on =>
+            {
+                r.Seasons.RemoveAll(s => s.Equals(season, StringComparison.OrdinalIgnoreCase));
+                if (on)
+                    r.Seasons.Add(season);
+                r.Seasons = RockData.SeasonNames.Where(n => r.Seasons.Contains(n, StringComparer.OrdinalIgnoreCase)).ToList();
+            }, "Which seasons it turns up above ground in. Underground it turns up whatever the season, as the game's rocks do."))).ToArray();
 
             // what it gives
             this.DropList = this.On(Page.Drops, new ScrollList<RockDrop>(64, this.DrawDropRow)
@@ -216,13 +251,30 @@ namespace CustomMining.UI
             Full("Detail", this.DetailCycler);
             Pair("Hits to break", this.HitsField, "Mining XP", this.ExperienceField);
 
-            y = pageTop;
+            // where: the mines down the left, above ground down the right, seasons under them
+            int colW = (rw - 24) / 2;
+            int chanceW = 150;
+            y = pageTop + 30;
+            this.WhereHeadings = (new Rectangle(rx, pageTop, colW, 28), new Rectangle(rx + colW + 24, pageTop, colW, 28));
             foreach ((Checkbox box, Dropdown chance) in this.AreaRows)
             {
-                box.Bounds = new Rectangle(rx, y, half, 44);
-                chance.Bounds = new Rectangle(rx + half + 16, y, 240, 44);
-                y += 56;
+                box.Bounds = new Rectangle(rx, y, colW - chanceW - 8, 44);
+                chance.Bounds = new Rectangle(rx + colW - chanceW, y, chanceW, 44);
+                y += 52;
             }
+            int seasonsY = y + 20;
+            int outX = rx + colW + 24;
+            int outY = pageTop + 30;
+            foreach ((Checkbox box, Dropdown chance) in this.OutdoorRows)
+            {
+                box.Bounds = new Rectangle(outX, outY, colW - chanceW - 8, 44);
+                chance.Bounds = new Rectangle(outX + colW - chanceW, outY, chanceW, 44);
+                outY += 52;
+            }
+            this.SeasonsLabel = new Rectangle(rx, seasonsY, colW, 40);
+            int seasonW = (colW - 8) / 4;
+            for (int i = 0; i < this.SeasonBoxes.Length; i++)
+                this.SeasonBoxes[i].Bounds = new Rectangle(rx + i * seasonW, seasonsY + 36, seasonW, 44);
 
             // what it gives: the list, with the settings for the one picked under it
             int settingsH = 124;
@@ -262,6 +314,13 @@ namespace CustomMining.UI
                 if (owner.Visible)
                     Gfx.Text(b, label, new Vector2(row.X, row.Y + (row.Height - Gfx.LineHeight) / 2));
 
+            if (this.Current == Page.Where && this.GameChange == null)
+            {
+                Gfx.Text(b, "In the mines", new Vector2(this.WhereHeadings.Mines.X, this.WhereHeadings.Mines.Y), Color.DimGray);
+                Gfx.Text(b, "Above ground", new Vector2(this.WhereHeadings.Outdoors.X, this.WhereHeadings.Outdoors.Y), Color.DimGray);
+                Gfx.Text(b, "Seasons above ground", new Vector2(this.SeasonsLabel.X, this.SeasonsLabel.Y), Color.DimGray);
+            }
+
             this.DrawPreview(b);
             base.Draw(b, mouseX, mouseY);
 
@@ -269,7 +328,7 @@ namespace CustomMining.UI
                 ? "Where it turns up and what it gives stay the game's. The picture is used wherever the rock is drawn."
                 : this.Current switch
             {
-                Page.Where => "A chance is how many of the rocks down there are this one. The rest of the level stays the game's.",
+                Page.Where => "A chance is how many of the rocks there are this one: in the mines as a level is built, above ground as a place wakes up. The rest stay the game's.",
                 Page.Drops => "This is on top of what any rock gives: stone, and the odd geode or gem the mines hand out anyway.",
                 _ => "Hits are with a starter pickaxe; a better one breaks it faster, like the game's own rocks."
             };
@@ -354,6 +413,11 @@ namespace CustomMining.UI
             {
                 foreach ((Checkbox box, Dropdown chance) in this.AreaRows)
                     chance.Visible = box.Checked;
+                foreach ((Checkbox box, Dropdown chance) in this.OutdoorRows)
+                    chance.Visible = box.Checked;
+                bool anyOutdoors = this.OutdoorRows.Any(row => row.Box.Checked);
+                foreach (Checkbox box in this.SeasonBoxes)
+                    box.Visible = anyOutdoors; // seasons are only about what turns up outside
             }
             if (this.Current == Page.Drops)
             {
@@ -365,6 +429,9 @@ namespace CustomMining.UI
 
         /// <summary>The chance picked for a part of the mines now, as a stored value.</summary>
         private string AreaChance(string area) => this.AreaRows[Array.FindIndex(RockData.Areas, a => a.Key == area)].Chance.Value;
+
+        /// <summary>The chance picked for a place above ground now, as a stored value.</summary>
+        private string OutdoorChance(string place) => this.OutdoorRows[Array.FindIndex(RockData.OutdoorPlaces, p => p.Key == place)].Chance.Value;
 
         /// <summary>The chances to offer, with the one it already has added if it isn't one of them.</summary>
         private static List<(string Value, string Label)> ChanceOptions(double current)
@@ -605,11 +672,18 @@ namespace CustomMining.UI
                 this.ShowError("Choose or paint a picture of the rock.");
                 return;
             }
-            if (!RockData.AreasFor(r).Any())
+            if (!RockData.AreasFor(r).Any() && !RockData.OutdoorsFor(r).Any())
             {
-                this.ShowError("Pick at least one part of the mines it turns up in, on the Where page.");
+                this.ShowError("Pick somewhere it turns up, on the Where page: a part of the mines, or a place above ground.");
                 return;
             }
+            if (RockData.OutdoorsFor(r).Any() && r.Seasons.Count == 0)
+            {
+                this.ShowError("Pick at least one season it turns up above ground in, on the Where page.");
+                return;
+            }
+            if (r.Seasons.Count == RockData.SeasonNames.Length)
+                r.Seasons.Clear(); // every season is the same as saying nothing, and keeps the file tidy
             foreach (RockDrop drop in r.Drops)
                 drop.Max = Math.Max(Math.Max(1, drop.Min), drop.Max);
 

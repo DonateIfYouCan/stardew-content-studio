@@ -89,6 +89,36 @@ namespace Tests
         }
 
         [Fact]
+        public void ARockAboveGroundOnlyTurnsUpWhereAndWhenItWasAskedFor()
+        {
+            CustomRock rock = new() { Outdoors = { ["Farm"] = 0.2 }, Seasons = { "fall" } };
+            Assert.Equal(0.2, RockData.ChanceOutdoors(rock, "Farm", "fall"));
+            Assert.Equal(0, RockData.ChanceOutdoors(rock, "Farm", "spring")); // wrong season
+            Assert.Equal(0, RockData.ChanceOutdoors(rock, "Forest", "fall")); // wrong place
+        }
+
+        [Fact]
+        public void NoSeasonsMeansAllYear()
+        {
+            CustomRock rock = new() { Outdoors = { ["Forest"] = 0.1 } };
+            foreach (string season in RockData.SeasonNames)
+                Assert.Equal(0.1, RockData.ChanceOutdoors(rock, "Forest", season));
+        }
+
+        [Fact]
+        public void WhereItTurnsUpUndergroundIsSeparateFromAboveGround()
+        {
+            // a rock asked for above ground only mustn't quietly fill the mines as well, or the other way round
+            CustomRock outdoors = new() { Outdoors = { ["Farm"] = 0.5 } };
+            Assert.Equal(0, RockData.ChanceOn(outdoors, 5));
+            Assert.Empty(RockData.AreasFor(outdoors));
+
+            CustomRock underground = new() { Places = { ["mines"] = 0.5 } };
+            Assert.Equal(0, RockData.ChanceOutdoors(underground, "Farm", "spring"));
+            Assert.Empty(RockData.OutdoorsFor(underground));
+        }
+
+        [Fact]
         public void TheGamesRocksAreListedOnceEachWithANameOfTheirOwn()
         {
             // the game calls nearly every rock "Stone", so the list would be forty identical rows without our own names

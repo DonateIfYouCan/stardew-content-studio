@@ -35,6 +35,11 @@ namespace CustomMining
                 AccessTools.Method(typeof(GameLocation), nameof(GameLocation.OnStoneDestroyed)),
                 postfix: new HarmonyMethod(typeof(RockPatches), nameof(After_OnStoneDestroyed))
             );
+            harmony.Patch(
+                AccessTools.Method(typeof(GameLocation), nameof(GameLocation.DayUpdate)),
+                prefix: new HarmonyMethod(typeof(RockPatches), nameof(Before_DayUpdate)),
+                postfix: new HarmonyMethod(typeof(RockPatches), nameof(After_DayUpdate))
+            );
         }
 
         /// <summary>Note which rocks exist now, so the patches don't read the file on every tile of a mine level.</summary>
@@ -87,6 +92,58 @@ namespace CustomMining
             catch (Exception ex)
             {
                 Monitor?.LogOnce($"Couldn't put custom rocks in the mine: {ex.Message}", LogLevel.Error);
+            }
+        }
+
+        /// <summary>Note the rocks a place already had, before it spawns the day's new ones.</summary>
+        /// <param name="__instance">The place waking up.</param>
+        /// <param name="__state">The tiles that already had something on them, handed to the postfix.</param>
+        /// <remarks>
+        /// Rocks above ground aren't put out in one place in the game's code: the farm and the maps around town spawn theirs
+        /// one way, the quarry another. Rather than patch each one, this looks at what a place gained overnight and swaps a
+        /// share of the new rocks, which catches every way the game has of putting one out.
+        /// </remarks>
+        private static void Before_DayUpdate(GameLocation __instance, ref HashSet<Vector2>? __state)
+        {
+            __state = null;
+            if (Rocks.Count == 0 || __instance is MineShaft || !__instance.IsOutdoors)
+                return;
+            if (!Rocks.Values.Any(rock => RockData.ChanceOutdoors(rock, __instance.Name, Game1.currentSeason) > 0))
+                return; // nothing of yours turns up here today, so don't walk the place at all
+            __state = new HashSet<Vector2>(__instance.objects.Keys);
+        }
+
+        /// <summary>Swap a share of the rocks a place spawned overnight for rocks of yours.</summary>
+        private static void After_DayUpdate(GameLocation __instance, HashSet<Vector2>? __state)
+        {
+            try
+            {
+                if (__state == null)
+                    return;
+
+                foreach (Vector2 tile in __instance.objects.Keys.ToArray())
+                {
+                    if (__state.Contains(tile) || __instance.objects[tile] is not { } placed || !placed.IsBreakableStone())
+                        continue;
+
+                    double roll = Game1.random.NextDouble(); // only the host wakes a place up, so there's nothing to keep in step here
+                    foreach ((string itemId, CustomRock rock) in Rocks)
+                    {
+                        double chance = RockData.ChanceOutdoors(rock, __instance.Name, Game1.currentSeason);
+                        if (chance <= 0)
+                            continue;
+                        if (roll < chance)
+                        {
+                            __instance.objects[tile] = new Object(itemId, 1) { MinutesUntilReady = RockData.CleanHits(rock.Hits) };
+                            break;
+                        }
+                        roll -= chance; // each rock gets its own slice of the roll, so two at half fill the place between them
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Monitor?.LogOnce($"Couldn't put custom rocks out above ground: {ex.Message}", LogLevel.Error);
             }
         }
 

@@ -115,6 +115,55 @@ namespace CustomMining
                 ?? plain.FirstOrDefault(rock => !isHidden(rock.Id))?.Id;
         }
 
+        /// <summary>The places above ground the editor offers, by the game's location name.</summary>
+        /// <remarks>
+        /// These are the maps that spawn rocks of their own each day; a rock of yours takes the place of one of theirs. The
+        /// beach and the desert never spawn rocks, so they aren't offered. The quarry is part of the mountain.
+        /// </remarks>
+        public static readonly DigPlace[] OutdoorPlaces =
+        {
+            new("Farm", "Your farm"),
+            new("Forest", "Cindersap Forest"),
+            new("Mountain", "The mountain (and the quarry)"),
+            new("Backwoods", "The backwoods"),
+            new("BusStop", "The bus stop"),
+            new("Railroad", "The railroad"),
+            new("Town", "Pelican Town"),
+            new("Woods", "Secret Woods"),
+            new("IslandWest", "Ginger Island west"),
+            new("IslandNorth", "Ginger Island north")
+        };
+
+        /// <summary>The seasons a rock can be asked for, in the game's order.</summary>
+        public static readonly string[] SeasonNames = { "spring", "summer", "fall", "winter" };
+
+        /// <summary>Where a rock turns up above ground, with the places it isn't found in left out.</summary>
+        public static IEnumerable<(string Place, double Chance)> OutdoorsFor(CustomRock rock)
+        {
+            return OutdoorPlaces
+                .Where(place => rock.Outdoors.TryGetValue(place.Key, out double chance) && chance > 0)
+                .Select(place => (place.Key, MiningData.CleanChance(rock.Outdoors[place.Key])));
+        }
+
+        /// <summary>How often a rock takes the place of one spawned above ground, or 0 if it isn't found there then.</summary>
+        /// <param name="rock">The rock.</param>
+        /// <param name="locationName">The game's name for the place.</param>
+        /// <param name="season">The season it is now.</param>
+        public static double ChanceOutdoors(CustomRock rock, string locationName, string season)
+        {
+            if (!InSeason(rock, season))
+                return 0;
+            return rock.Outdoors.TryGetValue(locationName, out double chance) && chance > 0
+                ? MiningData.CleanChance(chance)
+                : 0;
+        }
+
+        /// <summary>Whether a rock turns up above ground in a season. No seasons asked for means all year.</summary>
+        public static bool InSeason(CustomRock rock, string season)
+        {
+            return rock.Seasons.Count == 0 || rock.Seasons.Any(s => s.Equals(season, StringComparison.OrdinalIgnoreCase));
+        }
+
         /// <summary>The part of the mines a level belongs to, or null for a level no rock is offered on (like level 120).</summary>
         public static MineArea? AreaOf(int mineLevel) => Areas.FirstOrDefault(area => mineLevel >= area.FirstLevel && mineLevel <= area.LastLevel);
 
@@ -161,12 +210,17 @@ namespace CustomMining
         public static string Describe(CustomRock rock)
         {
             List<(string Area, double Chance)> places = AreasFor(rock).ToList();
-            string where = places.Count switch
-            {
-                0 => "not found anywhere yet",
-                1 => Areas.First(a => a.Key == places[0].Area).Label,
-                _ => $"{places.Count} parts of the mines"
-            };
+            List<(string Place, double Chance)> outdoors = OutdoorsFor(rock).ToList();
+            List<string> parts = new();
+            if (places.Count == 1)
+                parts.Add(Areas.First(a => a.Key == places[0].Area).Label);
+            else if (places.Count > 1)
+                parts.Add($"{places.Count} parts of the mines");
+            if (outdoors.Count == 1)
+                parts.Add(OutdoorPlaces.First(p => p.Key == outdoors[0].Place).Label);
+            else if (outdoors.Count > 1)
+                parts.Add($"{outdoors.Count} places above ground");
+            string where = parts.Count > 0 ? string.Join(", ", parts) : "not found anywhere yet";
             int drops = DropsFor(rock).Count();
             return $"{where} · {(drops == 0 ? "gives nothing of its own" : drops == 1 ? "gives one thing" : $"gives {drops} things")} · {CleanHits(rock.Hits)} hit(s)";
         }

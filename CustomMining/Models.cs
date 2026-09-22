@@ -61,6 +61,12 @@ namespace CustomMining
         /// <summary>Where it turns up, by part of the mines (see <see cref="RockData.Areas"/>), with the chance a rock there is this one (0 to 1).</summary>
         public Dictionary<string, double> Places { get; set; } = new();
 
+        /// <summary>Where it turns up above ground, by the game's location name (see <see cref="RockData.OutdoorPlaces"/>), with the chance a rock spawned there is this one (0 to 1).</summary>
+        public Dictionary<string, double> Outdoors { get; set; } = new();
+
+        /// <summary>The seasons it turns up above ground in, or empty for all year. Underground it turns up whatever the season, as the game's rocks do.</summary>
+        public List<string> Seasons { get; set; } = new();
+
         /// <summary>What it gives when it's broken, on top of what any rock gives.</summary>
         public List<RockDrop> Drops { get; set; } = new();
     }
