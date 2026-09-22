@@ -8,3 +8,8 @@ The "Emily plant" used in the 0.3.0 header and screenshots: a crop whose flower 
 Both were made from the game's own Emily sprite, exported with *Export original sheet* in the Characters editor, so they only make sense next to a copy of the game.
 
 To use them: put the two files in `CustomCrops/images`, add a crop in the editor, and point *Choose growth sheet* and *Choose image* at them. Four growth stages (`1,1,2,2`) matches the sheet; harvest with a scythe.
+
+## Sunset Koi (0.4.0)
+
+`sunset-koi.png` — the demo fish in the 0.4.0 screenshots, 256x256, drawn for the demo. To use it: put it in
+`CustomFish/images`, add a fish in the editor and pick it with *Choose image*.

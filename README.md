@@ -12,11 +12,12 @@ in-game editor (press `K`), in HD where you want it.
 | [Content Studio: Characters](CustomCharacters) | Villager portraits (per emotion) and sprites, and the farmer's body, hair and clothes, in HD. |
 | [Content Studio: Crops](CustomCrops) | Your own crops: seeds, growth stages and harvest. |
 | [Content Studio: Furniture](CustomFurniture) | Furniture based on a game piece: lamps that turn on, fireplaces, beds, animated decor and more. Also wallpaper and floors from your images. |
+| [Content Studio: Fish](CustomFish) | Your own fish: where and when they bite, rod or crab pot, fish tanks, ponds and gifts. New art for the game's fish, or stop one biting. |
 
 Each mod's folder has its own README with details and screenshots.
 
 **Status:** tested by hand on Linux only (Stardew Valley 1.6.15, SMAPI 4.5.2). Windows and macOS are untested. `dotnet test`
-runs 157 checks that don't need the game. See [test coverage](docs/TESTING.md) and [compatibility](docs/COMPATIBILITY.md) for
+runs 178 checks that don't need the game. See [test coverage](docs/TESTING.md) and [compatibility](docs/COMPATIBILITY.md) for
 exactly what was and wasn't tested.
 
 ## Screenshots
@@ -41,6 +42,9 @@ exactly what was and wasn't tested.
 
 ![Left: the game. Right: HD sprite sheets](docs/screenshots/characters-hd-comparison.png)
 *Left: the game. Right: HD sprite sheets (the game's own sprites upscaled with Scale2x, just to demonstrate).*
+
+![The fish editor on its Where page](docs/screenshots/0.4.0-fish-editor.png)
+*A fish: where and when it bites. Other pages set the minigame, crab pots, fish tanks, ponds and gifts.*
 
 ![Wallpaper and a floor made from images, in a farmhouse](docs/screenshots/world-wallpaper-floor.png)
 *Wallpaper and floor tiles made from your own images.*

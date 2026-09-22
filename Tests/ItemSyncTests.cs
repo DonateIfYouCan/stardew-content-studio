@@ -45,6 +45,7 @@ namespace Tests
         [InlineData("CustomFurniture", "FurnitureStore.cs")]
         [InlineData("CustomCrops", "CropStore.cs")]
         [InlineData("CustomPaintings", "PaintingStore.cs")]
+        [InlineData("CustomFish", "FishStore.cs")]
         public void AChangeToAGameItemTravelsOnItsOwn(string mod, string store)
         {
             // each change to one of the game's items is its own item, marked with the Core's prefix so the Host knows it
@@ -60,6 +61,7 @@ namespace Tests
         [InlineData("CustomFurniture", "FurnitureListScreen.cs")]
         [InlineData("CustomCrops", "CropListScreen.cs")]
         [InlineData("CustomPaintings", "PaintingListScreen.cs")]
+        [InlineData("CustomFish", "FishListScreen.cs")]
         public void GameItemsAreHeldOneAtATime(string mod, string screen)
         {
             // Player A giving the game's lamp new art mustn't stop Player B hiding a game table, so no game-item button takes

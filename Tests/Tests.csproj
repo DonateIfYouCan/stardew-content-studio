@@ -23,6 +23,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\CustomContentCore\CustomContentCore.csproj" />
+    <!-- only its pure data helpers are tested (FishData), which touch nothing from the game -->
+    <ProjectReference Include="..\CustomFish\CustomFish.csproj" />
     <!-- copied next to the tests: the image code uses the game's colour type -->
     <Reference Include="MonoGame.Framework" HintPath="$(GamePath)/MonoGame.Framework.dll" Private="False" />
   </ItemGroup>

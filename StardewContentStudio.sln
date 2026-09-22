@@ -15,6 +15,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CustomFurniture", "CustomFu
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tests", "Tests\Tests.csproj", "{DCA76875-93B7-4E83-A0DB-D4304CED24D7}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CustomFish", "CustomFish\CustomFish.csproj", "{FDCFFEFD-63E7-46D2-AF7A-DE0434250C4D}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -48,5 +50,9 @@ Global
 		{DCA76875-93B7-4E83-A0DB-D4304CED24D7}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{DCA76875-93B7-4E83-A0DB-D4304CED24D7}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{DCA76875-93B7-4E83-A0DB-D4304CED24D7}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FDCFFEFD-63E7-46D2-AF7A-DE0434250C4D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FDCFFEFD-63E7-46D2-AF7A-DE0434250C4D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FDCFFEFD-63E7-46D2-AF7A-DE0434250C4D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FDCFFEFD-63E7-46D2-AF7A-DE0434250C4D}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
