@@ -7,7 +7,7 @@ in-game editor (press `K`), in HD where you want it.
 
 | Mod | What it does |
 |---|---|
-| [Content Studio: Core](CustomContentCore) | The in-game editor, file browser, image tools, a pixel editor to draw on your art in the game, HD drawing, export/import of content packs, optional multiplayer sharing. **Required by the others.** |
+| [Content Studio: Core](CustomContentCore) | The in-game editor, file browser, image tools, a pixel editor to draw on your art in the game, HD drawing, themes (whole sets of content to switch between), backups and content packs, optional multiplayer sharing. **Required by the others.** |
 | [Content Studio: Paintings](CustomPaintings) | Add, replace or hide paintings; photo frames and slideshows; full-screen viewer; sell them in shops or catch them fishing. |
 | [Content Studio: Characters](CustomCharacters) | Villager portraits (per emotion) and sprites, and the farmer's body, hair and clothes, in HD. |
 | [Content Studio: Crops](CustomCrops) | Your own crops: seeds, growth stages and harvest. |
@@ -17,7 +17,7 @@ in-game editor (press `K`), in HD where you want it.
 Each mod's folder has its own README with details and screenshots.
 
 **Status:** tested by hand on Linux only (Stardew Valley 1.6.15, SMAPI 4.5.2). Windows and macOS are untested. `dotnet test`
-runs 178 checks that don't need the game. See [test coverage](docs/TESTING.md) and [compatibility](docs/COMPATIBILITY.md) for
+runs 191 checks that don't need the game. See [test coverage](docs/TESTING.md) and [compatibility](docs/COMPATIBILITY.md) for
 exactly what was and wasn't tested.
 
 ## Screenshots
@@ -31,7 +31,7 @@ exactly what was and wasn't tested.
 ![A field of the demo crop growing on a farm](docs/screenshots/0.3.0-emily-in-world.png)
 *The same crop in the world. (The demo crop is the game's own Emily sprite as the flower of a leafy plant.)*
 
-![The editor start page](docs/screenshots/0.3.0-editor-hub.png)
+![The editor start page](docs/screenshots/0.4.0-editor-hub.png)
 *The editor's start page (press `K`).*
 
 ![Painting editor](docs/screenshots/0.3.0-painting-editor.png)

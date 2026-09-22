@@ -12,6 +12,7 @@ Tested on one setup only: **Linux, Stardew Valley 1.6.15, SMAPI 4.5.2**, 1920×1
 |---|---|
 | Core editor | Start page, Escape/Close on the title screen and in-game, file browser (folders, shortcuts, scrolling, image preview), status messages wrapping |
 | Export / import packs | Export, then import after deleting the content: files come back and a backup is made first. A crafted malicious zip (`..` paths aimed at a mod's DLL, manifest and config) was refused without changing those files. |
+| Themes & backups | On the title screen: made an empty theme (every mod loaded nothing), switched back (the content came back byte for byte, empty image folders included), opened a 'Backup before joining' zip as a theme and used it (4 crops, 11 paintings, 2 farmer sheets loaded), switched back, and deleted a theme (a zip of it appeared in the backups and opens again). With a save loaded: the warning shows, the other theme's farmer sheets apply at once, the old theme's things show as Error Items, and switching back restores them. The start page in two columns with six sections at 1920x1080. Not yet tested: switching while hosting with players connected, a theme folder copied in by hand from another PC. |
 | Export folder | If the folder can't be written, exports go to the Core mod folder with a warning (tested with a read-only folder) |
 | Paintings | Create, crop (drag corners), frames, sizes, price, shops (price matches, including Pierre), fishing (5% chance measured over 2,000 rolls per spot; "only once" and location limits work), hang on a wall, full-screen viewer with text, delete |
 | Animated paintings | A 2-frame and a 3-frame animation placed in a room; screenshots 100 ms apart show the frames advancing in real time. Not tested: many animated paintings at once (each one updates its texture every few frames). |
@@ -60,6 +61,7 @@ Tested on one setup only: **Linux, Stardew Valley 1.6.15, SMAPI 4.5.2**, 1920×1
 | Screens make what they declare | A button declared but never created - the editor then fails to open at all (happened twice with the support buttons) |
 | Screens let go of what they hold | A screen that takes a lock and never releases it, leaving an item stuck until the lease runs out |
 | Lists notice a change | A list that doesn't rebuild when another player's change arrives (this check found four screens that had lost it) |
+| Themes | A switch that leaves the old theme's files behind, drops a mod's image folder, or copies anything but content (a DLL, the manifest) out of a theme; a pack that climbs out of its theme folder; theme names that can't be folders |
 | Fish data | A fishing, crab pot or tank entry that doesn't match the game's own (checked against the game's pufferfish, lobster and crab), seasons written where the game doesn't read them, a tank sprite cut off when turned |
 
 Run them before pushing:

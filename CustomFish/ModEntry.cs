@@ -24,7 +24,7 @@ namespace CustomFish
             Store = new FishStore(helper, this.Monitor, this.ModManifest);
 
             // plug into Content Studio: Core
-            CustomContent.RegisterEditor(this.ModManifest, "Fish", "Your own fish: where they bite, fish tanks, ponds and gifts", () => new FishListScreen(Store));
+            CustomContent.RegisterEditor(this.ModManifest, "Fish", "Your own fish: where they bite, tanks, ponds and gifts", () => new FishListScreen(Store));
             ContentPacks.Register(this.ModManifest, helper.DirectoryPath, new[] { FishStore.DataFileName, FishStore.ImageFolderName }, Store.Reload, Store.GetSharedFiles,
                 new ContentPacks.ContentEditing(Store.GetItemIds, Store.GetItemJson, Store.ApplyItemJson, Store.RemoveItem));
 

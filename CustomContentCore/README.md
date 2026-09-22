@@ -8,9 +8,13 @@ It provides:
 - **File browser** for any folder on the computer (with drives/volumes on Windows/macOS/Linux).
 - **Image tools**: PNG/JPEG decoding, cropping, framing (built-in and 9-slice custom frames), high-quality downscaling.
 - **Export originals**: save the game's original art as PNG (optionally enlarged with sharp pixels) to edit in an external program and import again.
-- **Content packs**: *Export pack* saves all custom content of every Custom Content mod (data + images) into one `.zip`;
-  *Import pack* loads it on another PC (replacing that content, after automatically backing up the current content to `Exports/Backups`).
-  Imports only write into each mod's registered content files/folders.
+- **Themes & backups**: a theme is a whole set of custom content (paintings, villagers, crops, furniture, fish), so one game
+  can hold several projects and switch between them in a click. The theme in use lives in the mods' folders as always; the
+  others wait in `Stardew Custom Content/Themes`, one folder each, with their own earlier versions. The same screen lists the
+  backups (made before joining a host's game, before an import, and of every deleted theme) and exported packs, and opens any
+  of them as a new theme without touching the one in use. *Export pack* saves the theme in use as one `.zip` for another PC.
+  Themes and packs only ever write into each mod's registered content files and folders. Switching is best done on the title
+  screen: while another theme is in use, things from the old one in your world show as Error Items.
 - **One content set per multiplayer game** (off by default, opt-in on both sides): with *Share my content when I host*, everyone in
   the Host's game uses the Host's content - paintings, crops, furniture, wallpaper and character sheets alike - so there is one
   answer to whose hair sheet is in use and placed items keep the IDs they were placed with. A player who turns on *Accept shared
@@ -29,8 +33,11 @@ It provides:
 
 ## Screenshots
 
-![The editor start page (press K)](../docs/screenshots/0.3.0-editor-hub.png)
+![The editor start page (press K)](../docs/screenshots/0.4.0-editor-hub.png)
 *The editor start page (press K).*
+
+![Themes and backups](../docs/screenshots/0.4.0-themes.png)
+*Themes & backups: whole sets of content to switch between, and backups that open as themes.*
 
 ![The pixel editor on a crop's growth sheet](../docs/screenshots/0.3.0-paint-crop-emily.png)
 *The pixel editor: tools down the left, guides for what the game expects in the sheet you're editing.*
@@ -120,6 +127,7 @@ pop-ups or reminders.
 - `BrowserStartFolder` (default: your Pictures folder)
 - `ExportFolder` (default: `Pictures/Stardew Custom Content`; also a shortcut in the file browser)
 - `ExportScale` (default `4`: exports are enlarged 4x with sharp pixels; `1` = original size)
+- `ActiveTheme` (default empty, shown as *My content*): the theme in use, set from the *Themes & backups* screen
 - `ShareContentAsHost` (default `false`) and `AcceptContentFromHost` (default `false`): multiplayer content sharing (also toggles on the editor's start page)
 
 ## Multiplayer security

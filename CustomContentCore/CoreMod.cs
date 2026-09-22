@@ -43,6 +43,9 @@ namespace CustomContentCore
 
         /// <summary>When you host, let the players in your game change the content everyone is using; what they save becomes yours.</summary>
         public bool LetOthersChangeMyContent { get; set; } = false;
+
+        /// <summary>The theme in use: the set of custom content in the mods' folders now. The others wait in the Themes folder.</summary>
+        public string ActiveTheme { get; set; } = "";
     }
 
     /// <summary>The mod entry point.</summary>

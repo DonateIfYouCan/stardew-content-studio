@@ -18,6 +18,24 @@ In a shared game each fish, and each change to a game fish, is held and sent on 
 mods: players can add and delete their own fish, and changing the Host's fish or the game's needs the Host's
 *Let players change my content*.
 
+## Themes & backups
+
+The start page's *Export pack* and *Import pack* became **Themes & backups**. A theme is a whole set of your content, so one
+game can hold several projects and switch between them:
+
+- **Use this theme** puts the content in use away as its own theme and brings the other one in, for every mod at once.
+- **New empty theme** or **New copy** of the one in use, **Rename**, **Delete** (a copy goes to the backups).
+- **Backups and packs** are listed beside the themes: the backups made before joining a host's game or importing, deleted
+  themes, and exported packs. **Open as a theme** makes any of them a theme without touching the one in use, so importing no
+  longer replaces anything.
+- Each theme keeps its own earlier versions.
+- It's safest to switch on the title screen: while another theme is in use, things from the old one in your world show as Error Items.
+
+## Start page
+
+With more than five sections the start page lays them out in two columns, so each keeps its description. It also shows the
+theme in use.
+
 ## Also
 
-- `dotnet test` runs 178 checks.
+- `dotnet test` runs 191 checks.
