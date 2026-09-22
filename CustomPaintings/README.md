@@ -61,6 +61,9 @@ A painting with several images can flip through them quickly instead of slowly: 
 editor and it becomes a moving picture (like the game's aquarium paintings). Slideshow speeds (per day, per hour, ...) still
 work as before.
 
+**The game's own paintings:** replace the image, hide from shops, export the original, or **make your own copy** to change,
+with its art (frame and all) ready to paint over.
+
 ## Files
 
 | Path | What it is |

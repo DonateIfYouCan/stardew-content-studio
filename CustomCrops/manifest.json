@@ -1,7 +1,7 @@
 {
   "Name": "Content Studio: Crops",
   "Author": "DonateIfYouCan",
-  "Version": "0.4.0",
+  "Version": "0.4.1",
   "Description": "Add your own crops (seeds, growth stages and harvest) with an in-game editor, in HD.",
   "UniqueID": "DonateIfYouCan.CustomCrops",
   "EntryDll": "CustomCrops.dll",
@@ -9,7 +9,7 @@
   "Dependencies": [
     {
       "UniqueID": "DonateIfYouCan.CustomContentCore",
-      "MinimumVersion": "0.1.0"
+      "MinimumVersion": "0.4.1"
     }
   ],
   "UpdateKeys": [

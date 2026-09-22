@@ -3,7 +3,7 @@
   <PropertyGroup>
     <AssemblyName>CustomFurniture</AssemblyName>
     <RootNamespace>CustomFurniture</RootNamespace>
-    <Version>0.4.0</Version>
+    <Version>0.4.1</Version>
     <TargetFramework>net6.0</TargetFramework>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>

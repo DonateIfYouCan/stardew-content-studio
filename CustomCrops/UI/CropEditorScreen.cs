@@ -145,7 +145,7 @@ namespace CustomCrops.UI
                 "How detailed the icons and plant look. Pixel art matches the game's style."));
 
             List<(string, string)> colours = ColorTags.Colors.Select(k => (k.Name, ColorTags.Label(k.Name))).ToList();
-            colours.Insert(0, ("", "From the harvest image"));
+            colours.Insert(0, ("", "From the image"));
             this.ColorCycler = this.Add(new Cycler(colours, c.Color, v => c.Color = v,
                 "The harvest's colour. The game uses it for dyeing, flower honey, and the colour of the wine, jelly, juice or pickles made from it."));
             this.GiftsButton = this.Add(new Button("Gifts...", () => this.Root.Push(new GiftTastesScreen(string.IsNullOrWhiteSpace(c.Name) ? "the harvest" : c.Name, c.GiftTastes)),

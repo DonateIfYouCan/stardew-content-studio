@@ -38,6 +38,7 @@ All images in the screenshots are made for the demo.
   - **Gifts:** click a villager to set whether they love, like, dislike or hate it.
 - **The game's fish** (second tab): give one new art, used for the item and in tanks, or stop it biting anywhere (crab pot
   fish too). Fish already caught stay. Stopping a fish that a bundle or quest needs means that can't be finished.
+- **Custom fish in the mines** only bite on floors 20 and 60: floor 100 has its own list the game never looks past.
 - Fish are real fish to the game: they count as "any fish" in cooking recipes, go in the fishing collection, and sell and
   ship like the game's.
 

@@ -38,6 +38,9 @@ All images in the screenshots are made for the demo.
   - Harvest type (vegetable/fruit/flower), sell price, energy if edible, seed price.
   - Seeds sold at Pierre's and/or JojaMart (in season), and/or the traveling cart, at exactly your price.
   - Live preview of the seed packet, harvest icon and every growth stage.
+  - **Gifts:** which villagers love, like, dislike or hate the harvest.
+  - **Colour:** worked out from the harvest image, or chosen. The game uses it for dyeing, flower honey, and the colour of the wine, jelly, juice or pickles made from it.
+- **The game's crops** (second tab): new art, take the seeds out of the shops, or **make your own copy** to change, starting from its art, growth, prices, shops, colour and gift tastes.
 - Crops behave like the game's own: watering, growing, harvesting, shipping, collections, quality.
 - **HD** icons and plants (Auto, Pixel art, Sharp, HD).
 

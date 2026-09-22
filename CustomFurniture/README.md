@@ -54,6 +54,11 @@ Every piece is **based on a game furniture item**: it copies that item's type, s
 3. **Choose your sheet**: any whole-number multiple of the template's size (like 4x for HD). The editor checks the layout.
 4. Set name, price, and where it's sold (Furniture Catalogue, Robin, traveling cart). Previews show each frame next to the original.
 
+## The game's own
+
+The game's furniture, wallpaper and floors each have a tab: new art, take them out of the shops, or **make your own copy**
+to change, with the game's art ready to paint over.
+
 ## Console commands
 
 | Command | Description |
