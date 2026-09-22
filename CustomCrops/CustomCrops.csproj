@@ -3,7 +3,7 @@
   <PropertyGroup>
     <AssemblyName>CustomCrops</AssemblyName>
     <RootNamespace>CustomCrops</RootNamespace>
-    <Version>0.3.3</Version>
+    <Version>0.3.4</Version>
     <TargetFramework>net6.0</TargetFramework>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
