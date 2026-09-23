@@ -281,6 +281,16 @@ namespace CustomMining.UI
 
             if (this.Current == Page.Digging && this.GameChange == null && !MiningData.CanBeDugUp(this.Item.Kind))
                 Gfx.Message(b, "Only artefacts are dug out of artefact spots. Make it an artefact on the Mineral page to bury it.", this.GiftList.Bounds.Width, new Vector2(this.GiftList.Bounds.X, this.GiftList.Bounds.Y - 32), Color.DimGray);
+            if (this.Current == Page.Item && this.GameChange == null && MuseumSpace.FreeSpots() is int free and >= 0)
+            {
+                string room = free switch
+                {
+                    0 => "The museum is full: nothing more can be donated until something is taken off its floor.",
+                    1 => "The museum has room for 1 more thing.",
+                    _ => $"The museum has room for {free} more things."
+                };
+                Gfx.Text(b, room, new Vector2(this.MuseumBox.Bounds.X, this.MuseumBox.Bounds.Bottom + 12), free == 0 ? new Color(150, 60, 30) : Color.DimGray);
+            }
             if (this.Current == Page.Gifts)
                 Gfx.Text(b, "Click a villager to change how they feel about it as a gift.", new Vector2(this.GiftList.Bounds.X, this.GiftList.Bounds.Y - 38), Color.DimGray);
 

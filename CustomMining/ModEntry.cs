@@ -30,7 +30,9 @@ namespace CustomMining
             ContentPacks.Register(this.ModManifest, helper.DirectoryPath, new[] { MiningStore.DataFileName, MiningStore.ImageFolderName }, Store.Reload, Store.GetSharedFiles,
                 new ContentPacks.ContentEditing(Store.GetItemIds, Store.GetItemJson, Store.ApplyItemJson, Store.RemoveItem));
 
-            RockPatches.Apply(new HarmonyLib.Harmony(this.ModManifest.UniqueID), this.Monitor);
+            HarmonyLib.Harmony harmony = new(this.ModManifest.UniqueID);
+            RockPatches.Apply(harmony, this.Monitor);
+            MuseumSpace.Apply(harmony, this.Monitor);
 
             helper.Events.GameLoop.GameLaunched += (_, _) => Store.Reload();
             helper.Events.GameLoop.UpdateTicked += this.OnUpdateTicked;

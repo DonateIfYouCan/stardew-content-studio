@@ -31,6 +31,18 @@ namespace Tests
         }
 
         [Fact]
+        public void TheMuseumEscapeHatchOnlyOpensForSomethingFromTheInventory()
+        {
+            // letting go while holding a piece lifted off the museum floor would walk a donation out of the museum, which
+            // the game never allows; the tile it came from is free anyway, so there's nothing to rescue there
+            string code = System.IO.File.ReadAllText(System.IO.Path.Combine(Root(), "CustomMining", "MuseumSpace.cs"));
+            Assert.Contains("holdingMuseumPiece", code);
+            Assert.Matches(@"if \(HoldingMuseumPiece\(__instance\)\)\s*\r?\n\s*return;[\s\S]{0,200}FreeSpots\(\) == 0", code);
+        }
+
+        private static string Root() => System.IO.Path.GetFullPath(System.IO.Path.Combine(System.AppContext.BaseDirectory, "..", "..", "..", ".."));
+
+        [Fact]
         public void OnlyArtefactsAreDugUp()
         {
             Assert.True(MiningData.CanBeDugUp(MiningData.Artifact));

@@ -74,6 +74,10 @@ All images in the screenshots are made for the demo.
 ## Notes
 
 - Don't delete something you've found: ones in your world, in chests or donated to the museum become Error Items.
+- **The museum has 102 spots** and the game's own 96 donatable items nearly fill it, so there's room for about six of
+  yours before it's full. The editor says how many spots are left on the Mineral page. Once it's full the game won't let
+  you put anything down - and because its donation screen refuses to close while you're holding something, that would
+  leave you stuck; this mod lets you back out in that one case, and the item returns to your inventory.
 - The museum takes minerals, gems and artefacts alike (as it does the game's own diamonds and rubies); turning off
   "Can be donated to the museum" is what keeps one out.
 - Above ground, a rock of yours takes the place of one the game spawned overnight, so it follows the game's own rules

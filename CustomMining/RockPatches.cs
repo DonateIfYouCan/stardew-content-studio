@@ -42,6 +42,10 @@ namespace CustomMining
                 postfix: new HarmonyMethod(typeof(RockPatches), nameof(After_OnStoneDestroyed))
             );
             harmony.Patch(
+                AccessTools.Method(typeof(MineShaft), nameof(MineShaft.getAppropriateOre)),
+                postfix: new HarmonyMethod(typeof(RockPatches), nameof(After_GetAppropriateOre))
+            );
+            harmony.Patch(
                 AccessTools.Method(typeof(VolcanoDungeon), "createStone"),
                 postfix: new HarmonyMethod(typeof(RockPatches), nameof(After_CreateStone))
             );
@@ -98,6 +102,20 @@ namespace CustomMining
             {
                 Monitor?.LogOnce($"Couldn't put custom rocks in the mine: {ex.Message}", LogLevel.Error);
             }
+        }
+
+        /// <summary>Swap an ore node the mines dotted about for one of yours, now and then.</summary>
+        /// <param name="__instance">The mine level being filled.</param>
+        /// <param name="tile">The tile the node goes on.</param>
+        /// <param name="__result">The node the game picked, which this may replace.</param>
+        /// <remarks>
+        /// The clumps of ore a level is sprinkled with don't come from the same place as its plain rocks, so a level filled
+        /// with rocks of yours still had the odd copper node standing in it, and a node the player had stopped turning up
+        /// came back here.
+        /// </remarks>
+        private static void After_GetAppropriateOre(MineShaft __instance, Vector2 tile, ref Object __result)
+        {
+            After_CreateLitterObject(__instance, tile, ref __result);
         }
 
         /// <summary>Swap a rock the volcano picked for one of yours, now and then.</summary>
