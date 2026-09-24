@@ -89,6 +89,8 @@ All images in the screenshots are made for the demo.
 - Stopping one of the game's rocks turning up covers the caves (the mines, Skull Cavern, the Quarry Mine and the
   volcano), where a plain rock of that cave stands in. It doesn't reach rocks spawned above ground.
 - The game calls every rock "Stone", so a rock's name is only ever seen in the editor.
+- In multiplayer, custom minerals can be handed to another player like any item: gifted face to face, dropped, or left in
+  a chest. The game doesn't allow furniture (so paintings and wallpaper) to be gifted face to face.
 - In multiplayer, every player needs the mod. With the Core's content sharing on, everyone uses the Host's set.
 
 ## Building

@@ -83,6 +83,7 @@ namespace Tests
             Assert.Equal("5%", MiningData.ChanceLabel(0.05));
             Assert.Equal("100%", MiningData.ChanceLabel(1));
             Assert.Equal("0.5%", MiningData.ChanceLabel(0.005));
+            Assert.Equal("12.5%", MiningData.ChanceLabel(0.125)); // a typed chance reads back as typed, not rounded to 13%
         }
 
         [Fact]

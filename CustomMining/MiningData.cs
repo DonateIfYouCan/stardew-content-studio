@@ -108,11 +108,11 @@ namespace CustomMining
                 .Select(place => (place.Key, CleanChance(item.DigSpots[place.Key])));
         }
 
-        /// <summary>A chance as the editor shows it, like <c>5%</c> or <c>0.5%</c>.</summary>
+        /// <summary>A chance as the editor shows it, like <c>5%</c>, <c>12.5%</c> or <c>0.5%</c>.</summary>
+        /// <remarks>Chances are typed, so a figure with decimals has to read back the way it was typed, not rounded to a whole percent.</remarks>
         public static string ChanceLabel(double chance)
         {
-            double percent = CleanChance(chance) * 100;
-            return percent < 1 ? $"{percent:0.#}%" : $"{percent:0}%";
+            return $"{CleanChance(chance) * 100:0.##}%";
         }
     }
 }
